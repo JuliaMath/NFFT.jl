@@ -391,7 +391,7 @@ function apodization_adjoint!{T}(p::NFFTPlan, g::Array{T,1}, f::Array{T,1})
   N = p.N[1]
   const offset = int( n - N / 2 ) - 1
   for l=1:N
-    f[l] = g[((l+offset)% n) + 1] = p.windowHatInvLUT[1][l]
+    f[l] = g[((l+offset)% n) + 1] * p.windowHatInvLUT[1][l]
   end
 end
 
