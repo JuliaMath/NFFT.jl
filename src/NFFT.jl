@@ -124,6 +124,7 @@ end
 
 ### ndft functions ###
 
+# fallback for 1D 
 function ind2sub{T}(::Array{T,1}, idx)
   idx
 end
@@ -426,63 +427,7 @@ function apodization_adjoint!{T,D}(p::NFFTPlan, g::Array{T,D}, f::Array{T,D})
   end
 end
 
-### test functions ###
-
-
-function nfft_test()
-
-  m = 4
-  sigma = 2.0
-
-  # 1D
-
-  N = 16
-  x = linspace(-0.4, 0.4, N)
-  fHat = linspace(0,1,N)*1im
-  p = NFFTPlan(x, N, m, sigma);
-
-  f = ndft_adjoint(p, fHat)
-  fApprox = nfft_adjoint(p, fHat)
-  println( norm(f-fApprox) / norm(f) )
-
-  gHat = ndft(p, f)
-  gHatApprox = nfft(p, f)
-  println( norm(gHat-gHatApprox) / norm(gHat) )
-
-  # 2D
-
-  N = (4,4)
-  M = 16
-  x = reshape(linspace(-0.4, 0.4, 2*M), 2, M)
-  fHat = linspace(0,1,M)*1im
-  p = NFFTPlan(x, N, m, sigma)
-
-  f = ndft_adjoint(p, fHat)
-  fApprox = nfft_adjoint(p, fHat)
-  println( norm(f[:]-fApprox[:]) / norm(f[:]) )
-
-  gHat = ndft(p, f)
-  gHatApprox = nfft(p, f)
-  println( norm(gHat[:]-gHatApprox[:]) / norm(gHat[:]) )
-
-  # 3D
-
-  N = (4,4,4)
-  M = 4^3
-  x = reshape(linspace(-0.4, 0.4, 3*M), 3, M)
-  fHat = linspace(0,1,M)*1im
-  p = NFFTPlan(x, N, m, sigma)
-
-  f = ndft_adjoint(p, fHat)
-  fApprox = nfft_adjoint(p, fHat)
-  println( norm(f[:]-fApprox[:]) / norm(f[:]) )
-
-  gHat = ndft(p, f)
-  gHatApprox = nfft(p, f)
-  println( norm(gHat[:]-gHatApprox[:]) / norm(gHat[:]) )
-
-
-end
+### performance test ###
 
 function nfft_performance()
 

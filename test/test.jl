@@ -24,7 +24,7 @@ end
 
 # 2D
 begin
-  N = [4,4]
+  N = (4,4)
   M = 16
   x = reshape(linspace(-0.4, 0.4, 2*M), 2, M)
   fHat = linspace(0,1,M)*1im
@@ -41,8 +41,8 @@ end
 
 # 3D
 begin
-  N = [4,4,4]
-  M = 4^3
+  N = (8,8,8)
+  M = 8^3
   x = reshape(linspace(-0.4, 0.4, 3*M), 3, M)
   fHat = linspace(0,1,M)*1im
   p = NFFTPlan(x, N, m, sigma)
