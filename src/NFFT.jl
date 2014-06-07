@@ -227,12 +227,12 @@ function convolve!{T,D}(p::NFFTPlan, g::Array{T,D}, fHat::Array{T,1})
   l = Array(Int64,p.D)
   idx = Array(Int64,p.D)
   P = Array(Int64,p.D)
-  c = Array(p.T,p.D)
+  c = Array(Int64,p.D)
 
   for k=1:p.M # loop over nonequispaced nodes
 
     for d=1:D
-      c[d] = int(floor(p.x[d,k]*p.n[d]))
+      c[d] = int64(floor(p.x[d,k]*p.n[d]))
       P[d] = 2*p.m + 1
     end
 
@@ -310,12 +310,12 @@ function convolve_adjoint!{T,D}(p::NFFTPlan, fHat::Array{T,1}, g::Array{T,D})
   l = Array(Int64,p.D)
   idx = Array(Int64,p.D)
   P = Array(Int64,p.D)
-  c = Array(p.T,p.D)
+  c = Array(Int64,p.D)
 
   for k=1:p.M # loop over nonequispaced nodes
 
     for d=1:D
-      c[d] = int(floor(p.x[d,k]*p.n[d]))
+      c[d] = int64(floor(p.x[d,k]*p.n[d]))
       P[d] = 2*p.m + 1
     end
 
