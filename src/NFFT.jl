@@ -255,6 +255,38 @@ function convolve!{T,D}(p::NFFTPlan, g::Array{T,D}, fHat::Array{T,1})
   end
 end
 
+function convolve!{T}(p::NFFTPlan, g::Array{T,3}, fHat::Array{T,1},testFlag::Any)
+  l = Array(Int64,p.D)
+  idx = Array(Int64,p.D)
+  P = Array(Int64,p.D)
+  c = Array(Int64,p.D)
+
+  for k=1:p.M # loop over nonequispaced nodes
+
+    for d=1:D
+      c[d] = int64(floor(p.x[d,k]*p.n[d]))
+      P[d] = 2*p.m + 1
+    end
+
+    for j=1:prod(P) # loop over nonzero elements
+      it = ind2sub( (P[1],P[2],P[3]) ,j)
+      for d=1:D
+        l[d] = c[d]-p.m+it[d]
+        idx[d] = ((l[d]+p.n[d])% p.n[d]) + 1
+      end
+
+      tmp = g[idx...]
+      for d=1:D
+        idx2 = abs(((p.x[d,k]*p.n[d] - l[d])/p.m )*(p.K-1)) + 1
+        idx2L = int(floor(idx2))
+        tmp *= (p.windowLUT[d][idx2L] + ( idx2-idx2L ) * (p.windowLUT[d][idx2L+1] - p.windowLUT[d][idx2L] ) )
+      end
+
+      fHat[k] += tmp;
+    end
+  end
+end
+
 
 ### convolve_adjoint! ###
 
@@ -338,6 +370,38 @@ function convolve_adjoint!{T,D}(p::NFFTPlan, fHat::Array{T,1}, g::Array{T,D})
   end
 end
 
+function convolve_adjoint!{T}(p::NFFTPlan, fHat::Array{T,1}, g::Array{T,3},testFlag::Any)
+  l = Array(Int64,p.D)
+  idx = Array(Int64,p.D)
+  P = Array(Int64,p.D)
+  c = Array(Int64,p.D)
+
+  for k=1:p.M # loop over nonequispaced nodes
+
+    for d=1:D
+      c[d] = int64(floor(p.x[d,k]*p.n[d]))
+      P[d] = 2*p.m + 1 # ISSUE 1: move P[d] assignment out of loop ? Or keep it for future parallelization ?
+                       # ISUUE 2: could not the kernel be of power of 2 dim for faster div/rem in "ind2sub" ?  
+    end
+
+    for j=1:prod(P) # loop over nonzero elements
+      it = ind2sub((P[1],P[2],P[3]),j)  # ind2sub slow but 
+      for d=1:D
+        l[d] = c[d]-p.m+it[d]
+        idx[d] = ((l[d]+p.n[d])%p.n[d]) + 1
+      end
+
+      tmp = fHat[k]
+      for d=1:D
+        idx2 = abs(((p.x[d,k]*p.n[d] - l[d])/p.m )*(p.K-1)) + 1
+        idx2L = int(floor(idx2))
+        tmp *= (p.windowLUT[d][idx2L] + ( idx2-idx2L ) * (p.windowLUT[d][idx2L+1] - p.windowLUT[d][idx2L] ) )
+      end
+
+      g[idx[1],idx[2],idx[3]] += tmp;
+    end
+  end
+end
 
 
 
