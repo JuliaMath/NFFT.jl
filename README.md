@@ -21,5 +21,5 @@ Basic usage of NFFT.jl is shown in the following example:
     g = nfft(p, f)                  # calculate forward NFFT
     
 There are currently some open issues:
-  - The library is currently only fast for 1D and 2D NFFTs. Higher order NFFTs use a slow fallback implementation.
-  - The accuracy currently is not better than 1e-5 although it actually should be in the range of mashine accurace for m=6, sigma=2.0. Have not found the reason yet.
+  - The library is currently only fast for 1D, 2D, and 3D NFFTs. Higher order NFFTs use a slow fallback implementation.
+  - The accuracy currently is not better than 1e-5 although it actually should be in the range of mashine accuracy for m=6, sigma=2.0. Have not found the reason yet.
