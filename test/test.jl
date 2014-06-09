@@ -1,7 +1,7 @@
 using Base.Test
 using NFFT
 
-eps = 1e-5
+eps = 1e-4
 m = 6
 sigma = 2.0
 

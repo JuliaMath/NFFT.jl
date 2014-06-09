@@ -223,16 +223,60 @@ function convolve!{T}(p::NFFTPlan, g::Array{T,2}, fHat::Array{T,1})
   end
 end
 
+function convolve!{T}(p::NFFTPlan, g::Array{T,3}, fHat::Array{T,1})
+  scale = 1.0 / p.m * (p.K-1)
+
+  n1 = p.n[1]
+  n2 = p.n[2]
+  n3 = p.n[3]
+
+  for k=1:p.M # loop over nonequispaced nodes
+    c0 = int(floor(p.x[1,k]*n1))
+    c1 = int(floor(p.x[2,k]*n2))
+    c2 = int(floor(p.x[3,k]*n3))
+
+    for l2=(c2-p.m):(c2+p.m) # loop over nonzero elements
+
+      idx2 = ((l2+n3)% n3) + 1
+
+      idxb = abs((p.x[3,k]*n3 - l2)*scale) + 1
+      idxbL = int(floor(idxb))
+
+      tmpWin2 = (p.windowLUT[3][idxbL] + ( idxb-idxbL ) * (p.windowLUT[3][idxbL+1] - p.windowLUT[3][idxbL] ) )
+
+      for l1=(c1-p.m):(c1+p.m)
+
+        idx1 = ((l1+n2)% n2) + 1
+        idxb = abs((p.x[2,k]*n2 - l1)*scale) + 1
+        idxbL = int(floor(idxb))
+
+        tmpWin = (p.windowLUT[2][idxbL] + ( idxb-idxbL ) * (p.windowLUT[2][idxbL+1] - p.windowLUT[2][idxbL] ) )
+
+        for l0=(c0-p.m):(c0+p.m)
+
+          idx0 = ((l0+n1)% n1) + 1
+          idxb = abs((p.x[1,k]*n1 - l0)*scale) + 1
+          idxbL = int(idxb)
+
+          tmp = g[idx0,idx1,idx2]
+          fHat[k] += tmp * tmpWin * tmpWin2 * (p.windowLUT[1][idxbL] + ( idxb-idxbL ) * (p.windowLUT[1][idxbL+1] - p.windowLUT[1][idxbL] ) )
+        end
+      end
+    end
+  end
+end
+
+
 function convolve!{T,D}(p::NFFTPlan, g::Array{T,D}, fHat::Array{T,1})
   l = Array(Int64,p.D)
   idx = Array(Int64,p.D)
   P = Array(Int64,p.D)
-  c = Array(p.T,p.D)
+  c = Array(Int64,p.D)
 
   for k=1:p.M # loop over nonequispaced nodes
 
     for d=1:D
-      c[d] = int(floor(p.x[d,k]*p.n[d]))
+      c[d] = int64(floor(p.x[d,k]*p.n[d]))
       P[d] = 2*p.m + 1
     end
 
@@ -306,16 +350,53 @@ function convolve_adjoint!{T}(p::NFFTPlan, fHat::Array{T,1}, g::Array{T,2})
   end
 end
 
+function convolve_adjoint!{T}(p::NFFTPlan, fHat::Array{T,1}, g::Array{T,3})
+  scale = 1.0 / p.m * (p.K-1)
+  n1 = p.n[1]
+  n2 = p.n[2]
+  n3 = p.n[3]
+
+  for k=1:p.M # loop over nonequispaced nodes
+    c0 = int(floor(p.x[1,k]*n1))
+    c1 = int(floor(p.x[2,k]*n2))
+    c2 = int(floor(p.x[3,k]*n3))
+
+    for l2=(c2-p.m):(c2+p.m) # loop over nonzero elements
+      idx2 = ((l2+n3)%n3) + 1
+      idxb = abs((p.x[3,k]*n3 - l2)*scale) + 1
+      idxbL = int(floor(idxb))
+
+      tmp = fHat[k] * (p.windowLUT[3][idxbL] + ( idxb-idxbL ) * (p.windowLUT[3][idxbL+1] - p.windowLUT[3][idxbL] ) )
+
+      for l1=(c1-p.m):(c1+p.m)
+        idx1 = ((l1+n2)%n2) + 1
+        idxb = abs((p.x[2,k]*n2 - l1)*scale) + 1
+        idxbL = int(floor(idxb))
+
+        tmp2 = tmp * (p.windowLUT[2][idxbL] + ( idxb-idxbL ) * (p.windowLUT[2][idxbL+1] - p.windowLUT[2][idxbL] ) )
+
+        for l0=(c0-p.m):(c0+p.m)
+          idx0 = ((l0+n1)%n1) + 1
+          idxb = abs((p.x[1,k]*n1 - l0)*scale) + 1
+          idxbL = int(idxb)
+          g[idx0,idx1,idx2] += tmp2 * (p.windowLUT[1][idxbL] + ( idxb-idxbL ) * (p.windowLUT[1][idxbL+1] - p.windowLUT[1][idxbL] ) )
+        end
+      end
+    end
+  end
+end
+
+
 function convolve_adjoint!{T,D}(p::NFFTPlan, fHat::Array{T,1}, g::Array{T,D})
   l = Array(Int64,p.D)
   idx = Array(Int64,p.D)
   P = Array(Int64,p.D)
-  c = Array(p.T,p.D)
+  c = Array(Int64,p.D)
 
   for k=1:p.M # loop over nonequispaced nodes
 
     for d=1:D
-      c[d] = int(floor(p.x[d,k]*p.n[d]))
+      c[d] = int64(floor(p.x[d,k]*p.n[d]))
       P[d] = 2*p.m + 1
     end
 
@@ -339,9 +420,6 @@ function convolve_adjoint!{T,D}(p::NFFTPlan, fHat::Array{T,1}, g::Array{T,D})
 end
 
 
-
-
-
 ### apodization! ###
 
 function apodization!{T}(p::NFFTPlan, f::Array{T,1}, g::Array{T,1})
@@ -363,6 +441,26 @@ function apodization!{T}(p::NFFTPlan, f::Array{T,2}, g::Array{T,2})
   for ly=1:N2
     for lx=1:N1
       g[((lx+offset1)% n1) + 1, ((ly+offset2)% n2) + 1] = f[lx, ly]  *   p.windowHatInvLUT[1][lx] * p.windowHatInvLUT[2][ly]
+    end
+  end
+end
+
+function apodization!{T}(p::NFFTPlan, f::Array{T,3}, g::Array{T,3})
+  n1 = p.n[1]
+  N1 = p.N[1]
+  n2 = p.n[2]
+  N2 = p.N[2]
+  n3 = p.n[3]
+  N3 = p.N[3]
+
+  const offset1 = int( n1 - N1 / 2 ) - 1
+  const offset2 = int( n2 - N2 / 2 ) - 1
+  const offset3 = int( n3 - N3 / 2 ) - 1
+  for lz=1:N3
+    for ly=1:N2
+      for lx=1:N1
+        g[((lx+offset1)% n1) + 1, ((ly+offset2)% n2) + 1, ((lz+offset3)% n3) + 1] = f[lx, ly, lz]  *  p.windowHatInvLUT[1][lx] * p.windowHatInvLUT[2][ly] * p.windowHatInvLUT[3][lz]
+      end
     end
   end
 end
@@ -406,6 +504,26 @@ function apodization_adjoint!{T}(p::NFFTPlan, g::Array{T,2}, f::Array{T,2})
   for ly=1:N2
     for lx=1:N1
       f[lx, ly] = g[((lx+offset1)% n1) + 1, ((ly+offset2)% n2) + 1] * p.windowHatInvLUT[1][lx] * p.windowHatInvLUT[2][ly]
+    end
+  end
+end
+
+function apodization_adjoint!{T}(p::NFFTPlan, g::Array{T,3}, f::Array{T,3})
+  n1 = p.n[1]
+  N1 = p.N[1]
+  n2 = p.n[2]
+  N2 = p.N[2]
+  n3 = p.n[3]
+  N3 = p.N[3]
+
+  const offset1 = int( n1 - N1 / 2 ) - 1
+  const offset2 = int( n2 - N2 / 2 ) - 1
+  const offset3 = int( n3 - N3 / 2 ) - 1
+  for lz=1:N3
+    for ly=1:N2
+      for lx=1:N1
+        f[lx, ly, lz] = g[((lx+offset1)% n1) + 1, ((ly+offset2)% n2) + 1, ((lz+offset3)% n3) + 1] * p.windowHatInvLUT[1][lx] * p.windowHatInvLUT[2][ly] * p.windowHatInvLUT[3][lz]
+      end
     end
   end
 end
