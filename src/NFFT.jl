@@ -2,9 +2,7 @@ module NFFT
 
 import Base.ind2sub
 
-export NFFTPlan, nfft, nfft_adjoint, ndft, ndft_adjoint, nfft_test, nfft_performance
-
-
+export NFFTPlan, nfft, nfft_adjoint, ndft, ndft_adjoint, nfft_performance
 
 function window_kaiser_bessel(x,n,m,sigma)
   b = pi*(2-1/sigma)
@@ -26,21 +24,21 @@ function window_kaiser_bessel_hat(k,n,m,sigma)
 end
 
 type NFFTPlan{T,Dim}
-  D::Int64
+  D::Int
   T::Type
-  N::NTuple{Dim,Int64}
-  M::Int64
+  N::NTuple{Dim,Int}
+  M::Int
   x::Array{T,2}
-  m::Int64
+  m::Int
   sigma::T
-  n::NTuple{Dim,Int64}
-  K::Int64
+  n::NTuple{Dim,Int}
+  K::Int
   windowLUT::Vector{Vector{T}}
   windowHatInvLUT::Vector{Vector{T}}
   tmpVec::Array{Complex{T},Dim}
 end
 
-function NFFTPlan{T,D}(x::Array{T,2}, N::NTuple{D,Int64}, m=4, sigma=2.0)
+function NFFTPlan{T,D}(x::Array{T,2}, N::NTuple{D,Int}, m=4, sigma=2.0)
   
   if D != size(x,1)
     throw(ArgumentError())
@@ -117,7 +115,7 @@ function nfft_adjoint{T,D}(p::NFFTPlan{T,D}, fHat::Vector{Complex{T}})
   return f
 end
 
-function nfft_adjoint{T,D}(x, N::NTuple{D,Int64}, fHat::Vector{T})
+function nfft_adjoint{T,D}(x, N::NTuple{D,Int}, fHat::Vector{T})
   p = NFFTPlan(x, N)
   return nfft_adjoint(p, fHat)
 end
@@ -268,15 +266,15 @@ end
 
 
 function convolve!{T,D}(p::NFFTPlan, g::Array{T,D}, fHat::Array{T,1})
-  l = Array(Int64,p.D)
-  idx = Array(Int64,p.D)
-  P = Array(Int64,p.D)
-  c = Array(Int64,p.D)
+  l = Array(Int,p.D)
+  idx = Array(Int,p.D)
+  P = Array(Int,p.D)
+  c = Array(Int,p.D)
 
   for k=1:p.M # loop over nonequispaced nodes
 
     for d=1:D
-      c[d] = int64(floor(p.x[d,k]*p.n[d]))
+      c[d] = int(floor(p.x[d,k]*p.n[d]))
       P[d] = 2*p.m + 1
     end
 
@@ -388,15 +386,15 @@ end
 
 
 function convolve_adjoint!{T,D}(p::NFFTPlan, fHat::Array{T,1}, g::Array{T,D})
-  l = Array(Int64,p.D)
-  idx = Array(Int64,p.D)
-  P = Array(Int64,p.D)
-  c = Array(Int64,p.D)
+  l = Array(Int,p.D)
+  idx = Array(Int,p.D)
+  P = Array(Int,p.D)
+  c = Array(Int,p.D)
 
   for k=1:p.M # loop over nonequispaced nodes
 
     for d=1:D
-      c[d] = int64(floor(p.x[d,k]*p.n[d]))
+      c[d] = int(floor(p.x[d,k]*p.n[d]))
       P[d] = 2*p.m + 1
     end
 
@@ -467,7 +465,7 @@ end
 
 function apodization!{T,D}(p::NFFTPlan, f::Array{T,D}, g::Array{T,D})
   const offset = ntuple(D, d-> int( p.n[d] - p.N[d] / 2 ) - 1)
-  idx = Array(Int64, p.D)
+  idx = Array(Int, p.D)
   for l=1:prod(p.N)
     it = ind2sub(p.N,l)
 
@@ -530,7 +528,7 @@ end
 
 function apodization_adjoint!{T,D}(p::NFFTPlan, g::Array{T,D}, f::Array{T,D})
   const offset = ntuple(D, d-> int( p.n[d] - p.N[d] / 2 ) - 1)
-  idx = Array(Int64, p.D)
+  idx = Array(Int, p.D)
   for l=1:prod(p.N)
     it = ind2sub(p.N,l)
 
@@ -599,6 +597,29 @@ function nfft_performance()
   fHat2 = nfft(p, fApprox);
   println("trafo")
   toc()
+  
+  N = 32
+  M = N*N*N
+
+  x3 = rand(3,M) - 0.5
+  fHat = rand(M)*1im
+
+  println("NFFT Performance Test 3D")
+
+  tic()
+  p = NFFTPlan(x3,(N,N,N),m,sigma)
+  println("initialization")
+  toc()
+
+  tic()
+  fApprox = nfft_adjoint(p,fHat)
+  println("adjoint")
+  toc()
+
+  tic()
+  fHat2 = nfft(p, fApprox);
+  println("trafo")
+  toc()  
 
 end
 
