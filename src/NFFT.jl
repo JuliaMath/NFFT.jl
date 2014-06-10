@@ -8,37 +8,35 @@ function window_kaiser_bessel(x,n,m,sigma)
   b = pi*(2-1/sigma)
   arg = m^2-n^2*x^2
   if(abs(x) < m/n)
-    y=sinh(b*sqrt(arg))/sqrt(arg)/pi
+    y = sinh(b*sqrt(arg))/sqrt(arg)/pi
   elseif(abs(x) > m/n)
-    y=0
+    y = zero(x)
   else
-    y=b/pi
+    y = b/pi
   end
   return y
 end
 
 
 function window_kaiser_bessel_hat(k,n,m,sigma)
-  b=pi*(2-1/sigma);
-  return besseli(0,m*sqrt(b^2-(2*pi*k/n)^2));
+  b = pi*(2-1/sigma)
+  return besseli(0,m*sqrt(b^2-(2*pi*k/n)^2))
 end
 
-type NFFTPlan{T,Dim}
-  D::Int
-  T::Type
-  N::NTuple{Dim,Int}
+type NFFTPlan{D,T}
+  N::NTuple{D,Int}
   M::Int
   x::Array{T,2}
   m::Int
   sigma::T
-  n::NTuple{Dim,Int}
+  n::NTuple{D,Int}
   K::Int
   windowLUT::Vector{Vector{T}}
   windowHatInvLUT::Vector{Vector{T}}
-  tmpVec::Array{Complex{T},Dim}
+  tmpVec::Array{Complex{T},D}
 end
 
-function NFFTPlan{T,D}(x::Array{T,2}, N::NTuple{D,Int}, m=4, sigma=2.0)
+function NFFTPlan{D,T}(x::Array{T,2}, N::NTuple{D,Int}, m=4, sigma=2.0)
   
   if D != size(x,1)
     throw(ArgumentError())
@@ -72,7 +70,7 @@ function NFFTPlan{T,D}(x::Array{T,2}, N::NTuple{D,Int}, m=4, sigma=2.0)
   end
 
 
-  NFFTPlan(D, T, N, M, x, m, sigma, n, K, windowLUT, windowHatInvLUT, tmpVec )
+  NFFTPlan(N, M, x, m, sigma, n, K, windowLUT, windowHatInvLUT, tmpVec )
 end
 
 function NFFTPlan{T}(x::Array{T,1}, N::Integer, m=4, sigma=2.0)
@@ -81,7 +79,7 @@ end
 
 ### nfft functions ###
 
-function nfft!{T,D}(p::NFFTPlan, f::Array{T,D}, fHat::Vector{T})
+function nfft!{T,D}(p::NFFTPlan{D}, f::Array{T,D}, fHat::Vector{T})
   p.tmpVec[:] = 0
   @inbounds apodization!(p, f, p.tmpVec)
   fft!(p.tmpVec)
@@ -100,7 +98,7 @@ function nfft{T,D}(x, f::Array{T,D})
   return nfft(p, f)
 end
 
-function nfft_adjoint!{T,D}(p::NFFTPlan, fHat::Vector{T}, f::Array{T,D})
+function nfft_adjoint!{T,D}(p::NFFTPlan{D}, fHat::Vector{T}, f::Array{T,D})
   p.tmpVec[:] = 0
   @inbounds convolve_adjoint!(p, fHat, p.tmpVec)
   ifft!(p.tmpVec)
@@ -109,7 +107,7 @@ function nfft_adjoint!{T,D}(p::NFFTPlan, fHat::Vector{T}, f::Array{T,D})
   return f
 end
 
-function nfft_adjoint{T,D}(p::NFFTPlan{T,D}, fHat::Vector{Complex{T}})
+function nfft_adjoint{T,D}(p::NFFTPlan{D}, fHat::Vector{Complex{T}})
   f = zeros(Complex{T},p.N)
   nfft_adjoint!(p, fHat, f)
   return f
@@ -127,7 +125,7 @@ function ind2sub{T}(::Array{T,1}, idx)
   idx
 end
 
-function ndft{T,D}(plan::NFFTPlan, f::Array{T,D})
+function ndft{T,D}(plan::NFFTPlan{D}, f::Array{T,D})
   g = zeros(T, plan.M)
 
   for l=1:prod(plan.N)
@@ -135,7 +133,7 @@ function ndft{T,D}(plan::NFFTPlan, f::Array{T,D})
 
     for k=1:plan.M
       arg = zero(T)
-      for d=1:plan.D
+      for d=1:D
         arg += plan.x[d,k] * ( idx[d] - 1 - plan.N[d] / 2 )
       end
       g[k] += f[l] * exp(-2*pi*1im*arg)
@@ -145,7 +143,7 @@ function ndft{T,D}(plan::NFFTPlan, f::Array{T,D})
   return g
 end
 
-function ndft_adjoint{T}(plan::NFFTPlan, fHat::Array{T,1})
+function ndft_adjoint{T,D}(plan::NFFTPlan{D}, fHat::Array{T,1})
 
   g = zeros(T, plan.N)
 
@@ -154,7 +152,7 @@ function ndft_adjoint{T}(plan::NFFTPlan, fHat::Array{T,1})
 
     for k=1:plan.M
       arg = zero(T)
-      for d=1:plan.D
+      for d=1:D
         arg += plan.x[d,k] * ( idx[d] - 1 - plan.N[d] / 2 )
       end
       g[l] += fHat[k] * exp(2*pi*1im*arg)
@@ -168,7 +166,7 @@ end
 
 ### convolve! ###
 
-function convolve!{T}(p::NFFTPlan, g::Array{T,1}, fHat::Array{T,1})
+function convolve!{T}(p::NFFTPlan{1}, g::Array{T,1}, fHat::Array{T,1})
   n = p.n[1]
 
   for k=1:p.M # loop over nonequispaced nodes
@@ -184,7 +182,7 @@ function convolve!{T}(p::NFFTPlan, g::Array{T,1}, fHat::Array{T,1})
   end
 end
 
-function convolve!{T}(p::NFFTPlan, g::Array{T,2}, fHat::Array{T,1})
+function convolve!{T}(p::NFFTPlan{2}, g::Array{T,2}, fHat::Array{T,1})
   scale = 1.0 / p.m * (p.K-1)
 
   n1 = p.n[1]
@@ -221,7 +219,7 @@ function convolve!{T}(p::NFFTPlan, g::Array{T,2}, fHat::Array{T,1})
   end
 end
 
-function convolve!{T}(p::NFFTPlan, g::Array{T,3}, fHat::Array{T,1})
+function convolve!{T}(p::NFFTPlan{3}, g::Array{T,3}, fHat::Array{T,1})
   scale = 1.0 / p.m * (p.K-1)
 
   n1 = p.n[1]
@@ -265,11 +263,11 @@ function convolve!{T}(p::NFFTPlan, g::Array{T,3}, fHat::Array{T,1})
 end
 
 
-function convolve!{T,D}(p::NFFTPlan, g::Array{T,D}, fHat::Array{T,1})
-  l = Array(Int,p.D)
-  idx = Array(Int,p.D)
-  P = Array(Int,p.D)
-  c = Array(Int,p.D)
+function convolve!{T,D}(p::NFFTPlan{D}, g::Array{T,D}, fHat::Array{T,1})
+  l = Array(Int,D)
+  idx = Array(Int,D)
+  P = Array(Int,D)
+  c = Array(Int,D)
 
   for k=1:p.M # loop over nonequispaced nodes
 
@@ -300,7 +298,7 @@ end
 
 ### convolve_adjoint! ###
 
-function convolve_adjoint!{T}(p::NFFTPlan, fHat::Array{T,1}, g::Array{T,1})
+function convolve_adjoint!{T}(p::NFFTPlan{1}, fHat::Array{T,1}, g::Array{T,1})
   n = p.n[1]
 
   for k=1:p.M # loop over nonequispaced nodes
@@ -316,7 +314,7 @@ function convolve_adjoint!{T}(p::NFFTPlan, fHat::Array{T,1}, g::Array{T,1})
   end
 end
 
-function convolve_adjoint!{T}(p::NFFTPlan, fHat::Array{T,1}, g::Array{T,2})
+function convolve_adjoint!{T}(p::NFFTPlan{2}, fHat::Array{T,1}, g::Array{T,2})
   scale = 1.0 / p.m * (p.K-1)
   n1 = p.n[1]
   n2 = p.n[2]
@@ -348,7 +346,7 @@ function convolve_adjoint!{T}(p::NFFTPlan, fHat::Array{T,1}, g::Array{T,2})
   end
 end
 
-function convolve_adjoint!{T}(p::NFFTPlan, fHat::Array{T,1}, g::Array{T,3})
+function convolve_adjoint!{T}(p::NFFTPlan{3}, fHat::Array{T,1}, g::Array{T,3})
   scale = 1.0 / p.m * (p.K-1)
   n1 = p.n[1]
   n2 = p.n[2]
@@ -385,11 +383,11 @@ function convolve_adjoint!{T}(p::NFFTPlan, fHat::Array{T,1}, g::Array{T,3})
 end
 
 
-function convolve_adjoint!{T,D}(p::NFFTPlan, fHat::Array{T,1}, g::Array{T,D})
-  l = Array(Int,p.D)
-  idx = Array(Int,p.D)
-  P = Array(Int,p.D)
-  c = Array(Int,p.D)
+function convolve_adjoint!{T,D}(p::NFFTPlan{D}, fHat::Array{T,1}, g::Array{T,D})
+  l = Array(Int,D)
+  idx = Array(Int,D)
+  P = Array(Int,D)
+  c = Array(Int,D)
 
   for k=1:p.M # loop over nonequispaced nodes
 
@@ -420,7 +418,7 @@ end
 
 ### apodization! ###
 
-function apodization!{T}(p::NFFTPlan, f::Array{T,1}, g::Array{T,1})
+function apodization!{T}(p::NFFTPlan{1}, f::Array{T,1}, g::Array{T,1})
   n = p.n[1]
   N = p.N[1]
   const offset = int( n - N / 2 ) - 1
@@ -429,7 +427,7 @@ function apodization!{T}(p::NFFTPlan, f::Array{T,1}, g::Array{T,1})
   end
 end
 
-function apodization!{T}(p::NFFTPlan, f::Array{T,2}, g::Array{T,2})
+function apodization!{T}(p::NFFTPlan{2}, f::Array{T,2}, g::Array{T,2})
   n1 = p.n[1]
   N1 = p.N[1]
   n2 = p.n[2]
@@ -443,7 +441,7 @@ function apodization!{T}(p::NFFTPlan, f::Array{T,2}, g::Array{T,2})
   end
 end
 
-function apodization!{T}(p::NFFTPlan, f::Array{T,3}, g::Array{T,3})
+function apodization!{T}(p::NFFTPlan{3}, f::Array{T,3}, g::Array{T,3})
   n1 = p.n[1]
   N1 = p.N[1]
   n2 = p.n[2]
@@ -463,15 +461,15 @@ function apodization!{T}(p::NFFTPlan, f::Array{T,3}, g::Array{T,3})
   end
 end
 
-function apodization!{T,D}(p::NFFTPlan, f::Array{T,D}, g::Array{T,D})
+function apodization!{T,D}(p::NFFTPlan{D}, f::Array{T,D}, g::Array{T,D})
   const offset = ntuple(D, d-> int( p.n[d] - p.N[d] / 2 ) - 1)
-  idx = Array(Int, p.D)
+  idx = Array(Int, D)
   for l=1:prod(p.N)
     it = ind2sub(p.N,l)
 
     windowHatInvLUTProd = 1.0
 
-    for d=1:p.D
+    for d=1:D
       idx[d] = ((it[d]+offset[d])% p.n[d]) + 1
       windowHatInvLUTProd *= p.windowHatInvLUT[d][it[d]] 
     end
@@ -483,7 +481,7 @@ end
 
 ### apodization_adjoint! ###
 
-function apodization_adjoint!{T}(p::NFFTPlan, g::Array{T,1}, f::Array{T,1})
+function apodization_adjoint!{T}(p::NFFTPlan{1}, g::Array{T,1}, f::Array{T,1})
   n = p.n[1]
   N = p.N[1]
   const offset = int( n - N / 2 ) - 1
@@ -492,7 +490,7 @@ function apodization_adjoint!{T}(p::NFFTPlan, g::Array{T,1}, f::Array{T,1})
   end
 end
 
-function apodization_adjoint!{T}(p::NFFTPlan, g::Array{T,2}, f::Array{T,2})
+function apodization_adjoint!{T}(p::NFFTPlan{2}, g::Array{T,2}, f::Array{T,2})
   n1 = p.n[1]
   N1 = p.N[1]
   n2 = p.n[2]
@@ -506,7 +504,7 @@ function apodization_adjoint!{T}(p::NFFTPlan, g::Array{T,2}, f::Array{T,2})
   end
 end
 
-function apodization_adjoint!{T}(p::NFFTPlan, g::Array{T,3}, f::Array{T,3})
+function apodization_adjoint!{T}(p::NFFTPlan{3}, g::Array{T,3}, f::Array{T,3})
   n1 = p.n[1]
   N1 = p.N[1]
   n2 = p.n[2]
@@ -526,15 +524,15 @@ function apodization_adjoint!{T}(p::NFFTPlan, g::Array{T,3}, f::Array{T,3})
   end
 end
 
-function apodization_adjoint!{T,D}(p::NFFTPlan, g::Array{T,D}, f::Array{T,D})
+function apodization_adjoint!{T,D}(p::NFFTPlan{D}, g::Array{T,D}, f::Array{T,D})
   const offset = ntuple(D, d-> int( p.n[d] - p.N[d] / 2 ) - 1)
-  idx = Array(Int, p.D)
+  idx = Array(Int, D)
   for l=1:prod(p.N)
     it = ind2sub(p.N,l)
 
     windowHatInvLUTProd = 1.0
 
-    for d=1:p.D
+    for d=1:D
       idx[d] = ((it[d]+offset[d])% p.n[d]) + 1
       windowHatInvLUTProd *= p.windowHatInvLUT[d][it[d]] 
     end
