@@ -188,8 +188,6 @@ function convolve!{T}(p::NFFTPlan{2}, g::Array{T,2}, fHat::Array{T,1})
   n1 = p.n[1]
   n2 = p.n[2]
 
-  gPtr = pointer(g) 
-
   for k=1:p.M # loop over nonequispaced nodes
     c0 = int(floor(p.x[1,k]*n1))
     c1 = int(floor(p.x[2,k]*n2))
@@ -203,17 +201,13 @@ function convolve!{T}(p::NFFTPlan{2}, g::Array{T,2}, fHat::Array{T,1})
 
       tmpWin = (p.windowLUT[2][idx2L] + ( idx2-idx2L ) * (p.windowLUT[2][idx2L+1] - p.windowLUT[2][idx2L] ) )
 
-      tt=(idx1-1)*n1
-
       for l0=(c0-p.m):(c0+p.m)
 
         idx0 = ((l0+n1)% n1) + 1
         idx2 = abs((p.x[1,k]*n1 - l0)*scale) + 1
         idx2L = int(idx2)
 
-        tmp = unsafe_load(gPtr, idx0+tt)
-        #tmp = g[idx0,idx1]
-        fHat[k] += tmp * tmpWin * (p.windowLUT[1][idx2L] + ( idx2-idx2L ) * (p.windowLUT[1][idx2L+1] - p.windowLUT[1][idx2L] ) )
+        fHat[k] += g[idx0,idx1] * tmpWin * (p.windowLUT[1][idx2L] + ( idx2-idx2L ) * (p.windowLUT[1][idx2L+1] - p.windowLUT[1][idx2L] ) )
       end
     end
   end
@@ -319,8 +313,6 @@ function convolve_adjoint!{T}(p::NFFTPlan{2}, fHat::Array{T,1}, g::Array{T,2})
   n1 = p.n[1]
   n2 = p.n[2]
 
-  gPtr = pointer(g) 
-
   for k=1:p.M # loop over nonequispaced nodes
     c0 = int(floor(p.x[1,k]*n1))
     c1 = int(floor(p.x[2,k]*n2))
@@ -332,15 +324,11 @@ function convolve_adjoint!{T}(p::NFFTPlan{2}, fHat::Array{T,1}, g::Array{T,2})
 
       tmp = fHat[k] * (p.windowLUT[2][idx2L] + ( idx2-idx2L ) * (p.windowLUT[2][idx2L+1] - p.windowLUT[2][idx2L] ) )
 
-      tt=(idx1-1)*n1
-
       for l0=(c0-p.m):(c0+p.m)
         idx0 = ((l0+n1)%n1) + 1
         idx2 = abs((p.x[1,k]*n1 - l0)*scale) + 1
         idx2L = int(idx2)
-        #g[idx0,idx1] += tmp * (p.windowLUT[1][idx2L] + ( idx2-idx2L ) * (p.windowLUT[1][idx2L+1] - p.windowLUT[1][idx2L] ) )
-        tmpG = unsafe_load(gPtr, idx0+tt) + tmp * (p.windowLUT[1][idx2L] + ( idx2-idx2L ) * (p.windowLUT[1][idx2L+1] - p.windowLUT[1][idx2L] ) )
-        unsafe_store!(gPtr, tmpG, idx0+tt)
+        g[idx0,idx1] += tmp * (p.windowLUT[1][idx2L] + ( idx2-idx2L ) * (p.windowLUT[1][idx2L+1] - p.windowLUT[1][idx2L] ) )
       end
     end
   end
