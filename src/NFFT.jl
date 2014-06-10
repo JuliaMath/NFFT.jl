@@ -4,6 +4,19 @@ import Base.ind2sub
 
 export NFFTPlan, nfft, nfft_adjoint, ndft, ndft_adjoint, nfft_performance
 
+# Some internal documentation (especially for people familiar with the nfft)
+#
+# - Currently the window cannot be changed and defaults to the kaiser-bessel
+#   window. This is done for simplicity and due to the fact that the 
+#   kaiser-bessel window usually outperforms any other window
+#
+# - The window is precomputed during construction of the NFFT plan
+#   When performing the nfft convolution, the LUT of the window is used to
+#   perform linear interpolation. This approach is reasonable fast and does not
+#   require too much memory. There are, however alternatives known that are either 
+#   faster or require no extra memory at all.
+#
+
 function window_kaiser_bessel(x,n,m,sigma)
   b = pi*(2-1/sigma)
   arg = m^2-n^2*x^2
@@ -68,7 +81,6 @@ function NFFTPlan{D,T}(x::Array{T,2}, N::NTuple{D,Int}, m=4, sigma=2.0)
       windowHatInvLUT[d][k] = 1. / window_kaiser_bessel_hat(k-1-N[d]/2, n[d], m, sigma)
     end
   end
-
 
   NFFTPlan(N, M, x, m, sigma, n, K, windowLUT, windowHatInvLUT, tmpVec )
 end
