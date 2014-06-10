@@ -30,7 +30,6 @@ function window_kaiser_bessel(x,n,m,sigma)
   return y
 end
 
-
 function window_kaiser_bessel_hat(k,n,m,sigma)
   b = pi*(2-1/sigma)
   return besseli(0,m*sqrt(b^2-(2*pi*k/n)^2))
@@ -49,7 +48,7 @@ type NFFTPlan{D,T}
   tmpVec::Array{Complex{T},D}
 end
 
-function NFFTPlan{D,T}(x::Array{T,2}, N::NTuple{D,Int}, m=4, sigma=2.0)
+function NFFTPlan{D,T}(x::Array{T,2}, N::NTuple{D,Int}, m=4, sigma=2.0, K=2000)
   
   if D != size(x,1)
     throw(ArgumentError())
@@ -62,7 +61,6 @@ function NFFTPlan{D,T}(x::Array{T,2}, N::NTuple{D,Int}, m=4, sigma=2.0)
   M = size(x,2)
 
   # Create lookup table
-  K = 1000
   
   windowLUT = Array(Vector{T},D)
   for d=1:D
@@ -553,7 +551,7 @@ function nfft_performance()
   N = 2^19
   M = N
 
-  x = rand(M) - 0.5
+  x = rand(M) .- 0.5
   fHat = rand(M)*1im
 
   println("NFFT Performance Test 1D")
@@ -576,7 +574,7 @@ function nfft_performance()
   N = 1024
   M = N*N
 
-  x2 = rand(2,M) - 0.5
+  x2 = rand(2,M) .- 0.5
   fHat = rand(M)*1im
 
   println("NFFT Performance Test 2D")
@@ -599,7 +597,7 @@ function nfft_performance()
   N = 32
   M = N*N*N
 
-  x3 = rand(3,M) - 0.5
+  x3 = rand(3,M) .- 0.5
   fHat = rand(M)*1im
 
   println("NFFT Performance Test 3D")
