@@ -180,12 +180,12 @@ function convolve!{T}(p::NFFTPlan{1}, g::Array{T,1}, fHat::Array{T,1})
   n = p.n[1]
 
   for k=1:p.M # loop over nonequispaced nodes
-    c = int(floor(p.x[k]*n))
+    c = ifloor(p.x[k]*n)
     for l=(c-p.m):(c+p.m) # loop over nonzero elements
 
       idx = ((l+n)% n) + 1
       idx2 = abs(((p.x[k]*n - l)/p.m )*(p.K-1)) + 1
-      idx2L = int(floor(idx2))
+      idx2L = ifloor(idx2)
 
       fHat[k] += g[idx] * (p.windowLUT[1][idx2L] + ( idx2-idx2L ) * (p.windowLUT[1][idx2L+1] - p.windowLUT[1][idx2L] ) )
     end
@@ -199,15 +199,15 @@ function convolve!{T}(p::NFFTPlan{2}, g::Array{T,2}, fHat::Array{T,1})
   n2 = p.n[2]
 
   for k=1:p.M # loop over nonequispaced nodes
-    c0 = int(floor(p.x[1,k]*n1))
-    c1 = int(floor(p.x[2,k]*n2))
+    c0 = ifloor(p.x[1,k]*n1)
+    c1 = ifloor(p.x[2,k]*n2)
 
     for l1=(c1-p.m):(c1+p.m) # loop over nonzero elements
 
       idx1 = ((l1+n2)% n2) + 1
 
       idx2 = abs((p.x[2,k]*n2 - l1)*scale) + 1
-      idx2L = int(floor(idx2))
+      idx2L = ifloor(idx2)
 
       tmpWin = (p.windowLUT[2][idx2L] + ( idx2-idx2L ) * (p.windowLUT[2][idx2L+1] - p.windowLUT[2][idx2L] ) )
 
@@ -231,16 +231,16 @@ function convolve!{T}(p::NFFTPlan{3}, g::Array{T,3}, fHat::Array{T,1})
   n3 = p.n[3]
 
   for k=1:p.M # loop over nonequispaced nodes
-    c0 = int(floor(p.x[1,k]*n1))
-    c1 = int(floor(p.x[2,k]*n2))
-    c2 = int(floor(p.x[3,k]*n3))
+    c0 = ifloor(p.x[1,k]*n1)
+    c1 = ifloor(p.x[2,k]*n2)
+    c2 = ifloor(p.x[3,k]*n3)
 
     for l2=(c2-p.m):(c2+p.m) # loop over nonzero elements
 
       idx2 = ((l2+n3)% n3) + 1
 
       idxb = abs((p.x[3,k]*n3 - l2)*scale) + 1
-      idxbL = int(floor(idxb))
+      idxbL = ifloor(idxb)
 
       tmpWin2 = (p.windowLUT[3][idxbL] + ( idxb-idxbL ) * (p.windowLUT[3][idxbL+1] - p.windowLUT[3][idxbL] ) )
 
@@ -248,7 +248,7 @@ function convolve!{T}(p::NFFTPlan{3}, g::Array{T,3}, fHat::Array{T,1})
 
         idx1 = ((l1+n2)% n2) + 1
         idxb = abs((p.x[2,k]*n2 - l1)*scale) + 1
-        idxbL = int(floor(idxb))
+        idxbL = ifloor(idxb)
 
         tmpWin = (p.windowLUT[2][idxbL] + ( idxb-idxbL ) * (p.windowLUT[2][idxbL+1] - p.windowLUT[2][idxbL] ) )
 
@@ -276,7 +276,7 @@ function convolve!{T,D}(p::NFFTPlan{D}, g::Array{T,D}, fHat::Array{T,1})
   for k=1:p.M # loop over nonequispaced nodes
 
     for d=1:D
-      c[d] = int(floor(p.x[d,k]*p.n[d]))
+      c[d] = ifloor(p.x[d,k]*p.n[d])
       P[d] = 2*p.m + 1
     end
 
@@ -290,7 +290,7 @@ function convolve!{T,D}(p::NFFTPlan{D}, g::Array{T,D}, fHat::Array{T,1})
       tmp = g[idx...]
       for d=1:D
         idx2 = abs(((p.x[d,k]*p.n[d] - l[d])/p.m )*(p.K-1)) + 1
-        idx2L = int(floor(idx2))
+        idx2L = ifloor(idx2)
         tmp *= (p.windowLUT[d][idx2L] + ( idx2-idx2L ) * (p.windowLUT[d][idx2L+1] - p.windowLUT[d][idx2L] ) )
       end
 
@@ -324,13 +324,13 @@ function convolve_adjoint!{T}(p::NFFTPlan{2}, fHat::Array{T,1}, g::Array{T,2})
   n2 = p.n[2]
 
   for k=1:p.M # loop over nonequispaced nodes
-    c0 = int(floor(p.x[1,k]*n1))
-    c1 = int(floor(p.x[2,k]*n2))
+    c0 = ifloor(p.x[1,k]*n1)
+    c1 = ifloor(p.x[2,k]*n2)
 
     for l1=(c1-p.m):(c1+p.m) # loop over nonzero elements
       idx1 = ((l1+n2)%n2) + 1
       idx2 = abs((p.x[2,k]*n2 - l1)*scale) + 1
-      idx2L = int(floor(idx2))
+      idx2L = ifloor(idx2)
 
       tmp = fHat[k] * (p.windowLUT[2][idx2L] + ( idx2-idx2L ) * (p.windowLUT[2][idx2L+1] - p.windowLUT[2][idx2L] ) )
 
@@ -351,21 +351,21 @@ function convolve_adjoint!{T}(p::NFFTPlan{3}, fHat::Array{T,1}, g::Array{T,3})
   n3 = p.n[3]
 
   for k=1:p.M # loop over nonequispaced nodes
-    c0 = int(floor(p.x[1,k]*n1))
-    c1 = int(floor(p.x[2,k]*n2))
-    c2 = int(floor(p.x[3,k]*n3))
+    c0 = ifloor(p.x[1,k]*n1)
+    c1 = ifloor(p.x[2,k]*n2)
+    c2 = ifloor(p.x[3,k]*n3)
 
     for l2=(c2-p.m):(c2+p.m) # loop over nonzero elements
       idx2 = ((l2+n3)%n3) + 1
       idxb = abs((p.x[3,k]*n3 - l2)*scale) + 1
-      idxbL = int(floor(idxb))
+      idxbL = ifloor(idxb)
 
       tmp = fHat[k] * (p.windowLUT[3][idxbL] + ( idxb-idxbL ) * (p.windowLUT[3][idxbL+1] - p.windowLUT[3][idxbL] ) )
 
       for l1=(c1-p.m):(c1+p.m)
         idx1 = ((l1+n2)%n2) + 1
         idxb = abs((p.x[2,k]*n2 - l1)*scale) + 1
-        idxbL = int(floor(idxb))
+        idxbL = ifloor(idxb)
 
         tmp2 = tmp * (p.windowLUT[2][idxbL] + ( idxb-idxbL ) * (p.windowLUT[2][idxbL+1] - p.windowLUT[2][idxbL] ) )
 
@@ -390,7 +390,7 @@ function convolve_adjoint!{T,D}(p::NFFTPlan{D}, fHat::Array{T,1}, g::Array{T,D})
   for k=1:p.M # loop over nonequispaced nodes
 
     for d=1:D
-      c[d] = int(floor(p.x[d,k]*p.n[d]))
+      c[d] = ifloor(p.x[d,k]*p.n[d])
       P[d] = 2*p.m + 1
     end
 
@@ -404,7 +404,7 @@ function convolve_adjoint!{T,D}(p::NFFTPlan{D}, fHat::Array{T,1}, g::Array{T,D})
       tmp = fHat[k]
       for d=1:D
         idx2 = abs(((p.x[d,k]*p.n[d] - l[d])/p.m )*(p.K-1)) + 1
-        idx2L = int(floor(idx2))
+        idx2L = ifloor(idx2)
         tmp *= (p.windowLUT[d][idx2L] + ( idx2-idx2L ) * (p.windowLUT[d][idx2L+1] - p.windowLUT[d][idx2L] ) )
       end
 
