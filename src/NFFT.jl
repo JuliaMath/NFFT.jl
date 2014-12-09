@@ -112,7 +112,6 @@ function nfft_adjoint!{T,D}(p::NFFTPlan{D}, fHat::Vector{T}, f::Array{T,D})
   p.tmpVec[:] = 0
   @inbounds convolve_adjoint!(p, fHat, p.tmpVec)
   ifft!(p.tmpVec)
-  p.tmpVec *= prod(p.n)
   @inbounds apodization_adjoint!(p, p.tmpVec, f)
   return f
 end
