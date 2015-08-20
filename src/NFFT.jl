@@ -55,7 +55,7 @@ function NFFTPlan{D,T}(x::Array{T,2}, N::NTuple{D,Int}, m=4, sigma=2.0, K=2000)
     throw(ArgumentError())
   end
 
-  n = ntuple(D, d->int(round(sigma*N[d])) )
+  n = ntuple(d->round(Int,sigma*N[d]), D)
 
   tmpVec = zeros(Complex{T}, n)
 
@@ -65,7 +65,7 @@ function NFFTPlan{D,T}(x::Array{T,2}, N::NTuple{D,Int}, m=4, sigma=2.0, K=2000)
   
   windowLUT = Array(Vector{T},D)
   for d=1:D
-    Z = int(3*K/2)
+    Z = round(Int,3*K/2)
     windowLUT[d] = zeros(T, Z)
     for l=1:Z
       y = ((l-1) / (K-1)) * m/n[d]
@@ -181,12 +181,12 @@ function convolve!{T}(p::NFFTPlan{1}, g::Array{T,1}, fHat::Array{T,1})
   n = p.n[1]
 
   for k=1:p.M # loop over nonequispaced nodes
-    c = ifloor(p.x[k]*n)
+    c = floor(Int,p.x[k]*n)
     for l=(c-p.m):(c+p.m) # loop over nonzero elements
 
       idx = ((l+n)% n) + 1
       idx2 = abs(((p.x[k]*n - l)/p.m )*(p.K-1)) + 1
-      idx2L = ifloor(idx2)
+      idx2L = floor(Int,idx2)
 
       fHat[k] += g[idx] * (p.windowLUT[1][idx2L] + ( idx2-idx2L ) * (p.windowLUT[1][idx2L+1] - p.windowLUT[1][idx2L] ) )
     end
@@ -200,15 +200,15 @@ function convolve!{T}(p::NFFTPlan{2}, g::Array{T,2}, fHat::Array{T,1})
   n2 = p.n[2]
 
   for k=1:p.M # loop over nonequispaced nodes
-    c0 = ifloor(p.x[1,k]*n1)
-    c1 = ifloor(p.x[2,k]*n2)
+    c0 = floor(Int, p.x[1,k]*n1)
+    c1 = floor(Int, p.x[2,k]*n2)
 
     for l1=(c1-p.m):(c1+p.m) # loop over nonzero elements
 
       idx1 = ((l1+n2)% n2) + 1
 
       idx2 = abs((p.x[2,k]*n2 - l1)*scale) + 1
-      idx2L = ifloor(idx2)
+      idx2L = floor(Int,idx2)
 
       tmpWin = (p.windowLUT[2][idx2L] + ( idx2-idx2L ) * (p.windowLUT[2][idx2L+1] - p.windowLUT[2][idx2L] ) )
 
@@ -216,7 +216,7 @@ function convolve!{T}(p::NFFTPlan{2}, g::Array{T,2}, fHat::Array{T,1})
 
         idx0 = ((l0+n1)% n1) + 1
         idx2 = abs((p.x[1,k]*n1 - l0)*scale) + 1
-        idx2L = int(idx2)
+        idx2L = round(Int,idx2)
 
         fHat[k] += g[idx0,idx1] * tmpWin * (p.windowLUT[1][idx2L] + ( idx2-idx2L ) * (p.windowLUT[1][idx2L+1] - p.windowLUT[1][idx2L] ) )
       end
@@ -232,16 +232,16 @@ function convolve!{T}(p::NFFTPlan{3}, g::Array{T,3}, fHat::Array{T,1})
   n3 = p.n[3]
 
   for k=1:p.M # loop over nonequispaced nodes
-    c0 = ifloor(p.x[1,k]*n1)
-    c1 = ifloor(p.x[2,k]*n2)
-    c2 = ifloor(p.x[3,k]*n3)
+    c0 = floor(Int,p.x[1,k]*n1)
+    c1 = floor(Int,p.x[2,k]*n2)
+    c2 = floor(Int,p.x[3,k]*n3)
 
     for l2=(c2-p.m):(c2+p.m) # loop over nonzero elements
 
       idx2 = ((l2+n3)% n3) + 1
 
       idxb = abs((p.x[3,k]*n3 - l2)*scale) + 1
-      idxbL = ifloor(idxb)
+      idxbL = floor(Int,idxb)
 
       tmpWin2 = (p.windowLUT[3][idxbL] + ( idxb-idxbL ) * (p.windowLUT[3][idxbL+1] - p.windowLUT[3][idxbL] ) )
 
@@ -249,7 +249,7 @@ function convolve!{T}(p::NFFTPlan{3}, g::Array{T,3}, fHat::Array{T,1})
 
         idx1 = ((l1+n2)% n2) + 1
         idxb = abs((p.x[2,k]*n2 - l1)*scale) + 1
-        idxbL = ifloor(idxb)
+        idxbL = floor(Int,idxb)
 
         tmpWin = (p.windowLUT[2][idxbL] + ( idxb-idxbL ) * (p.windowLUT[2][idxbL+1] - p.windowLUT[2][idxbL] ) )
 
@@ -257,7 +257,7 @@ function convolve!{T}(p::NFFTPlan{3}, g::Array{T,3}, fHat::Array{T,1})
 
           idx0 = ((l0+n1)% n1) + 1
           idxb = abs((p.x[1,k]*n1 - l0)*scale) + 1
-          idxbL = int(idxb)
+          idxbL = round(Int,idxb)
 
           tmp = g[idx0,idx1,idx2]
           fHat[k] += tmp * tmpWin * tmpWin2 * (p.windowLUT[1][idxbL] + ( idxb-idxbL ) * (p.windowLUT[1][idxbL+1] - p.windowLUT[1][idxbL] ) )
@@ -277,7 +277,7 @@ function convolve!{T,D}(p::NFFTPlan{D}, g::Array{T,D}, fHat::Array{T,1})
   for k=1:p.M # loop over nonequispaced nodes
 
     for d=1:D
-      c[d] = ifloor(p.x[d,k]*p.n[d])
+      c[d] = floor(Int,p.x[d,k]*p.n[d])
       P[d] = 2*p.m + 1
     end
 
@@ -291,7 +291,7 @@ function convolve!{T,D}(p::NFFTPlan{D}, g::Array{T,D}, fHat::Array{T,1})
       tmp = g[idx...]
       for d=1:D
         idx2 = abs(((p.x[d,k]*p.n[d] - l[d])/p.m )*(p.K-1)) + 1
-        idx2L = ifloor(idx2)
+        idx2L = floor(Int,idx2)
         tmp *= (p.windowLUT[d][idx2L] + ( idx2-idx2L ) * (p.windowLUT[d][idx2L+1] - p.windowLUT[d][idx2L] ) )
       end
 
@@ -307,12 +307,12 @@ function convolve_adjoint!{T}(p::NFFTPlan{1}, fHat::Array{T,1}, g::Array{T,1})
   n = p.n[1]
 
   for k=1:p.M # loop over nonequispaced nodes
-    c = int(p.x[k]*n)
+    c = round(Int,p.x[k]*n)
     for l=(c-p.m):(c+p.m) # loop over nonzero elements
 
       idx = ((l+n)%n)+1
       idx2 = abs(((p.x[k]*n - l)/p.m )*(p.K-1)) + 1
-      idx2L = int(idx2)
+      idx2L = round(Int,idx2)
 
       g[idx] += fHat[k] * (p.windowLUT[1][idx2L] + ( idx2-idx2L ) * (p.windowLUT[1][idx2L+1] - p.windowLUT[1][idx2L] ) )
     end
@@ -325,20 +325,20 @@ function convolve_adjoint!{T}(p::NFFTPlan{2}, fHat::Array{T,1}, g::Array{T,2})
   n2 = p.n[2]
 
   for k=1:p.M # loop over nonequispaced nodes
-    c0 = ifloor(p.x[1,k]*n1)
-    c1 = ifloor(p.x[2,k]*n2)
+    c0 = floor(Int,p.x[1,k]*n1)
+    c1 = floor(Int,p.x[2,k]*n2)
 
     for l1=(c1-p.m):(c1+p.m) # loop over nonzero elements
       idx1 = ((l1+n2)%n2) + 1
       idx2 = abs((p.x[2,k]*n2 - l1)*scale) + 1
-      idx2L = ifloor(idx2)
+      idx2L = floor(Int,idx2)
 
       tmp = fHat[k] * (p.windowLUT[2][idx2L] + ( idx2-idx2L ) * (p.windowLUT[2][idx2L+1] - p.windowLUT[2][idx2L] ) )
 
       for l0=(c0-p.m):(c0+p.m)
         idx0 = ((l0+n1)%n1) + 1
         idx2 = abs((p.x[1,k]*n1 - l0)*scale) + 1
-        idx2L = int(idx2)
+        idx2L = round(Int,idx2)
         g[idx0,idx1] += tmp * (p.windowLUT[1][idx2L] + ( idx2-idx2L ) * (p.windowLUT[1][idx2L+1] - p.windowLUT[1][idx2L] ) )
       end
     end
@@ -352,28 +352,28 @@ function convolve_adjoint!{T}(p::NFFTPlan{3}, fHat::Array{T,1}, g::Array{T,3})
   n3 = p.n[3]
 
   for k=1:p.M # loop over nonequispaced nodes
-    c0 = ifloor(p.x[1,k]*n1)
-    c1 = ifloor(p.x[2,k]*n2)
-    c2 = ifloor(p.x[3,k]*n3)
+    c0 = floor(Int,p.x[1,k]*n1)
+    c1 = floor(Int,p.x[2,k]*n2)
+    c2 = floor(Int,p.x[3,k]*n3)
 
     for l2=(c2-p.m):(c2+p.m) # loop over nonzero elements
       idx2 = ((l2+n3)%n3) + 1
       idxb = abs((p.x[3,k]*n3 - l2)*scale) + 1
-      idxbL = ifloor(idxb)
+      idxbL = floor(Int,idxb)
 
       tmp = fHat[k] * (p.windowLUT[3][idxbL] + ( idxb-idxbL ) * (p.windowLUT[3][idxbL+1] - p.windowLUT[3][idxbL] ) )
 
       for l1=(c1-p.m):(c1+p.m)
         idx1 = ((l1+n2)%n2) + 1
         idxb = abs((p.x[2,k]*n2 - l1)*scale) + 1
-        idxbL = ifloor(idxb)
+        idxbL = floor(Int,idxb)
 
         tmp2 = tmp * (p.windowLUT[2][idxbL] + ( idxb-idxbL ) * (p.windowLUT[2][idxbL+1] - p.windowLUT[2][idxbL] ) )
 
         for l0=(c0-p.m):(c0+p.m)
           idx0 = ((l0+n1)%n1) + 1
           idxb = abs((p.x[1,k]*n1 - l0)*scale) + 1
-          idxbL = int(idxb)
+          idxbL = round(Int,idxb)
           g[idx0,idx1,idx2] += tmp2 * (p.windowLUT[1][idxbL] + ( idxb-idxbL ) * (p.windowLUT[1][idxbL+1] - p.windowLUT[1][idxbL] ) )
         end
       end
@@ -391,7 +391,7 @@ function convolve_adjoint!{T,D}(p::NFFTPlan{D}, fHat::Array{T,1}, g::Array{T,D})
   for k=1:p.M # loop over nonequispaced nodes
 
     for d=1:D
-      c[d] = ifloor(p.x[d,k]*p.n[d])
+      c[d] = floor(Int,p.x[d,k]*p.n[d])
       P[d] = 2*p.m + 1
     end
 
@@ -405,7 +405,7 @@ function convolve_adjoint!{T,D}(p::NFFTPlan{D}, fHat::Array{T,1}, g::Array{T,D})
       tmp = fHat[k]
       for d=1:D
         idx2 = abs(((p.x[d,k]*p.n[d] - l[d])/p.m )*(p.K-1)) + 1
-        idx2L = ifloor(idx2)
+        idx2L = floor(Int,idx2)
         tmp *= (p.windowLUT[d][idx2L] + ( idx2-idx2L ) * (p.windowLUT[d][idx2L+1] - p.windowLUT[d][idx2L] ) )
       end
 
@@ -420,7 +420,7 @@ end
 function apodization!{T}(p::NFFTPlan{1}, f::Array{T,1}, g::Array{T,1})
   n = p.n[1]
   N = p.N[1]
-  const offset = int( n - N / 2 ) - 1
+  const offset = round(Int, n - N / 2 ) - 1
   for l=1:N
     g[((l+offset)% n) + 1] = f[l] * p.windowHatInvLUT[1][l]
   end
@@ -431,8 +431,8 @@ function apodization!{T}(p::NFFTPlan{2}, f::Array{T,2}, g::Array{T,2})
   N1 = p.N[1]
   n2 = p.n[2]
   N2 = p.N[2]
-  const offset1 = int( n1 - N1 / 2 ) - 1
-  const offset2 = int( n2 - N2 / 2 ) - 1
+  const offset1 = round( Int, n1 - N1 / 2 ) - 1
+  const offset2 = round( Int, n2 - N2 / 2 ) - 1
   for ly=1:N2
     for lx=1:N1
       g[((lx+offset1)% n1) + 1, ((ly+offset2)% n2) + 1] = f[lx, ly]  *   p.windowHatInvLUT[1][lx] * p.windowHatInvLUT[2][ly]
@@ -448,9 +448,9 @@ function apodization!{T}(p::NFFTPlan{3}, f::Array{T,3}, g::Array{T,3})
   n3 = p.n[3]
   N3 = p.N[3]
 
-  const offset1 = int( n1 - N1 / 2 ) - 1
-  const offset2 = int( n2 - N2 / 2 ) - 1
-  const offset3 = int( n3 - N3 / 2 ) - 1
+  const offset1 = round( Int, n1 - N1 / 2 ) - 1
+  const offset2 = round( Int, n2 - N2 / 2 ) - 1
+  const offset3 = round( Int, n3 - N3 / 2 ) - 1
   for lz=1:N3
     for ly=1:N2
       for lx=1:N1
@@ -461,7 +461,7 @@ function apodization!{T}(p::NFFTPlan{3}, f::Array{T,3}, g::Array{T,3})
 end
 
 function apodization!{T,D}(p::NFFTPlan{D}, f::Array{T,D}, g::Array{T,D})
-  const offset = ntuple(D, d-> int( p.n[d] - p.N[d] / 2 ) - 1)
+  const offset = ntuple(d-> round( Int, p.n[d] - p.N[d] / 2 ) - 1, D)
   idx = Array(Int, D)
   for l=1:prod(p.N)
     it = ind2sub(p.N,l)
@@ -483,7 +483,7 @@ end
 function apodization_adjoint!{T}(p::NFFTPlan{1}, g::Array{T,1}, f::Array{T,1})
   n = p.n[1]
   N = p.N[1]
-  const offset = int( n - N / 2 ) - 1
+  const offset = round( Int, n - N / 2 ) - 1
   for l=1:N
     f[l] = g[((l+offset)% n) + 1] * p.windowHatInvLUT[1][l]
   end
@@ -494,8 +494,8 @@ function apodization_adjoint!{T}(p::NFFTPlan{2}, g::Array{T,2}, f::Array{T,2})
   N1 = p.N[1]
   n2 = p.n[2]
   N2 = p.N[2]
-  const offset1 = int( n1 - N1 / 2 ) - 1
-  const offset2 = int( n2 - N2 / 2 ) - 1
+  const offset1 = round( Int, n1 - N1 / 2 ) - 1
+  const offset2 = round( Int, n2 - N2 / 2 ) - 1
   for ly=1:N2
     for lx=1:N1
       f[lx, ly] = g[((lx+offset1)% n1) + 1, ((ly+offset2)% n2) + 1] * p.windowHatInvLUT[1][lx] * p.windowHatInvLUT[2][ly]
@@ -511,9 +511,9 @@ function apodization_adjoint!{T}(p::NFFTPlan{3}, g::Array{T,3}, f::Array{T,3})
   n3 = p.n[3]
   N3 = p.N[3]
 
-  const offset1 = int( n1 - N1 / 2 ) - 1
-  const offset2 = int( n2 - N2 / 2 ) - 1
-  const offset3 = int( n3 - N3 / 2 ) - 1
+  const offset1 = round( Int, n1 - N1 / 2 ) - 1
+  const offset2 = round( Int, n2 - N2 / 2 ) - 1
+  const offset3 = round( Int, n3 - N3 / 2 ) - 1
   for lz=1:N3
     for ly=1:N2
       for lx=1:N1
@@ -524,7 +524,7 @@ function apodization_adjoint!{T}(p::NFFTPlan{3}, g::Array{T,3}, f::Array{T,3})
 end
 
 function apodization_adjoint!{T,D}(p::NFFTPlan{D}, g::Array{T,D}, f::Array{T,D})
-  const offset = ntuple(D, d-> int( p.n[d] - p.N[d] / 2 ) - 1)
+  const offset = ntuple(d-> round( Int, p.n[d] - p.N[d] / 2 ) - 1, D)
   idx = Array(Int, D)
   for l=1:prod(p.N)
     it = ind2sub(p.N,l)
