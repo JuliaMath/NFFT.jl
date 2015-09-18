@@ -94,6 +94,7 @@ function nfft!{T,D}(p::NFFTPlan{D}, f::Array{T,D}, fHat::Vector{T})
   p.tmpVec[:] = 0
   @inbounds apodization!(p, f, p.tmpVec)
   fft!(p.tmpVec)
+  fill!(fHat, zero(T))
   @inbounds convolve!(p, p.tmpVec, fHat)
   return fHat
 end
@@ -114,6 +115,7 @@ function nfft_adjoint!{T,D}(p::NFFTPlan{D}, fHat::Vector{T}, f::Array{T,D})
   @inbounds convolve_adjoint!(p, fHat, p.tmpVec)
   ifft!(p.tmpVec)
   p.tmpVec *= prod(p.n)
+  fill!(f, zero(T))
   @inbounds apodization_adjoint!(p, p.tmpVec, f)
   return f
 end
@@ -132,7 +134,7 @@ end
 ### ndft functions ###
 
 # fallback for 1D 
-function ind2sub{T}(::Array{T,1}, idx)
+function ind2sub{T}(::Array{T,1}, idx::Int)
   idx
 end
 
