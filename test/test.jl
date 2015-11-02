@@ -8,8 +8,8 @@ sigma = 2.0
 # 1D
 begin
   N = 128
-  x = linspace(-0.4, 0.4, N)
-  fHat = linspace(0,1,N)*1im
+  x = collect( linspace(-0.4, 0.4, N) )
+  fHat = collect( linspace(0,1,N)*1im )
   p = NFFTPlan(x, N, m, sigma);
 
   f = ndft_adjoint(p, fHat)
