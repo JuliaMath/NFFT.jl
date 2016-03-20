@@ -16,7 +16,6 @@ export NFFTPlan, nfft, nfft_adjoint, ndft, ndft_adjoint, nfft_performance,
 #   perform linear interpolation. This approach is reasonable fast and does not
 #   require too much memory. There are, however alternatives known that are either 
 #   faster or require no extra memory at all.
-#
 
 function window_kaiser_bessel(x,n,m,sigma)
   b = pi*(2-1/sigma)
