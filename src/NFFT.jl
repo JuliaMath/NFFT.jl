@@ -87,10 +87,16 @@ function NFFTPlan{T}(x::Array{T,1}, N::Integer, m=4, sigma=2.0)
   NFFTPlan(reshape(x,1,length(x)), (N,), m, sigma)
 end
 
+function consistencyCheck{T,D}(p::NFFTPlan{D}, f::AbstractArray{T,D}, fHat::Vector{T})
+	p.N == size(f) && p.M == length(fHat)
+end
+
 ### nfft functions ###
 
 function nfft!{T,D}(p::NFFTPlan{D}, f::AbstractArray{T,D}, fHat::Vector{T})
-  p.tmpVec[:] = 0
+  @assert consistencyCheck(p, f, fHat) "Data is not consistent with NFFTPlan"
+
+  fill!(p.tmpVec, zero(T))
   @inbounds apodization!(p, f, p.tmpVec)
   fft!(p.tmpVec)
   fill!(fHat, zero(T))
@@ -110,7 +116,9 @@ function nfft{T,D}(x, f::AbstractArray{T,D})
 end
 
 function nfft_adjoint!{T,D}(p::NFFTPlan{D}, fHat::Vector{T}, f::AbstractArray{T,D})
-  p.tmpVec[:] = 0
+  @assert consistencyCheck(p, f, fHat) "Data is not consistent with NFFTPlan"
+
+  fill!(p.tmpVec, zero(T))
   @inbounds convolve_adjoint!(p, fHat, p.tmpVec)
   ifft!(p.tmpVec)
   p.tmpVec *= prod(p.n)
@@ -138,6 +146,8 @@ function ind2sub{T}(::Array{T,1}, idx::Int)
 end
 
 function ndft{T,D}(plan::NFFTPlan{D}, f::AbstractArray{T,D})
+  @assert plan.N == size(f) "Data is not consistent with NFFTPlan"
+
   g = zeros(T, plan.M)
 
   for l=1:prod(plan.N)
@@ -156,6 +166,7 @@ function ndft{T,D}(plan::NFFTPlan{D}, f::AbstractArray{T,D})
 end
 
 function ndft_adjoint{T,D}(plan::NFFTPlan{D}, fHat::AbstractArray{T,1})
+  @assert plan.M == length(fHat) "Data is not consistent with NFFTPlan"
 
   g = zeros(T, plan.N)
 
