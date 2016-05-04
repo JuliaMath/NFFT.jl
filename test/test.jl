@@ -30,7 +30,7 @@ end
 begin
   N = (16,16)
   M = prod(N)
-  x = reshape(linspace(-0.4, 0.4, 2*M), 2, M)
+  x = collect(reshape(linspace(-0.4, 0.4, 2*M), 2, M))
   fHat = linspace(0,1,M)*1im
   p = NFFTPlan(x, N, m, sigma)
 
@@ -51,7 +51,7 @@ end
 begin
   N = (12,12,12)
   M = prod(N)
-  x = reshape(linspace(-0.4, 0.4, 3*M), 3, M)
+  x = collect(reshape(linspace(-0.4, 0.4, 3*M), 3, M))
   fHat = linspace(0,1,M)*1im
   p = NFFTPlan(x, N, m, sigma)
 
