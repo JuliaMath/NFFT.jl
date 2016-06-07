@@ -191,7 +191,7 @@ end
 
 ### convolve! ###
 
-function convolve!{T}(p::NFFTPlan{1}, g::Array{T,1}, fHat::Array{T,1})
+function convolve!{T}(p::NFFTPlan{1}, g::AbstractVector{T}, fHat::DenseVector{T})
   n = p.n[1]
 
   for k=1:p.M # loop over nonequispaced nodes
@@ -207,7 +207,7 @@ function convolve!{T}(p::NFFTPlan{1}, g::Array{T,1}, fHat::Array{T,1})
   end
 end
 
-function convolve!{T}(p::NFFTPlan{2}, g::AbstractArray{T,2}, fHat::AbstractArray{T,1})
+function convolve!{T}(p::NFFTPlan{2}, g::AbstractMatrix{T}, fHat::DenseVector{T})
   scale = 1.0 / p.m * (p.K-1)
 
   n1 = p.n[1]
@@ -238,7 +238,7 @@ function convolve!{T}(p::NFFTPlan{2}, g::AbstractArray{T,2}, fHat::AbstractArray
   end
 end
 
-function convolve!{T}(p::NFFTPlan{3}, g::Array{T,3}, fHat::Array{T,1})
+function convolve!{T}(p::NFFTPlan{3}, g::AbstractArray{T,3}, fHat::DenseVector{T})
   scale = 1.0 / p.m * (p.K-1)
 
   n1 = p.n[1]
@@ -282,7 +282,7 @@ function convolve!{T}(p::NFFTPlan{3}, g::Array{T,3}, fHat::Array{T,1})
 end
 
 
-function convolve!{T,D}(p::NFFTPlan{D}, g::AbstractArray{T,D}, fHat::AbstractArray{T,1})
+function convolve!{T,D}(p::NFFTPlan{D}, g::AbstractArray{T,D}, fHat::DenseVector{T})
   l = Array(Int,D)
   idx = Array(Int,D)
   P = Array(Int,D)
@@ -317,7 +317,7 @@ end
 
 ### convolve_adjoint! ###
 
-function convolve_adjoint!{T}(p::NFFTPlan{1}, fHat::Array{T,1}, g::Array{T,1})
+function convolve_adjoint!{T}(p::NFFTPlan{1}, fHat::AbstractVector{T}, g::DenseVector{T})
   n = p.n[1]
 
   for k=1:p.M # loop over nonequispaced nodes
@@ -333,7 +333,7 @@ function convolve_adjoint!{T}(p::NFFTPlan{1}, fHat::Array{T,1}, g::Array{T,1})
   end
 end
 
-function convolve_adjoint!{T}(p::NFFTPlan{2}, fHat::AbstractArray{T,1}, g::Array{T,2})
+function convolve_adjoint!{T}(p::NFFTPlan{2}, fHat::AbstractVector{T}, g::DenseMatrix{T})
   scale = 1.0 / p.m * (p.K-1)
   n1 = p.n[1]
   n2 = p.n[2]
@@ -359,7 +359,7 @@ function convolve_adjoint!{T}(p::NFFTPlan{2}, fHat::AbstractArray{T,1}, g::Array
   end
 end
 
-function convolve_adjoint!{T}(p::NFFTPlan{3}, fHat::Array{T,1}, g::Array{T,3})
+function convolve_adjoint!{T}(p::NFFTPlan{3}, fHat::AbstractVector{T}, g::DenseArray{T,3})
   scale = 1.0 / p.m * (p.K-1)
   n1 = p.n[1]
   n2 = p.n[2]
@@ -396,7 +396,7 @@ function convolve_adjoint!{T}(p::NFFTPlan{3}, fHat::Array{T,1}, g::Array{T,3})
 end
 
 
-function convolve_adjoint!{T,D}(p::NFFTPlan{D}, fHat::AbstractArray{T,1}, g::Array{T,D})
+function convolve_adjoint!{T,D}(p::NFFTPlan{D}, fHat::AbstractVector{T}, g::DenseArray{T,D})
   l = Array(Int,D)
   idx = Array(Int,D)
   P = Array(Int,D)
@@ -431,7 +431,7 @@ end
 
 ### apodization! ###
 
-function apodization!{T}(p::NFFTPlan{1}, f::Array{T,1}, g::Array{T,1})
+function apodization!{T}(p::NFFTPlan{1}, f::AbstractVector{T}, g::DenseVector{T})
   n = p.n[1]
   N = p.N[1]
   const offset = round( Int, n - N / 2 ) - 1
@@ -440,7 +440,7 @@ function apodization!{T}(p::NFFTPlan{1}, f::Array{T,1}, g::Array{T,1})
   end
 end
 
-function apodization!{T}(p::NFFTPlan{2}, f::AbstractArray{T,2}, g::AbstractArray{T,2})
+function apodization!{T}(p::NFFTPlan{2}, f::AbstractMatrix{T}, g::DenseMatrix{T})
   n1 = p.n[1]
   N1 = p.N[1]
   n2 = p.n[2]
@@ -454,7 +454,7 @@ function apodization!{T}(p::NFFTPlan{2}, f::AbstractArray{T,2}, g::AbstractArray
   end
 end
 
-function apodization!{T}(p::NFFTPlan{3}, f::Array{T,3}, g::Array{T,3})
+function apodization!{T}(p::NFFTPlan{3}, f::AbstractArray{T,3}, g::DenseArray{T,3})
   n1 = p.n[1]
   N1 = p.N[1]
   n2 = p.n[2]
@@ -474,7 +474,7 @@ function apodization!{T}(p::NFFTPlan{3}, f::Array{T,3}, g::Array{T,3})
   end
 end
 
-function apodization!{T,D}(p::NFFTPlan{D}, f::AbstractArray{T,D}, g::AbstractArray{T,D})
+function apodization!{T,D}(p::NFFTPlan{D}, f::AbstractArray{T,D}, g::DenseArray{T,D})
   const offset = ntuple(d-> round( Int, p.n[d] - p.N[d] / 2 ) - 1, D)
   idx = Array(Int, D)
   for l=1:prod(p.N)
@@ -494,7 +494,7 @@ end
 
 ### apodization_adjoint! ###
 
-function apodization_adjoint!{T}(p::NFFTPlan{1}, g::Array{T,1}, f::Array{T,1})
+function apodization_adjoint!{T}(p::NFFTPlan{1}, g::AbstractVector{T}, f::DenseVector{T})
   n = p.n[1]
   N = p.N[1]
   const offset = round( Int, n - N / 2 ) - 1
@@ -503,7 +503,7 @@ function apodization_adjoint!{T}(p::NFFTPlan{1}, g::Array{T,1}, f::Array{T,1})
   end
 end
 
-function apodization_adjoint!{T}(p::NFFTPlan{2}, g::AbstractArray{T,2}, f::AbstractArray{T,2})
+function apodization_adjoint!{T}(p::NFFTPlan{2}, g::AbstractMatrix{T}, f::DenseMatrix{T})
   n1 = p.n[1]
   N1 = p.N[1]
   n2 = p.n[2]
@@ -517,7 +517,7 @@ function apodization_adjoint!{T}(p::NFFTPlan{2}, g::AbstractArray{T,2}, f::Abstr
   end
 end
 
-function apodization_adjoint!{T}(p::NFFTPlan{3}, g::AbstractArray{T,3}, f::AbstractArray{T,3})
+function apodization_adjoint!{T}(p::NFFTPlan{3}, g::AbstractArray{T,3}, f::DenseArray{T,3})
   n1 = p.n[1]
   N1 = p.N[1]
   n2 = p.n[2]
@@ -537,7 +537,7 @@ function apodization_adjoint!{T}(p::NFFTPlan{3}, g::AbstractArray{T,3}, f::Abstr
   end
 end
 
-function apodization_adjoint!{T,D}(p::NFFTPlan{D}, g::AbstractArray{T,D}, f::AbstractArray{T,D})
+function apodization_adjoint!{T,D}(p::NFFTPlan{D}, g::AbstractArray{T,D}, f::DenseArray{T,D})
   const offset = ntuple(d-> round( Int, p.n[d] - p.N[d] / 2 ) - 1, D)
   idx = Array(Int, D)
   for l=1:prod(p.N)
