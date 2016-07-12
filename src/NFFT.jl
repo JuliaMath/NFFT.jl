@@ -117,7 +117,7 @@ function nfft{T,D}(x, f::AbstractArray{T,D})
   return nfft(p, f)
 end
 
-function nfft_adjoint!{T,D}(p::NFFTPlan{D}, fHat::AbstractArray{T}, f::StridedVector{T,D})
+function nfft_adjoint!{T,D}(p::NFFTPlan{D}, fHat::AbstractArray{T}, f::StridedArray{T,D})
   consistencyCheck(p, f, fHat)
 
   fill!(p.tmpVec, zero(T))
