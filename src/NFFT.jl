@@ -87,7 +87,7 @@ function NFFTPlan{T}(x::Array{T,1}, N::Integer, m=4, sigma=2.0)
   NFFTPlan(reshape(x,1,length(x)), (N,), m, sigma)
 end
 
-function consistencyCheck{T,D}(p::NFFTPlan{D}, f::AbstractArray{T,D}, fHat::Vector{T})
+function consistencyCheck{T,D}(p::NFFTPlan{D}, f::AbstractArray{T,D}, fHat::AbstractVector{T})
 	if p.N != size(f) || p.M != length(fHat)
 		throw(DimensionMismatch("Data is not consistent with NFFTPlan"))
 	end
@@ -95,7 +95,7 @@ end
 
 ### nfft functions ###
 
-function nfft!{T,D}(p::NFFTPlan{D}, f::AbstractArray{T,D}, fHat::Vector{T})
+function nfft!{T,D}(p::NFFTPlan{D}, f::AbstractArray{T,D}, fHat::StridedVector{T})
   consistencyCheck(p, f, fHat)
 
   fill!(p.tmpVec, zero(T))
@@ -117,7 +117,7 @@ function nfft{T,D}(x, f::AbstractArray{T,D})
   return nfft(p, f)
 end
 
-function nfft_adjoint!{T,D}(p::NFFTPlan{D}, fHat::Vector{T}, f::AbstractArray{T,D})
+function nfft_adjoint!{T,D}(p::NFFTPlan{D}, fHat::AbstractArray{T}, f::StridedVector{T,D})
   consistencyCheck(p, f, fHat)
 
   fill!(p.tmpVec, zero(T))
