@@ -1,6 +1,7 @@
 module NFFT
 
 import Base.ind2sub
+using Base.Cartesian
 
 export NFFTPlan, nfft, nfft_adjoint, ndft, ndft_adjoint, nfft_performance,
        sdc
@@ -36,13 +37,13 @@ function window_kaiser_bessel_hat(k,n,m,sigma)
 end
 
 type NFFTPlan{D,T}
-  N::NTuple{D,Int}
-  M::Int
+  N::NTuple{D,Int64}
+  M::Int64
   x::Array{T,2}
-  m::Int
+  m::Int64
   sigma::T
-  n::NTuple{D,Int}
-  K::Int
+  n::NTuple{D,Int64}
+  K::Int64
   windowLUT::Vector{Vector{T}}
   windowHatInvLUT::Vector{Vector{T}}
   tmpVec::Array{Complex{T},D}
@@ -449,7 +450,7 @@ function apodization!{T}(p::NFFTPlan{2}, f::AbstractMatrix{T}, g::StridedMatrix{
   const offset2 = round( Int, n2 - N2 / 2 ) - 1
   for ly=1:N2
     for lx=1:N1
-      g[((lx+offset1)% n1) + 1, ((ly+offset2)% n2) + 1] = f[lx, ly]  *   p.windowHatInvLUT[1][lx] * p.windowHatInvLUT[2][ly]
+      g[((lx+offset1)% n1) + 1, ((ly+offset2)% n2) + 1] = f[lx, ly]  *  p.windowHatInvLUT[1][lx] * p.windowHatInvLUT[2][ly]
     end
   end
 end
@@ -474,21 +475,16 @@ function apodization!{T}(p::NFFTPlan{3}, f::AbstractArray{T,3}, g::StridedArray{
   end
 end
 
-function apodization!{T,D}(p::NFFTPlan{D}, f::AbstractArray{T,D}, g::StridedArray{T,D})
-  const offset = ntuple(d-> round( Int, p.n[d] - p.N[d] / 2 ) - 1, D)
-  idx = Array(Int, D)
-  for l=1:prod(p.N)
-    it = ind2sub(p.N,l)
+@generated function apodization!{T,D}(p::NFFTPlan{D}, f::AbstractArray{T,D}, g::StridedArray{T,D})
+	quote
+		@nexprs $D d -> offset_d = round(Int, p.n[d] - p.N[d] / 2) - 1
 
-    windowHatInvLUTProd = 1.0
-
-    for d=1:D
-      idx[d] = ((it[d]+offset[d])% p.n[d]) + 1
-      windowHatInvLUTProd *= p.windowHatInvLUT[d][it[d]] 
-    end
- 
-    g[idx...] = f[it...] * windowHatInvLUTProd
-  end
+		@nloops $D l f begin
+			v = @nref $D f l
+			@nexprs $D d -> v *= p.windowHatInvLUT[d][l_d]
+			(@nref $D g d -> rem(l_d+offset_d, p.n[d]) + 1) = v
+		end
+	end
 end
 
 
