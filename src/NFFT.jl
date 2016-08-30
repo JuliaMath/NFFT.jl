@@ -102,7 +102,6 @@ function nfft!{T,D}(p::NFFTPlan{D}, f::AbstractArray{T,D}, fHat::StridedVector{T
   fill!(p.tmpVec, zero(T))
   @inbounds apodization!(p, f, p.tmpVec)
   fft!(p.tmpVec)
-  fill!(fHat, zero(T))
   @inbounds convolve!(p, p.tmpVec, fHat)
   return fHat
 end
@@ -209,106 +208,25 @@ function convolve!{T}(p::NFFTPlan{1}, g::AbstractVector{T}, fHat::StridedVector{
   end
 end
 
-function convolve!{T}(p::NFFTPlan{2}, g::AbstractMatrix{T}, fHat::StridedVector{T})
-  fill!(fHat, zero(T))
-  scale = 1.0 / p.m * (p.K-1)
-
-  n1 = p.n[1]
-  n2 = p.n[2]
-
-  for k=1:p.M # loop over nonequispaced nodes
-    c0 = floor(Int, p.x[1,k]*n1)
-    c1 = floor(Int, p.x[2,k]*n2)
-
-    for l1=(c1-p.m):(c1+p.m) # loop over nonzero elements
-
-      idx1 = ((l1+n2)% n2) + 1
-
-      idx2 = abs((p.x[2,k]*n2 - l1)*scale) + 1
-      idx2L = floor(Int,idx2)
-
-      tmpWin = (p.windowLUT[2][idx2L] + ( idx2-idx2L ) * (p.windowLUT[2][idx2L+1] - p.windowLUT[2][idx2L] ) )
-
-      for l0=(c0-p.m):(c0+p.m)
-
-        idx0 = ((l0+n1)% n1) + 1
-        idx2 = abs((p.x[1,k]*n1 - l0)*scale) + 1
-        #= idx2L = round(Int,idx2) =#
-        idx2L = floor(Int,idx2)
-
-		tmpWin2 = p.windowLUT[1][idx2L] + ( idx2-idx2L ) * (p.windowLUT[1][idx2L+1] - p.windowLUT[1][idx2L] )
-		v = g[idx0,idx1]
-		v *= tmpWin2
-		v *= tmpWin
-        fHat[k] += v
-
-        #= fHat[k] += g[idx0,idx1] * tmpWin * (p.windowLUT[1][idx2L] + ( idx2-idx2L ) * (p.windowLUT[1][idx2L+1] - p.windowLUT[1][idx2L] ) ) =#
-      end
-    end
-  end
-end
-
-function convolve!{T}(p::NFFTPlan{3}, g::AbstractArray{T,3}, fHat::StridedVector{T})
-  fill!(fHat, zero(T))
-  scale = 1.0 / p.m * (p.K-1)
-
-  n1 = p.n[1]
-  n2 = p.n[2]
-  n3 = p.n[3]
-
-  for k=1:p.M # loop over nonequispaced nodes
-    c0 = floor(Int,p.x[1,k]*n1)
-    c1 = floor(Int,p.x[2,k]*n2)
-    c2 = floor(Int,p.x[3,k]*n3)
-
-    for l2=(c2-p.m):(c2+p.m) # loop over nonzero elements
-
-      idx2 = ((l2+n3)% n3) + 1
-
-      idxb = abs((p.x[3,k]*n3 - l2)*scale) + 1
-      idxbL = floor(Int,idxb)
-
-      tmpWin2 = (p.windowLUT[3][idxbL] + ( idxb-idxbL ) * (p.windowLUT[3][idxbL+1] - p.windowLUT[3][idxbL] ) )
-
-      for l1=(c1-p.m):(c1+p.m)
-
-        idx1 = ((l1+n2)% n2) + 1
-        idxb = abs((p.x[2,k]*n2 - l1)*scale) + 1
-        idxbL = floor(Int,idxb)
-
-        tmpWin = (p.windowLUT[2][idxbL] + ( idxb-idxbL ) * (p.windowLUT[2][idxbL+1] - p.windowLUT[2][idxbL] ) )
-
-        for l0=(c0-p.m):(c0+p.m)
-
-          idx0 = ((l0+n1)% n1) + 1
-          idxb = abs((p.x[1,k]*n1 - l0)*scale) + 1
-          idxbL = round(Int,idxb)
-
-          tmp = g[idx0,idx1,idx2]
-          fHat[k] += tmp * tmpWin * tmpWin2 * (p.windowLUT[1][idxbL] + ( idxb-idxbL ) * (p.windowLUT[1][idxbL+1] - p.windowLUT[1][idxbL] ) )
-        end
-      end
-    end
-  end
-end
-
-@generated function convolveD!{T,D}(p::NFFTPlan{D}, g::AbstractArray{T,D}, fHat::StridedVector{T})
+@generated function convolve!{T,D}(p::NFFTPlan{D}, g::AbstractArray{T,D}, fHat::StridedVector{T})
 	quote
 		fill!(fHat, zero(T))
 		scale = 1.0 / p.m * (p.K-1)
 
 		for k in 1:p.M
-			@nexprs $D d -> c_d = floor(Int, p.x[d,k]*p.n[d])
+			@nexprs $D d -> xscale_d = p.x[d,k] * p.n[d]
+			@nexprs $D d -> c_d = floor(Int, xscale_d)
 
 			@nloops $D l d -> (c_d-p.m):(c_d+p.m) d->begin
 				# preexpr
-				idx_d = rem(l_d+p.n[d], p.n[d]) + 1 
-				idx2 = abs( (p.x[d,k]*p.n[d] - l_d)*scale ) + 1
-				idx2L = floor(Int, idx2)
-				tmpWin_d = p.windowLUT[d][idx2L] + ( idx2-idx2L ) * (p.windowLUT[d][idx2L+1] - p.windowLUT[d][idx2L])
+				gidx_d = rem(l_d+p.n[d], p.n[d]) + 1 
+				idx = abs( (xscale_d - l_d)*scale ) + 1
+				idxL = floor(idx)
+				idxInt = Int(idxL)
+				tmpWin_d = p.windowLUT[d][idxInt] + ( idx-idxL ) * (p.windowLUT[d][idxInt+1] - p.windowLUT[d][idxInt])
 			end begin
 				# bodyexpr
-				v = @nref $D g idx
+				v = @nref $D g gidx
 				@nexprs $D d -> v *= tmpWin_d
 				fHat[k] += v
 			end
