@@ -120,11 +120,9 @@ end
 function nfft_adjoint!{T,D}(p::NFFTPlan{D}, fHat::AbstractArray{T}, f::StridedArray{T,D})
   consistencyCheck(p, f, fHat)
 
-  fill!(p.tmpVec, zero(T))
   @inbounds convolve_adjoint!(p, fHat, p.tmpVec)
   ifft!(p.tmpVec)
   scale!(p.tmpVec, prod(p.n))
-  fill!(f, zero(T))
   @inbounds apodization_adjoint!(p, p.tmpVec, f)
   return f
 end
@@ -238,6 +236,7 @@ end
 ### convolve_adjoint! ###
 
 function convolve_adjoint!{T}(p::NFFTPlan{1}, fHat::AbstractVector{T}, g::StridedVector{T})
+  fill!(g, zero(T))
   n = p.n[1]
 
   for k=1:p.M # loop over nonequispaced nodes
@@ -253,99 +252,30 @@ function convolve_adjoint!{T}(p::NFFTPlan{1}, fHat::AbstractVector{T}, g::Stride
   end
 end
 
-function convolve_adjoint!{T}(p::NFFTPlan{2}, fHat::AbstractVector{T}, g::StridedMatrix{T})
-  scale = 1.0 / p.m * (p.K-1)
-  n1 = p.n[1]
-  n2 = p.n[2]
+@generated function convolve_adjoint!{T,D}(p::NFFTPlan{D}, fHat::AbstractVector{T}, g::StridedArray{T,D})
+	quote
+		fill!(g, zero(T))
+		scale = 1.0 / p.m * (p.K-1)
 
-  for k=1:p.M # loop over nonequispaced nodes
-    c0 = floor(Int,p.x[1,k]*n1)
-    c1 = floor(Int,p.x[2,k]*n2)
+		for k in 1:p.M
+			@nexprs $D d -> xscale_d = p.x[d,k] * p.n[d]
+			@nexprs $D d -> c_d = floor(Int, xscale_d)
 
-    for l1=(c1-p.m):(c1+p.m) # loop over nonzero elements
-      idx1 = ((l1+n2)%n2) + 1
-      idx2 = abs((p.x[2,k]*n2 - l1)*scale) + 1
-      idx2L = floor(Int,idx2)
-
-      tmp = fHat[k] * (p.windowLUT[2][idx2L] + ( idx2-idx2L ) * (p.windowLUT[2][idx2L+1] - p.windowLUT[2][idx2L] ) )
-
-      for l0=(c0-p.m):(c0+p.m)
-        idx0 = ((l0+n1)%n1) + 1
-        idx2 = abs((p.x[1,k]*n1 - l0)*scale) + 1
-        idx2L = round(Int,idx2)
-        g[idx0,idx1] += tmp * (p.windowLUT[1][idx2L] + ( idx2-idx2L ) * (p.windowLUT[1][idx2L+1] - p.windowLUT[1][idx2L] ) )
-      end
-    end
-  end
-end
-
-function convolve_adjoint!{T}(p::NFFTPlan{3}, fHat::AbstractVector{T}, g::StridedArray{T,3})
-  scale = 1.0 / p.m * (p.K-1)
-  n1 = p.n[1]
-  n2 = p.n[2]
-  n3 = p.n[3]
-
-  for k=1:p.M # loop over nonequispaced nodes
-    c0 = floor(Int,p.x[1,k]*n1)
-    c1 = floor(Int,p.x[2,k]*n2)
-    c2 = floor(Int,p.x[3,k]*n3)
-
-    for l2=(c2-p.m):(c2+p.m) # loop over nonzero elements
-      idx2 = ((l2+n3)%n3) + 1
-      idxb = abs((p.x[3,k]*n3 - l2)*scale) + 1
-      idxbL = floor(Int,idxb)
-
-      tmp = fHat[k] * (p.windowLUT[3][idxbL] + ( idxb-idxbL ) * (p.windowLUT[3][idxbL+1] - p.windowLUT[3][idxbL] ) )
-
-      for l1=(c1-p.m):(c1+p.m)
-        idx1 = ((l1+n2)%n2) + 1
-        idxb = abs((p.x[2,k]*n2 - l1)*scale) + 1
-        idxbL = floor(Int,idxb)
-
-        tmp2 = tmp * (p.windowLUT[2][idxbL] + ( idxb-idxbL ) * (p.windowLUT[2][idxbL+1] - p.windowLUT[2][idxbL] ) )
-
-        for l0=(c0-p.m):(c0+p.m)
-          idx0 = ((l0+n1)%n1) + 1
-          idxb = abs((p.x[1,k]*n1 - l0)*scale) + 1
-          idxbL = round(Int,idxb)
-          g[idx0,idx1,idx2] += tmp2 * (p.windowLUT[1][idxbL] + ( idxb-idxbL ) * (p.windowLUT[1][idxbL+1] - p.windowLUT[1][idxbL] ) )
-        end
-      end
-    end
-  end
-end
-
-
-function convolve_adjoint!{T,D}(p::NFFTPlan{D}, fHat::AbstractVector{T}, g::StridedArray{T,D})
-  l = Array(Int,D)
-  idx = Array(Int,D)
-  P = Array(Int,D)
-  c = Array(Int,D)
-
-  for k=1:p.M # loop over nonequispaced nodes
-
-    for d=1:D
-      c[d] = floor(Int,p.x[d,k]*p.n[d])
-      P[d] = 2*p.m + 1
-    end
-
-    for j=1:prod(P) # loop over nonzero elements
-      it = ind2sub(tuple(P...),j)
-      for d=1:D
-        l[d] = c[d]-p.m+it[d]
-        idx[d] = ((l[d]+p.n[d])%p.n[d]) + 1
-      end
-
-      tmp = fHat[k]
-      for d=1:D
-        idx2 = abs(((p.x[d,k]*p.n[d] - l[d])/p.m )*(p.K-1)) + 1
-        idx2L = floor(Int,idx2)
-        tmp *= (p.windowLUT[d][idx2L] + ( idx2-idx2L ) * (p.windowLUT[d][idx2L+1] - p.windowLUT[d][idx2L] ) )
-      end
-
-      g[idx...] += tmp;
-    end
-  end
+			@nloops $D l d -> (c_d-p.m):(c_d+p.m) d->begin
+				# preexpr
+				gidx_d = rem(l_d+p.n[d], p.n[d]) + 1 
+				idx = abs( (xscale_d - l_d)*scale ) + 1
+				idxL = floor(idx)
+				idxInt = Int(idxL)
+				tmpWin_d = p.windowLUT[d][idxInt] + ( idx-idxL ) * (p.windowLUT[d][idxInt+1] - p.windowLUT[d][idxInt])
+			end begin
+				# bodyexpr
+				v = fHat[k]
+				@nexprs $D d -> v *= tmpWin_d
+				(@nref $D g gidx) += v
+			end
+		end
+	end
 end
 
 
@@ -384,55 +314,16 @@ function apodization_adjoint!{T}(p::NFFTPlan{1}, g::AbstractVector{T}, f::Stride
   end
 end
 
-function apodization_adjoint!{T}(p::NFFTPlan{2}, g::AbstractMatrix{T}, f::StridedMatrix{T})
-  n1 = p.n[1]
-  N1 = p.N[1]
-  n2 = p.n[2]
-  N2 = p.N[2]
-  const offset1 = round( Int, n1 - N1 / 2 ) - 1
-  const offset2 = round( Int, n2 - N2 / 2 ) - 1
-  for ly=1:N2
-    for lx=1:N1
-      f[lx, ly] = g[((lx+offset1)% n1) + 1, ((ly+offset2)% n2) + 1] * p.windowHatInvLUT[1][lx] * p.windowHatInvLUT[2][ly]
-    end
-  end
-end
+@generated function apodization_adjoint!{T,D}(p::NFFTPlan{D}, g::AbstractArray{T,D}, f::StridedArray{T,D})
+	quote
+		@nexprs $D d -> offset_d = round(Int, p.n[d] - p.N[d]/2) - 1
 
-function apodization_adjoint!{T}(p::NFFTPlan{3}, g::AbstractArray{T,3}, f::StridedArray{T,3})
-  n1 = p.n[1]
-  N1 = p.N[1]
-  n2 = p.n[2]
-  N2 = p.N[2]
-  n3 = p.n[3]
-  N3 = p.N[3]
-
-  const offset1 = round( Int, n1 - N1 / 2 ) - 1
-  const offset2 = round( Int, n2 - N2 / 2 ) - 1
-  const offset3 = round( Int, n3 - N3 / 2 ) - 1
-  for lz=1:N3
-    for ly=1:N2
-      for lx=1:N1
-        f[lx, ly, lz] = g[((lx+offset1)% n1) + 1, ((ly+offset2)% n2) + 1, ((lz+offset3)% n3) + 1] * p.windowHatInvLUT[1][lx] * p.windowHatInvLUT[2][ly] * p.windowHatInvLUT[3][lz]
-      end
-    end
-  end
-end
-
-function apodization_adjoint!{T,D}(p::NFFTPlan{D}, g::AbstractArray{T,D}, f::StridedArray{T,D})
-  const offset = ntuple(d-> round( Int, p.n[d] - p.N[d] / 2 ) - 1, D)
-  idx = Array(Int, D)
-  for l=1:prod(p.N)
-    it = ind2sub(p.N,l)
-
-    windowHatInvLUTProd = 1.0
-
-    for d=1:D
-      idx[d] = ((it[d]+offset[d])% p.n[d]) + 1
-      windowHatInvLUTProd *= p.windowHatInvLUT[d][it[d]] 
-    end
- 
-    f[it...] = g[idx...] * windowHatInvLUTProd
-  end
+		@nloops $D l f begin
+			v = @nref $D g d -> rem(l_d+offset_d, p.n[d]) + 1
+			@nexprs $D d -> v *= p.windowHatInvLUT[d][l_d]
+			(@nref $D f l) = v
+		end
+	end
 end
 
 
