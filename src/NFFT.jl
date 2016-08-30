@@ -193,6 +193,7 @@ end
 ### convolve! ###
 
 function convolve!{T}(p::NFFTPlan{1}, g::AbstractVector{T}, fHat::StridedVector{T})
+  fill!(fHat, zero(T))
   n = p.n[1]
 
   for k=1:p.M # loop over nonequispaced nodes
@@ -209,6 +210,7 @@ function convolve!{T}(p::NFFTPlan{1}, g::AbstractVector{T}, fHat::StridedVector{
 end
 
 function convolve!{T}(p::NFFTPlan{2}, g::AbstractMatrix{T}, fHat::StridedVector{T})
+  fill!(fHat, zero(T))
   scale = 1.0 / p.m * (p.K-1)
 
   n1 = p.n[1]
@@ -231,15 +233,23 @@ function convolve!{T}(p::NFFTPlan{2}, g::AbstractMatrix{T}, fHat::StridedVector{
 
         idx0 = ((l0+n1)% n1) + 1
         idx2 = abs((p.x[1,k]*n1 - l0)*scale) + 1
-        idx2L = round(Int,idx2)
+        #= idx2L = round(Int,idx2) =#
+        idx2L = floor(Int,idx2)
 
-        fHat[k] += g[idx0,idx1] * tmpWin * (p.windowLUT[1][idx2L] + ( idx2-idx2L ) * (p.windowLUT[1][idx2L+1] - p.windowLUT[1][idx2L] ) )
+		tmpWin2 = p.windowLUT[1][idx2L] + ( idx2-idx2L ) * (p.windowLUT[1][idx2L+1] - p.windowLUT[1][idx2L] )
+		v = g[idx0,idx1]
+		v *= tmpWin2
+		v *= tmpWin
+        fHat[k] += v
+
+        #= fHat[k] += g[idx0,idx1] * tmpWin * (p.windowLUT[1][idx2L] + ( idx2-idx2L ) * (p.windowLUT[1][idx2L+1] - p.windowLUT[1][idx2L] ) ) =#
       end
     end
   end
 end
 
 function convolve!{T}(p::NFFTPlan{3}, g::AbstractArray{T,3}, fHat::StridedVector{T})
+  fill!(fHat, zero(T))
   scale = 1.0 / p.m * (p.K-1)
 
   n1 = p.n[1]
@@ -282,37 +292,28 @@ function convolve!{T}(p::NFFTPlan{3}, g::AbstractArray{T,3}, fHat::StridedVector
   end
 end
 
+@generated function convolveD!{T,D}(p::NFFTPlan{D}, g::AbstractArray{T,D}, fHat::StridedVector{T})
+	quote
+		fill!(fHat, zero(T))
+		scale = 1.0 / p.m * (p.K-1)
 
-function convolve!{T,D}(p::NFFTPlan{D}, g::AbstractArray{T,D}, fHat::StridedVector{T})
-  l = Array(Int,D)
-  idx = Array(Int,D)
-  P = Array(Int,D)
-  c = Array(Int,D)
+		for k in 1:p.M
+			@nexprs $D d -> c_d = floor(Int, p.x[d,k]*p.n[d])
 
-  for k=1:p.M # loop over nonequispaced nodes
-
-    for d=1:D
-      c[d] = floor(Int,p.x[d,k]*p.n[d])
-      P[d] = 2*p.m + 1
-    end
-
-    for j=1:prod(P) # loop over nonzero elements
-      it = ind2sub(tuple(P...),j)
-      for d=1:D
-        l[d] = c[d]-p.m+it[d]
-        idx[d] = ((l[d]+p.n[d])% p.n[d]) + 1
-      end
-
-      tmp = g[idx...]
-      for d=1:D
-        idx2 = abs(((p.x[d,k]*p.n[d] - l[d])/p.m )*(p.K-1)) + 1
-        idx2L = floor(Int,idx2)
-        tmp *= (p.windowLUT[d][idx2L] + ( idx2-idx2L ) * (p.windowLUT[d][idx2L+1] - p.windowLUT[d][idx2L] ) )
-      end
-
-      fHat[k] += tmp;
-    end
-  end
+			@nloops $D l d -> (c_d-p.m):(c_d+p.m) d->begin
+				# preexpr
+				idx_d = rem(l_d+p.n[d], p.n[d]) + 1 
+				idx2 = abs( (p.x[d,k]*p.n[d] - l_d)*scale ) + 1
+				idx2L = floor(Int, idx2)
+				tmpWin_d = p.windowLUT[d][idx2L] + ( idx2-idx2L ) * (p.windowLUT[d][idx2L+1] - p.windowLUT[d][idx2L])
+			end begin
+				# bodyexpr
+				v = @nref $D g idx
+				@nexprs $D d -> v *= tmpWin_d
+				fHat[k] += v
+			end
+		end
+	end
 end
 
 
@@ -441,43 +442,9 @@ function apodization!{T}(p::NFFTPlan{1}, f::AbstractVector{T}, g::StridedVector{
   end
 end
 
-function apodization!{T}(p::NFFTPlan{2}, f::AbstractMatrix{T}, g::StridedMatrix{T})
-  n1 = p.n[1]
-  N1 = p.N[1]
-  n2 = p.n[2]
-  N2 = p.N[2]
-  const offset1 = round( Int, n1 - N1 / 2 ) - 1
-  const offset2 = round( Int, n2 - N2 / 2 ) - 1
-  for ly=1:N2
-    for lx=1:N1
-      g[((lx+offset1)% n1) + 1, ((ly+offset2)% n2) + 1] = f[lx, ly]  *  p.windowHatInvLUT[1][lx] * p.windowHatInvLUT[2][ly]
-    end
-  end
-end
-
-function apodization!{T}(p::NFFTPlan{3}, f::AbstractArray{T,3}, g::StridedArray{T,3})
-  n1 = p.n[1]
-  N1 = p.N[1]
-  n2 = p.n[2]
-  N2 = p.N[2]
-  n3 = p.n[3]
-  N3 = p.N[3]
-
-  const offset1 = round( Int, n1 - N1 / 2 ) - 1
-  const offset2 = round( Int, n2 - N2 / 2 ) - 1
-  const offset3 = round( Int, n3 - N3 / 2 ) - 1
-  for lz=1:N3
-    for ly=1:N2
-      for lx=1:N1
-        g[((lx+offset1)% n1) + 1, ((ly+offset2)% n2) + 1, ((lz+offset3)% n3) + 1] = f[lx, ly, lz]  *  p.windowHatInvLUT[1][lx] * p.windowHatInvLUT[2][ly] * p.windowHatInvLUT[3][lz]
-      end
-    end
-  end
-end
-
 @generated function apodization!{T,D}(p::NFFTPlan{D}, f::AbstractArray{T,D}, g::StridedArray{T,D})
 	quote
-		@nexprs $D d -> offset_d = round(Int, p.n[d] - p.N[d] / 2) - 1
+		@nexprs $D d -> offset_d = round(Int, p.n[d] - p.N[d]/2) - 1
 
 		@nloops $D l f begin
 			v = @nref $D f l
