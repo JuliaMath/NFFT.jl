@@ -5,16 +5,12 @@ eps = 1e-5
 m = 4
 sigma = 2.0
 
-D = 0
 for N in [(128,), (16,16), (12,12,12), (6,6,6,6)]
-  D += 1
-  @printf("Testing in dimension %u...\n", D)
+  D = length(N)
+  @printf("Testing in %u dimensions...\n", D)
 
   M = prod(N)
-  x = reshape(linspace(-0.4, 0.4, D*M), D, M)
-  if !(typeof(x) <: Array)
-	  x = collect(x)
-  end
+  x = rand(D,M) - 0.5
   p = NFFTPlan(x, N, m, sigma)
 
   fHat = linspace(0,1,M)*im

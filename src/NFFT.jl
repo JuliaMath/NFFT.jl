@@ -49,7 +49,7 @@ type NFFTPlan{D,T}
   tmpVec::Array{Complex{T},D}
 end
 
-function NFFTPlan{D,T}(x::Array{T,2}, N::NTuple{D,Int}, m=4, sigma=2.0, K=2000)
+function NFFTPlan{D,T}(x::Matrix{T}, N::NTuple{D,Int}, m=4, sigma=2.0, K=2000)
   
   if D != size(x,1)
     throw(ArgumentError())
@@ -84,7 +84,7 @@ function NFFTPlan{D,T}(x::Array{T,2}, N::NTuple{D,Int}, m=4, sigma=2.0, K=2000)
   NFFTPlan(N, M, x, m, sigma, n, K, windowLUT, windowHatInvLUT, tmpVec )
 end
 
-function NFFTPlan{T}(x::Array{T,1}, N::Integer, m=4, sigma=2.0)
+function NFFTPlan{T}(x::Vector{T}, N::Integer, m=4, sigma=2.0)
   NFFTPlan(reshape(x,1,length(x)), (N,), m, sigma)
 end
 
@@ -127,13 +127,13 @@ function nfft_adjoint!{T,D}(p::NFFTPlan{D}, fHat::AbstractArray{T}, f::StridedAr
   return f
 end
 
-function nfft_adjoint{T,D}(p::NFFTPlan{D}, fHat::Vector{Complex{T}})
+function nfft_adjoint{T,D}(p::NFFTPlan{D}, fHat::AbstractVector{Complex{T}})
   f = zeros(Complex{T},p.N)
   nfft_adjoint!(p, fHat, f)
   return f
 end
 
-function nfft_adjoint{T,D}(x, N::NTuple{D,Int}, fHat::Vector{T})
+function nfft_adjoint{T,D}(x, N::NTuple{D,Int}, fHat::AbstractVector{T})
   p = NFFTPlan(x, N)
   return nfft_adjoint(p, fHat)
 end
