@@ -1,14 +1,10 @@
+# Documentation: http://docs.travis-ci.com/user/languages/julia/
 language: julia
 os:
-    - linux
+  - linux
 julia:
-    - 0.4
-    - nightly
+  - 0.4
+  - release
+  - nightly
 notifications:
     email: false
-script:
-    - if [[ -a .git/shallow ]]; then git fetch --unshallow; fi
-    - julia -e 'Pkg.clone(pwd())'
-    - julia -e 'Pkg.test("NFFT", coverage=true)'
-after_success:
-    - julia -e 'Pkg.add("Coverage"); cd(Pkg.dir("NFFT")); using Coverage; Coveralls.submit(Coveralls.process_folder()); Codecov.submit(process_folder())'

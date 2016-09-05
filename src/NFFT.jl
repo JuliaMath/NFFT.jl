@@ -39,7 +39,7 @@ end
 type NFFTPlan{D,T}
   N::NTuple{D,Int64}
   M::Int64
-  x::Array{T,2}
+  x::Matrix{T}
   m::Int64
   sigma::T
   n::NTuple{D,Int64}
@@ -117,6 +117,7 @@ function nfft{T,D}(x, f::AbstractArray{T,D})
   return nfft(p, f)
 end
 
+
 function nfft_adjoint!{T,D}(p::NFFTPlan{D}, fHat::AbstractArray{T}, f::StridedArray{T,D})
   consistencyCheck(p, f, fHat)
 
@@ -191,17 +192,17 @@ end
 
 function convolve!{T}(p::NFFTPlan{1}, g::AbstractVector{T}, fHat::StridedVector{T})
   fill!(fHat, zero(T))
+  scale = 1.0 / p.m * (p.K-1)
   n = p.n[1]
 
   for k=1:p.M # loop over nonequispaced nodes
-    c = floor(Int,p.x[k]*n)
+    c = floor(Int, p.x[k]*n)
     for l=(c-p.m):(c+p.m) # loop over nonzero elements
+      gidx = rem(l+n, n) + 1
+      idx = abs( (p.x[k]*n - l)*scale ) + 1
+      idxL = floor(Int, idx)
 
-      idx = ((l+n)% n) + 1
-      idx2 = abs(((p.x[k]*n - l)/p.m )*(p.K-1)) + 1
-      idx2L = floor(Int,idx2)
-
-      fHat[k] += g[idx] * (p.windowLUT[1][idx2L] + ( idx2-idx2L ) * (p.windowLUT[1][idx2L+1] - p.windowLUT[1][idx2L] ) )
+      fHat[k] += g[gidx] * (p.windowLUT[1][idxL] + ( idx-idxL ) * (p.windowLUT[1][idxL+1] - p.windowLUT[1][idxL]))
     end
   end
 end
@@ -237,17 +238,17 @@ end
 
 function convolve_adjoint!{T}(p::NFFTPlan{1}, fHat::AbstractVector{T}, g::StridedVector{T})
   fill!(g, zero(T))
+  scale = 1.0 / p.m * (p.K-1)
   n = p.n[1]
 
   for k=1:p.M # loop over nonequispaced nodes
     c = round(Int,p.x[k]*n)
     for l=(c-p.m):(c+p.m) # loop over nonzero elements
+      gidx = rem(l+n, n) + 1
+      idx = abs( (p.x[k]*n - l)*scale ) + 1
+      idxL = round(Int, idx)
 
-      idx = ((l+n)%n)+1
-      idx2 = abs(((p.x[k]*n - l)/p.m )*(p.K-1)) + 1
-      idx2L = round(Int,idx2)
-
-      g[idx] += fHat[k] * (p.windowLUT[1][idx2L] + ( idx2-idx2L ) * (p.windowLUT[1][idx2L+1] - p.windowLUT[1][idx2L] ) )
+      g[gidx] += fHat[k] * (p.windowLUT[1][idxL] + ( idx-idxL ) * (p.windowLUT[1][idxL+1] - p.windowLUT[1][idxL]))
     end
   end
 end
@@ -434,5 +435,7 @@ function nfft_performance()
 end
 
 
+function nfft!{T,D}(p::NFFTPlan{1}, f::AbstractArray{T,D}, d::Integer, fHat::StridedArray{T,D})
+end
 
 end
