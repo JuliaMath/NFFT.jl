@@ -7,7 +7,7 @@ sigma = 2.0
 
 for N in [(128,), (16,16), (12,12,12), (6,6,6,6)]
   D = length(N)
-  @printf("Testing in %u dimensions...\n", D)
+  println("Testing in ", D, " dimensions...")
 
   M = prod(N)
   x = rand(D,M) - 0.5
@@ -28,31 +28,33 @@ for N in [(128,), (16,16), (12,12,12), (6,6,6,6)]
 end
 
 
-# NFFT along a specified dimension
-# In an array with repeated entries the result should be the same as
-# repeating the output of 1D NFFT
-for N in [(16,16), (8,8,8)]
+# NFFT along a specified dimension should give the same result as
+# running a 1D NFFT on every slice along that dimension
+for N in [tuple(2*rand(4:8,2)...), tuple(2*rand(3:5,3)...)]
 	M = prod(N)
 	D = length(N)
+
+	println("Testing directional NFFT in ", D, " dimensions...")
 	for d in 1:D
 		x = rand(M) - 0.5
 
+		f = rand(N) + rand(N)*im
+		p_dir = NFFTPlan(x, d, N)
+		fHat_dir = nfft(p_dir, f)
+
 		p = NFFTPlan(x, N[d])
-		f = rand(N[d]) + rand(N[d])*im
-		fHat = nfft(p, f)
+		fHat = similar(fHat_dir)
 
-		reshape_dim = ones(Int,D)
-		reshape_dim[d] = N[d]
-		f = reshape(f, (reshape_dim...))
-		rep_dim = [N...]
-		rep_dim[d] = 1
-		f_rep = repeat(f, outer=rep_dim)
-		p_dir = NFFTDirPlan(x, N, d)
-		fHat_dir = nfft(p_dir, f_rep)
+		sz = size(fHat)
+		Rpre = CartesianRange( sz[1:d-1] )
+		Rpost = CartesianRange( sz[d+1:end] )
+		for Ipost in Rpost, Ipre in Rpre
+			idx = [Ipre, :, Ipost]
+			fview = f[idx...]
+			fHat[idx...] = nfft(p, vec(fview))
+		end
 
-		reshape_dim[d] = M
-		fHat = reshape(fHat, (reshape_dim...))
-		e = norm( repeat(fHat, outer=rep_dim)[:] - fHat_dir[:] )
+		e = norm( fHat_dir[:] - fHat[:] )
 		@test_approx_eq e 0
 	end
 end

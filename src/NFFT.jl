@@ -3,25 +3,25 @@ module NFFT
 import Base.ind2sub
 using Base.Cartesian
 
-export NFFTPlan, NFFTDirPlan, nfft, nfft_adjoint, ndft, ndft_adjoint, nfft_performance, sdc
-
-# Some internal documentation (especially for people familiar with the nfft)
-#
-# - Currently the window cannot be changed and defaults to the kaiser-bessel
-#   window. This is done for simplicity and due to the fact that the 
-#   kaiser-bessel window usually outperforms any other window
-#
-# - The window is precomputed during construction of the NFFT plan
-#   When performing the nfft convolution, the LUT of the window is used to
-#   perform linear interpolation. This approach is reasonable fast and does not
-#   require too much memory. There are, however alternatives known that are either 
-#   faster or require no extra memory at all.
+export NFFTPlan, nfft, nfft_adjoint, ndft, ndft_adjoint, nfft_performance, sdc
 
 #=
+Some internal documentation (especially for people familiar with the nfft)
+
+- Currently the window cannot be changed and defaults to the kaiser-bessel
+  window. This is done for simplicity and due to the fact that the 
+  kaiser-bessel window usually outperforms any other window
+
+- The window is precomputed during construction of the NFFT plan
+  When performing the nfft convolution, the LUT of the window is used to
+  perform linear interpolation. This approach is reasonable fast and does not
+  require too much memory. There are, however alternatives known that are either 
+  faster or require no extra memory at all.
+
 The non-exported functions apodization and convolve are implemented
-using the Cartesian macros, that may not be very readable. 
+using Cartesian macros, that may not be very readable. 
 This is a conscious decision where performance has outweighed readability.
-More readable versions can be written using the CartesianRange approach, 
+More readable versions can be (and have been) written using the CartesianRange approach, 
 but at the time of writing this approach require *a lot* of memory.
 =#
 
@@ -43,7 +43,14 @@ function window_kaiser_bessel_hat(k,n,m,sigma)
   return besseli(0,m*sqrt(b^2-(2*pi*k/n)^2))
 end
 
-type NFFTPlan{D,T}
+#=
+D is the number of dimension of the array to be transformed.
+DIM is the dimension along which the array is transformed. 
+DIM == 0 is the ordinary NFFT.
+DIM is type parameter since it allows the @generated macro to 
+make more efficient methods.
+=#
+type NFFTPlan{D,DIM,T}
   N::NTuple{D,Int64}
   M::Int64
   x::Matrix{T}
@@ -53,6 +60,8 @@ type NFFTPlan{D,T}
   K::Int64
   windowLUT::Vector{Vector{T}}
   windowHatInvLUT::Vector{Vector{T}}
+  forwardFFT::Base.DFT.FFTW.cFFTWPlan
+  backwardFFT::Base.DFT.ScaledPlan
   tmpVec::Array{Complex{T},D}
 end
 
@@ -68,11 +77,13 @@ function NFFTPlan{D,T}(x::Matrix{T}, N::NTuple{D,Int}, m=4, sigma=2.0, K=2000)
 
   M = size(x,2)
 
+  P = plan_fft!(tmpVec)
+
   # Create lookup table
   
   windowLUT = Array(Vector{T},D)
+  Z = round(Int,3*K/2)
   for d=1:D
-    Z = round(Int,3*K/2)
     windowLUT[d] = zeros(T, Z)
     for l=1:Z
       y = ((l-1) / (K-1)) * m/n[d]
@@ -88,56 +99,57 @@ function NFFTPlan{D,T}(x::Matrix{T}, N::NTuple{D,Int}, m=4, sigma=2.0, K=2000)
     end
   end
 
-  NFFTPlan(N, M, x, m, sigma, n, K, windowLUT, windowHatInvLUT, tmpVec )
+  NFFTPlan{D,0,T}(N, M, x, m, sigma, n, K, windowLUT, windowHatInvLUT, P, inv(P), tmpVec )
 end
 
-function NFFTPlan{T}(x::Vector{T}, N::Integer, m=4, sigma=2.0)
+function NFFTPlan(x::Vector, N::Integer, m=4, sigma=2.0)
   NFFTPlan(reshape(x,1,length(x)), (N,), m, sigma)
 end
 
-# D is the number of dimension of the array to be transformed
-# DIM is the dimension along which the array is transformed. DIM is a
-# type parameter since it allows the @generated macro to make more
-# efficient methods.
-type NFFTDirPlan{D,DIM,T}
-	N::NTuple{D,Int64}
-	M::Int64
-	x::Vector{T}
-	m::Int64
-	sigma::T
-	n::NTuple{D,Int64}
-	K::Int64
-	windowLUT::Vector{T}
-	windowHatInvLUT::Vector{T}
-	tmpVec::Array{Complex{T},D}
+# Directional NFFT
+function NFFTPlan{D,T}(x::Vector{T}, dim::Integer, N::NTuple{D,Int64}, m=4, sigma=2.0, K=2000)
+  n = ntuple(d->round(Int, sigma*N[d]), D)
+
+  sz = [N...]
+  sz[dim] = n[dim]
+  tmpVec = Array{Complex{T}}(sz...)
+
+  M = length(x)
+
+  P = plan_fft!(tmpVec, dim)
+
+  windowLUT = Array(Vector{T}, 1)
+  Z = round(Int, 3*K/2)
+  windowLUT[1] = zeros(T, Z)
+  for l = 1:Z
+	  y = ((l-1) / (K-1)) * m/n[dim]
+	  windowLUT[1][l] = window_kaiser_bessel(y, n[dim], m, sigma)
+  end
+
+  windowHatInvLUT = Array(Vector{T}, 1)
+  windowHatInvLUT[1] = zeros(T, N[dim])
+  for k = 1:N[dim]
+	  windowHatInvLUT[1][k] = 1. / window_kaiser_bessel_hat(k-1-N[dim]/2, n[dim], m, sigma)
+  end
+
+  NFFTPlan{D,dim,T}(N, M, reshape(x,1,M), m, sigma, n, K, windowLUT, windowHatInvLUT, P, inv(P), tmpVec)
 end
 
-function NFFTDirPlan{D,T}(x::Vector{T}, N::NTuple{D,Int64}, d::Integer, m=4, sigma=2.0, K=2000)
-	n = ntuple(d->round(Int,sigma*N[d]), D)
+function NFFTPlan{D,T}(x::Matrix{T}, dim::Integer, N::NTuple{D,Int}, m=4, sigma=2.0, K=2000)
+  if size(x,1) != 1 && size(x,2) != 1
+	  throw(DimensionMismatch())
+  end
 
-	sz = [N...]
-	sz[d] = n[d]
-	tmpVec = Array{Complex{T}}(sz...)
-
-	M = length(x)
-
-	Z = round(Int, 3*K/2)
-	windowLUT = Vector{T}(Z)
-	for l in 1:Z
-		y = ((l-1) / (K-1)) * m/n[d]
-		windowLUT[l] = window_kaiser_bessel(y, n[d], m, sigma)
-	end
-
-	windowHatInvLUT = Vector{T}(N[d])
-	for k in 1:N[d]
-		windowHatInvLUT[k] = 1. / window_kaiser_bessel_hat(k-1-N[d]/2, n[d], m, sigma)
-	end
-
-	NFFTDirPlan{D,d,T}(N, M, x, m, sigma, n, K, windowLUT, windowHatInvLUT, tmpVec)
+  NFFTPlan(vec(x), dim, N, m, sigma, K)
 end
 
-function Base.show{D,DIM}(io::IO, p::NFFTDirPlan{D,DIM})
-	print(io, "NFFTPlan for ", p.N, " array along dimension ", DIM)
+
+function Base.show{D}(io::IO, p::NFFTPlan{D,0})
+	print(io, "NFFTPlan with ", p.M, " sampling points for ", p.N, " array")
+end
+
+function Base.show{D,DIM}(io::IO, p::NFFTPlan{D,DIM})
+	print(io, "NFFTPlan with ", p.M, " sampling points for ", p.N, " array along dimension ", DIM)
 end
 
 
@@ -147,20 +159,29 @@ function consistencyCheck{T,D}(p::NFFTPlan{D}, f::AbstractArray{T,D}, fHat::Abst
 	end
 end
 
+@generated function consistencyCheck{D,DIM,T}(p::NFFTPlan{D,DIM}, f::AbstractArray{T,D}, fHat::AbstractArray{T,D})
+	quote
+		fHat_test = @nall $D d -> ( d == $DIM ? size(fHat,d) == p.M : size(fHat,d) == p.N[d] )
+		if p.N != size(f) || !fHat_test
+			throw(DimensionMismatch("Data is not consistent with NFFTPlan"))
+		end
+	end
+end
+
 
 ### nfft functions ###
 
-function nfft!{T,D}(p::NFFTPlan{D}, f::AbstractArray{T,D}, fHat::StridedVector{T})
+function nfft!{T}(p::NFFTPlan, f::AbstractArray{T}, fHat::StridedArray{T})
   consistencyCheck(p, f, fHat)
 
   fill!(p.tmpVec, zero(T))
   @inbounds apodization!(p, f, p.tmpVec)
-  fft!(p.tmpVec)
+  p.forwardFFT * p.tmpVec # fft!(p.tmpVec) or fft!(p.tmpVec, dim)
   @inbounds convolve!(p, p.tmpVec, fHat)
   return fHat
 end
 
-function nfft{T,D}(p::NFFTPlan, f::AbstractArray{T,D})
+function nfft{D,T}(p::NFFTPlan{D,0}, f::AbstractArray{T,D})
   fHat = zeros(T, p.M)
   nfft!(p, f, fHat)
   return fHat
@@ -171,26 +192,7 @@ function nfft{T,D}(x, f::AbstractArray{T,D})
   return nfft(p, f)
 end
 
-function nfft!{D,DIM,T}(p::NFFTDirPlan{D,DIM}, f::AbstractArray{T,D}, fHat::StridedArray{T,D})
-  #=
-  size(f) == p.N
-  @nall $D d -> begin
-	  if d == $DIM 
-		  size(fHat,d) == p.M
-	  else
-		  size(fHat,d) == p.N[d]
-	  end
-  end
-  =#
-
-  fill!(p.tmpVec, zero(T))
-  @inbounds apodization!(p, f, p.tmpVec)
-  fft!(p.tmpVec, DIM)
-  @inbounds convolve!(p, p.tmpVec, fHat)
-  return fHat
-end
-
-function nfft{D,DIM,T}(p::NFFTDirPlan{D,DIM}, f::AbstractArray{T,D})
+function nfft{D,DIM,T}(p::NFFTPlan{D,DIM}, f::AbstractArray{T,D})
   sz = [p.N...]
   sz[DIM] = p.M
   fHat = Array{T}(sz...)
@@ -271,7 +273,7 @@ end
 
 ### convolve! ###
 
-function convolve!{T}(p::NFFTPlan{1}, g::AbstractVector{T}, fHat::StridedVector{T})
+function convolve!{T}(p::NFFTPlan{1,0}, g::AbstractVector{T}, fHat::StridedVector{T})
   fill!(fHat, zero(T))
   scale = 1.0 / p.m * (p.K-1)
   n = p.n[1]
@@ -288,7 +290,7 @@ function convolve!{T}(p::NFFTPlan{1}, g::AbstractVector{T}, fHat::StridedVector{
   end
 end
 
-@generated function convolve!{T,D}(p::NFFTPlan{D}, g::AbstractArray{T,D}, fHat::StridedVector{T})
+@generated function convolve!{D,T}(p::NFFTPlan{D,0}, g::AbstractArray{T,D}, fHat::StridedVector{T})
 	quote
 		fill!(fHat, zero(T))
 		scale = 1.0 / p.m * (p.K-1)
@@ -314,13 +316,13 @@ end
 	end
 end
 
-@generated function convolve!{D,DIM,T}(p::NFFTDirPlan{D,DIM}, g::AbstractArray{T,D}, fHat::StridedArray{T,D})
+@generated function convolve!{D,DIM,T}(p::NFFTPlan{D,DIM}, g::AbstractArray{T,D}, fHat::StridedArray{T,D})
 	quote
 		fill!(fHat, zero(T))
 		scale = 1.0 / p.m * (p.K-1)
 
 		for k in 1:p.M
-			xscale = p.x[k] * p.n[1]
+			xscale = p.x[k] * p.n[$DIM]
 			c = floor(Int, xscale)
 			@nloops $D l d->begin
 				# rangeexpr
@@ -332,11 +334,11 @@ end
 			end d->begin
 				# preexpr
 				if d == $DIM
-					gidx_d = rem(l_d+p.n[1], p.n[1]) + 1
+					gidx_d = rem(l_d+p.n[$DIM], p.n[$DIM]) + 1
 					idx = abs( (xscale - l_d)*scale ) + 1
 					idxL = floor(idx)
 					idxInt = Int(idxL)
-					tmpWin = p.windowLUT[idxInt] + ( idx-idxL ) * (p.windowLUT[idxInt+1] - p.windowLUT[idxInt])
+					tmpWin = p.windowLUT[1][idxInt] + ( idx-idxL ) * (p.windowLUT[1][idxInt+1] - p.windowLUT[1][idxInt])
 					fidx_d = k
 				else
 					gidx_d = l_d
@@ -399,7 +401,7 @@ end
 
 ### apodization! ###
 
-function apodization!{T}(p::NFFTPlan{1}, f::AbstractVector{T}, g::StridedVector{T})
+function apodization!{T}(p::NFFTPlan{1,0}, f::AbstractVector{T}, g::StridedVector{T})
   n = p.n[1]
   N = p.N[1]
   const offset = round( Int, n - N / 2 ) - 1
@@ -408,7 +410,7 @@ function apodization!{T}(p::NFFTPlan{1}, f::AbstractVector{T}, g::StridedVector{
   end
 end
 
-@generated function apodization!{T,D}(p::NFFTPlan{D}, f::AbstractArray{T,D}, g::StridedArray{T,D})
+@generated function apodization!{D,T}(p::NFFTPlan{D,0}, f::AbstractArray{T,D}, g::StridedArray{T,D})
 	quote
 		@nexprs $D d -> offset_d = round(Int, p.n[d] - p.N[d]/2) - 1
 
@@ -420,21 +422,21 @@ end
 	end
 end
 
-@generated function apodization!{D,DIM,T}(p::NFFTDirPlan{D,DIM}, f::AbstractArray{T,D}, g::StridedArray{T,D})
+@generated function apodization!{D,DIM,T}(p::NFFTPlan{D,DIM}, f::AbstractArray{T,D}, g::StridedArray{T,D})
 	quote
-		offset = round(Int, p.n[1] - p.N[1]/2) - 1
+		offset = round(Int, p.n[$DIM] - p.N[$DIM]/2) - 1
 
 		@nloops $D l f d->begin
 			# preexpr
 			if d == $DIM
-				gidx_d = rem(l_d+offset, p.n[1]) + 1
+				gidx_d = rem(l_d+offset, p.n[d]) + 1
 				winidx = l_d
 			else
 				gidx_d = l_d
 			end
 		end begin
 			# bodyexpr
-			(@nref $D g gidx) = (@nref $D f l) * p.windowHatInvLUT[winidx]
+			(@nref $D g gidx) = (@nref $D f l) * p.windowHatInvLUT[1][winidx]
 		end
 	end
 end
