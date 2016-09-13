@@ -30,20 +30,22 @@ end
 
 # NFFT along a specified dimension should give the same result as
 # running a 1D NFFT on every slice along that dimension
-for N in [tuple(2*rand(4:8,2)...), tuple(2*rand(3:5,3)...)]
-	M = prod(N)
-	D = length(N)
-
+for D in 2:3
 	println("Testing directional NFFT in ", D, " dimensions...")
+
+	N = tuple( 2*rand(4:8,D)... )
+	M = prod(N)
 	for d in 1:D
 		x = rand(M) - 0.5
 
 		f = rand(N) + rand(N)*im
 		p_dir = NFFTPlan(x, d, N)
 		fHat_dir = nfft(p_dir, f)
+		g_dir = nfft_adjoint(p_dir, fHat_dir)
 
 		p = NFFTPlan(x, N[d])
 		fHat = similar(fHat_dir)
+		g = similar(g_dir)
 
 		sz = size(fHat)
 		Rpre = CartesianRange( sz[1:d-1] )
@@ -52,10 +54,16 @@ for N in [tuple(2*rand(4:8,2)...), tuple(2*rand(3:5,3)...)]
 			idx = [Ipre, :, Ipost]
 			fview = f[idx...]
 			fHat[idx...] = nfft(p, vec(fview))
+
+			fHat_view = fHat_dir[idx...]
+			g[idx...] = nfft_adjoint(p, vec(fHat_view))
 		end
 
 		e = norm( fHat_dir[:] - fHat[:] )
 		@test_approx_eq e 0
+
+		@show e = norm( g_dir[:] - g[:] ) / norm(g[:])
+		#= @test_approx_eq e 0 =#
 	end
 end
 
