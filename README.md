@@ -4,12 +4,15 @@ NFFT.jl
 [![Build Status](https://travis-ci.org/tknopp/NFFT.jl.svg?branch=master)](https://travis-ci.org/tknopp/NFFT.jl)
 
 This package provides a Julia implementation of the Non-equidistant Fast Fourier Transform (NFFT).
-This algorithm is also referred as Gridding in the literature (e.g. in MRI literature) 
+This algorithm is also referred as Gridding in the literature (e.g. in MRI literature).
 For a detailed introduction into the NFFT and its application please have a look at www.nfft.org.
+
 The NFFT is a fast implementation of the Non-equidistant Discrete Fourier Transform (NDFT) that is
-basically a DFT with non-equidistant sampling nodes in either Fourier or time/space domain. In contrast
-to the FFT, the NFFT is an approximative algorithm whereas the accuracy can be controlled by two parameters:
+basically a DFT with non-equidistant sampling nodes in either Fourier or time/space domain. 
+In contrast to the FFT, the NFFT is an approximative algorithm whereas the accuracy can be controlled 
+by two parameters:
 the window width `m` and the oversampling factor `sigma`.
+
 
 ## Installation
 
