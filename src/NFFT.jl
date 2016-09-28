@@ -47,7 +47,7 @@ end
 D is the number of dimensions of the array to be transformed.
 DIM is the dimension along which the array is transformed. 
 DIM == 0 is the ordinary NFFT, i.e., where all dimensions are transformed.
-DIM is type parameter since it allows the @generated macro to 
+DIM is a type parameter since it allows the @generated macro to 
 compile more efficient methods.
 =#
 type NFFTPlan{D,DIM,T}

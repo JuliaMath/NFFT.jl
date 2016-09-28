@@ -64,7 +64,7 @@ f = randn(N) + randn(N)*im
 fHat = nfft(P1, f)
 ```
 
-Here `size(f) = (16,20)` and `size(fHat) = (11,20)` since we compute and NFFT along the first dimension.
+Here `size(f) = (16,20)` and `size(fHat) = (11,20)` since we compute an NFFT along the first dimension.
 To compute the NFFT along the second dimension 
 
 ```julia
