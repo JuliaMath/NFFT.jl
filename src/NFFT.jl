@@ -65,7 +65,10 @@ type NFFTPlan{D,DIM,T}
   tmpVec::Array{Complex{T},D}
 end
 
-function NFFTPlan{D,T}(x::Matrix{T}, N::NTuple{D,Int}, m=4, sigma=2.0, K=2000)
+function NFFTPlan{D,T}(x::AbstractMatrix{T}, N::NTuple{D,Int}, m=4, sigma=2.0, K=2000)
+  if !isa(x, Matrix)
+	  x = collect(x)
+  end
   
   if D != size(x,1)
     throw(ArgumentError())
@@ -103,13 +106,13 @@ function NFFTPlan{D,T}(x::Matrix{T}, N::NTuple{D,Int}, m=4, sigma=2.0, K=2000)
   NFFTPlan{D,0,T}(N, M, x, m, sigma, n, K, windowLUT, windowHatInvLUT, FP, BP, tmpVec )
 end
 
-function NFFTPlan(x::Vector, N::Integer, m=4, sigma=2.0)
+function NFFTPlan(x::AbstractVector, N::Integer, m=4, sigma=2.0)
   NFFTPlan(reshape(x,1,length(x)), (N,), m, sigma)
 end
 
 
 # Directional NFFT
-function NFFTPlan{D,T}(x::Vector{T}, dim::Integer, N::NTuple{D,Int64}, m=4, sigma=2.0, K=2000)
+function NFFTPlan{D,T}(x::AbstractVector{T}, dim::Integer, N::NTuple{D,Int64}, m=4, sigma=2.0, K=2000)
   n = ntuple(d->round(Int, sigma*N[d]), D)
 
   sz = [N...]
@@ -180,6 +183,7 @@ function nfft!{T}(p::NFFTPlan, f::AbstractArray{T}, fHat::StridedArray{T})
   fill!(p.tmpVec, zero(T))
   @inbounds apodization!(p, f, p.tmpVec)
   p.forwardFFT * p.tmpVec # fft!(p.tmpVec) or fft!(p.tmpVec, dim)
+  #= fft!(p.tmpVec) =#
   @inbounds convolve!(p, p.tmpVec, fHat)
   return fHat
 end
