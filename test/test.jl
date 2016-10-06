@@ -5,6 +5,7 @@ eps = 1e-5
 m = 4
 sigma = 2.0
 
+# Test random sampling points and multiple dimensions
 for N in [(128,), (16,16), (12,12,12), (6,6,6,6)]
   D = length(N)
   println("Testing in ", D, " dimensions...")
@@ -13,7 +14,7 @@ for N in [(128,), (16,16), (12,12,12), (6,6,6,6)]
   x = rand(D,M) - 0.5
   p = NFFTPlan(x, N, m, sigma)
 
-  fHat = linspace(0,1,M)*im
+  fHat = rand(M) + rand(M)*im
   f = ndft_adjoint(p, fHat)
   fApprox = nfft_adjoint(p, fHat)
   e = norm(f[:] - fApprox[:]) / norm(f[:])
@@ -27,6 +28,10 @@ for N in [(128,), (16,16), (12,12,12), (6,6,6,6)]
   @test e < eps
 end
 
+# Test sampling points that are abstractly defined
+M, N = rand(100:200, 2)
+x = linspace(-0.4, 0.4, M)
+p = NFFTPlan(x, N)
 
 # NFFT along a specified dimension should give the same result as
 # running a 1D NFFT on every slice along that dimension
