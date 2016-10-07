@@ -60,8 +60,8 @@ type NFFTPlan{D,DIM,T}
   K::Int64
   windowLUT::Vector{Vector{T}}
   windowHatInvLUT::Vector{Vector{T}}
-  forwardFFT::Base.DFT.FFTW.cFFTWPlan
-  backwardFFT::Base.DFT.FFTW.cFFTWPlan
+  forwardFFT::Base.DFT.FFTW.cFFTWPlan{Complex{Float64},-1,true,D}
+  backwardFFT::Base.DFT.FFTW.cFFTWPlan{Complex{Float64},1,true,D}
   tmpVec::Array{Complex{T},D}
 end
 
