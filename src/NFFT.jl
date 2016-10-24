@@ -577,7 +577,7 @@ end
 end
 
 
-function sdc{D,T}(p::NFFTPlan{D,T}; iters=20)
+function sdc{D,T}(p::NFFTPlan{D,0,T}; iters=20)
   # Weights for sample density compensation.
   # Uses method of Pipe & Menon, 1999. Mag Reson Med, 186, 179.
   weights = ones(Complex{T}, p.M)
