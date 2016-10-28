@@ -60,10 +60,10 @@ type NFFTPlan{D,DIM,T}
   K::Int64
   windowLUT::Vector{Vector{T}}
   windowHatInvLUT::Vector{Vector{T}}
-  forwardFFT::Base.DFT.FFTW.cFFTWPlan{Complex{Float64},-1,true,D}
-  backwardFFT::Base.DFT.FFTW.cFFTWPlan{Complex{Float64},1,true,D}
   tmpVec::Array{Complex{T},D}
 end
+
+@inline dim{D,DIM}(::NFFTPlan{D,DIM}) = DIM
 
 @doc """
 	NFFTPlan(x, N, ...) -> plan
@@ -87,9 +87,6 @@ function NFFTPlan{D,T}(x::AbstractMatrix{T}, N::NTuple{D,Int}, m=4, sigma=2.0, K
 
   M = size(x,2)
 
-  FP = plan_fft!(tmpVec)
-  BP = plan_bfft!(tmpVec)
-
   # Create lookup table
   
   windowLUT = Array(Vector{T},D)
@@ -110,7 +107,7 @@ function NFFTPlan{D,T}(x::AbstractMatrix{T}, N::NTuple{D,Int}, m=4, sigma=2.0, K
     end
   end
 
-  NFFTPlan{D,0,T}(N, M, x, m, sigma, n, K, windowLUT, windowHatInvLUT, FP, BP, tmpVec )
+  NFFTPlan{D,0,T}(N, M, x, m, sigma, n, K, windowLUT, windowHatInvLUT, tmpVec )
 end
 
 function NFFTPlan(x::AbstractVector, N::Integer, m=4, sigma=2.0)
@@ -134,9 +131,6 @@ function NFFTPlan{D,T}(x::AbstractVector{T}, dim::Integer, N::NTuple{D,Int64}, m
 
   M = length(x)
 
-  FP = plan_fft!(tmpVec, dim)
-  BP = plan_bfft!(tmpVec, dim)
-
   windowLUT = Array(Vector{T}, 1)
   Z = round(Int, 3*K/2)
   windowLUT[1] = zeros(T, Z)
@@ -151,7 +145,7 @@ function NFFTPlan{D,T}(x::AbstractVector{T}, dim::Integer, N::NTuple{D,Int64}, m
 	  windowHatInvLUT[1][k] = 1. / window_kaiser_bessel_hat(k-1-N[dim]/2, n[dim], m, sigma)
   end
 
-  NFFTPlan{D,dim,T}(N, M, reshape(x,1,M), m, sigma, n, K, windowLUT, windowHatInvLUT, FP, BP, tmpVec)
+  NFFTPlan{D,dim,T}(N, M, reshape(x,1,M), m, sigma, n, K, windowLUT, windowHatInvLUT, tmpVec)
 end
 
 function NFFTPlan{D,T}(x::Matrix{T}, dim::Integer, N::NTuple{D,Int}, m=4, sigma=2.0, K=2000)
@@ -202,8 +196,7 @@ function nfft!{T}(p::NFFTPlan, f::AbstractArray{T}, fHat::StridedArray{T})
 
   fill!(p.tmpVec, zero(T))
   @inbounds apodization!(p, f, p.tmpVec)
-  p.forwardFFT * p.tmpVec # fft!(p.tmpVec) or fft!(p.tmpVec, dim)
-  #= fft!(p.tmpVec) =#
+  dim(p) == 0 ? fft!(p.tmpVec) : fft!(p.tmpVec, dim(p))
   @inbounds convolve!(p, p.tmpVec, fHat)
   return fHat
 end
@@ -250,7 +243,7 @@ function nfft_adjoint!(p::NFFTPlan, fHat::AbstractArray, f::StridedArray)
   consistencyCheck(p, f, fHat)
 
   @inbounds convolve_adjoint!(p, fHat, p.tmpVec)
-  p.backwardFFT * p.tmpVec # bfft!(p.tmpVec) or bfft!(p.tmpVec, dim)
+  dim(p) == 0 ? bfft!(p.tmpVec) : bfft!(p.tmpVec, dim(p))
   @inbounds apodization_adjoint!(p, p.tmpVec, f)
   return f
 end
