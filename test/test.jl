@@ -1,31 +1,33 @@
 using Base.Test
 using NFFT
 
-eps = 1e-5
-m = 4
+eps = 1e-3
+m = 5
 sigma = 2.0
 
 # Test random sampling points and multiple dimensions
 for N in [(128,), (16,16), (12,12,12), (6,6,6,6)]
-  D = length(N)
-  println("Testing in ", D, " dimensions...")
+  for window in [:kaiser_bessel, :gauss, :kaiser_bessel_rev, :spline ,:sinc]
+    D = length(N)
+    println("Testing in ", D, " dimensions using ", string(window)," window" )
 
-  M = prod(N)
-  x = rand(D,M) - 0.5
-  p = NFFTPlan(x, N, m, sigma)
+    M = prod(N)
+    x = rand(D,M) - 0.5
+    p = NFFTPlan(x, N, m, sigma, window)
 
-  fHat = rand(M) + rand(M)*im
-  f = ndft_adjoint(p, fHat)
-  fApprox = nfft_adjoint(p, fHat)
-  e = norm(f[:] - fApprox[:]) / norm(f[:])
-  println(e)
-  @test e < eps
+    fHat = rand(M) + rand(M)*im
+    f = ndft_adjoint(p, fHat)
+    fApprox = nfft_adjoint(p, fHat)
+    e = norm(f[:] - fApprox[:]) / norm(f[:])
+    println(e)
+    @test e < eps
 
-  gHat = ndft(p, f)
-  gHatApprox = nfft(p, f)
-  e = norm(gHat[:] - gHatApprox[:]) / norm(gHat[:])
-  println(e)
-  @test e < eps
+    gHat = ndft(p, f)
+    gHatApprox = nfft(p, f)
+    e = norm(gHat[:] - gHatApprox[:]) / norm(gHat[:])
+    println(e)
+    @test e < eps
+  end
 end
 
 # Test sampling points that are abstractly defined
@@ -71,4 +73,3 @@ for D in 2:3
 		@test e < eps
 	end
 end
-

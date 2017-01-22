@@ -3,51 +3,36 @@ module NFFT
 import Base.ind2sub
 using Base.Cartesian
 
-export NFFTPlan, nfft, nfft_adjoint, ndft, ndft_adjoint, nfft_performance, sdc
+export NFFTPlan, nfft, nfft_adjoint, ndft, ndft_adjoint, nfft_performance
+
+include("windowFunctions.jl")
 
 #=
 Some internal documentation (especially for people familiar with the nfft)
 
 - Currently the window cannot be changed and defaults to the kaiser-bessel
-  window. This is done for simplicity and due to the fact that the 
+  window. This is done for simplicity and due to the fact that the
   kaiser-bessel window usually outperforms any other window
 
 - The window is precomputed during construction of the NFFT plan
   When performing the nfft convolution, the LUT of the window is used to
   perform linear interpolation. This approach is reasonable fast and does not
-  require too much memory. There are, however alternatives known that are either 
+  require too much memory. There are, however alternatives known that are either
   faster or require no extra memory at all.
 
 The non-exported functions apodization and convolve are implemented
-using Cartesian macros, that may not be very readable. 
+using Cartesian macros, that may not be very readable.
 This is a conscious decision where performance has outweighed readability.
-More readable versions can be (and have been) written using the CartesianRange approach, 
+More readable versions can be (and have been) written using the CartesianRange approach,
 but at the time of writing this approach require *a lot* of memory.
 =#
 
-function window_kaiser_bessel(x,n,m,sigma)
-  b = pi*(2-1/sigma)
-  arg = m^2-n^2*x^2
-  if abs(x) < m/n
-    y = sinh(b*sqrt(arg))/sqrt(arg)/pi
-  elseif abs(x) > m/n
-    y = zero(x)
-  else
-    y = b/pi
-  end
-  return y
-end
-
-function window_kaiser_bessel_hat(k,n,m,sigma)
-  b = pi*(2-1/sigma)
-  return besseli(0,m*sqrt(b^2-(2*pi*k/n)^2))
-end
 
 #=
 D is the number of dimensions of the array to be transformed.
-DIM is the dimension along which the array is transformed. 
+DIM is the dimension along which the array is transformed.
 DIM == 0 is the ordinary NFFT, i.e., where all dimensions are transformed.
-DIM is a type parameter since it allows the @generated macro to 
+DIM is a type parameter since it allows the @generated macro to
 compile more efficient methods.
 =#
 type NFFTPlan{D,DIM,T}
@@ -74,11 +59,12 @@ Compute `D` dimensional NFFT plan for sampling locations `x` (a vector or a `D`-
 
 The optional arguments control the accuracy.
 """->
-function NFFTPlan{D,T}(x::AbstractMatrix{T}, N::NTuple{D,Int}, m=4, sigma=2.0, K=2000)
+function NFFTPlan{D,T}(x::AbstractMatrix{T}, N::NTuple{D,Int}, m=4, sigma=2.0,
+                       window=:kaiser_bessel, K=2000)
   if !isa(x, Matrix)
 	  x = collect(x)
   end
-  
+
   if D != size(x,1)
     throw(ArgumentError())
   end
@@ -93,14 +79,15 @@ function NFFTPlan{D,T}(x::AbstractMatrix{T}, N::NTuple{D,Int}, m=4, sigma=2.0, K
   BP = plan_bfft!(tmpVec)
 
   # Create lookup table
-  
+  win, win_hat = getWindow(window)
+
   windowLUT = Array(Vector{T},D)
   Z = round(Int,3*K/2)
   for d=1:D
     windowLUT[d] = zeros(T, Z)
     for l=1:Z
       y = ((l-1) / (K-1)) * m/n[d]
-      windowLUT[d][l] = window_kaiser_bessel(y, n[d], m, sigma)
+      windowLUT[d][l] = win(y, n[d], m, sigma)
     end
   end
 
@@ -108,15 +95,15 @@ function NFFTPlan{D,T}(x::AbstractMatrix{T}, N::NTuple{D,Int}, m=4, sigma=2.0, K
   for d=1:D
     windowHatInvLUT[d] = zeros(T, N[d])
     for k=1:N[d]
-      windowHatInvLUT[d][k] = 1. / window_kaiser_bessel_hat(k-1-N[d]/2, n[d], m, sigma)
+      windowHatInvLUT[d][k] = 1. / win_hat(k-1-N[d]/2, n[d], m, sigma)
     end
   end
 
   NFFTPlan{D,0,T}(N, M, x, m, sigma, n, K, windowLUT, windowHatInvLUT, FP, BP, tmpVec )
 end
 
-function NFFTPlan(x::AbstractVector, N::Integer, m=4, sigma=2.0)
-  NFFTPlan(reshape(x,1,length(x)), (N,), m, sigma)
+function NFFTPlan(x::AbstractVector, N::Integer, m=4, sigma=2.0, window=:kaiser_bessel, K=2000)
+  NFFTPlan(reshape(x,1,length(x)), (N,), m, sigma, window, K)
 end
 
 
@@ -124,10 +111,11 @@ end
 @doc """
 	NFFTPlan(x, d, N, ...) -> plan
 
-Compute *directional* NFFT plan: 
+Compute *directional* NFFT plan:
 A 1D plan that is applied along dimension `d` of a `D` dimensional array of size `N` with sampling locations `x` (a vector).
 """->
-function NFFTPlan{D,T}(x::AbstractVector{T}, dim::Integer, N::NTuple{D,Int64}, m=4, sigma=2.0, K=2000)
+function NFFTPlan{D,T}(x::AbstractVector{T}, dim::Integer, N::NTuple{D,Int64}, m=4,
+                       sigma=2.0, window=:kaiser_bessel, K=2000)
   n = ntuple(d->round(Int, sigma*N[d]), D)
 
   sz = [N...]
@@ -139,29 +127,32 @@ function NFFTPlan{D,T}(x::AbstractVector{T}, dim::Integer, N::NTuple{D,Int64}, m
   FP = plan_fft!(tmpVec, dim)
   BP = plan_bfft!(tmpVec, dim)
 
+  # Create lookup table
+  win, win_hat = getWindow(window)
+
   windowLUT = Array(Vector{T}, 1)
   Z = round(Int, 3*K/2)
   windowLUT[1] = zeros(T, Z)
   for l = 1:Z
 	  y = ((l-1) / (K-1)) * m/n[dim]
-	  windowLUT[1][l] = window_kaiser_bessel(y, n[dim], m, sigma)
+	  windowLUT[1][l] = win(y, n[dim], m, sigma)
   end
 
   windowHatInvLUT = Array(Vector{T}, 1)
   windowHatInvLUT[1] = zeros(T, N[dim])
   for k = 1:N[dim]
-	  windowHatInvLUT[1][k] = 1. / window_kaiser_bessel_hat(k-1-N[dim]/2, n[dim], m, sigma)
+	  windowHatInvLUT[1][k] = 1. / win_hat(k-1-N[dim]/2, n[dim], m, sigma)
   end
 
   NFFTPlan{D,dim,T}(N, M, reshape(x,1,M), m, sigma, n, K, windowLUT, windowHatInvLUT, FP, BP, tmpVec)
 end
 
-function NFFTPlan{D,T}(x::Matrix{T}, dim::Integer, N::NTuple{D,Int}, m=4, sigma=2.0, K=2000)
+function NFFTPlan{D,T}(x::Matrix{T}, dim::Integer, N::NTuple{D,Int}, m=4, sigma=2.0, window=:kaiser_bessel, K=2000)
   if size(x,1) != 1 && size(x,2) != 1
 	  throw(DimensionMismatch())
   end
 
-  NFFTPlan(vec(x), dim, N, m, sigma, K)
+  NFFTPlan(vec(x), dim, N, m, sigma, window, K)
 end
 
 
@@ -267,7 +258,7 @@ end
 @doc """
 	nfft_adjoint(p, f) -> fHat
 
-For a **non**-directional `D` dimensional plan `p` this calculates the adjoint NFFT of a length `M` vector `fHat` 
+For a **non**-directional `D` dimensional plan `p` this calculates the adjoint NFFT of a length `M` vector `fHat`
 `f` is a `D` dimensional array of size `N`.
 (`M` and `N` are defined in the plan creation)
 
@@ -289,7 +280,7 @@ end
 
 ### ndft functions ###
 
-# fallback for 1D 
+# fallback for 1D
 function ind2sub{T}(::Array{T,1}, idx::Int)
   idx
 end
@@ -373,7 +364,7 @@ end
 
         @nloops $D l d -> (c_d-p.m):(c_d+p.m) d->begin
             # preexpr
-            gidx_d = rem(l_d+p.n[d], p.n[d]) + 1 
+            gidx_d = rem(l_d+p.n[d], p.n[d]) + 1
             idx = abs( (xscale_d - l_d)*scale ) + 1
             idxL = floor(idx)
             idxInt = Int(idxL)
@@ -456,7 +447,7 @@ end
 
 			@nloops $D l d -> (c_d-p.m):(c_d+p.m) d->begin
 				# preexpr
-				gidx_d = rem(l_d+p.n[d], p.n[d]) + 1 
+				gidx_d = rem(l_d+p.n[d], p.n[d]) + 1
 				idx = abs( (xscale_d - l_d)*scale ) + 1
 				idxL = floor(idx)
 				idxInt = Int(idxL)
@@ -594,32 +585,6 @@ end
 end
 
 
-function sdc{D,T}(p::NFFTPlan{D,0,T}; iters=20)
-  # Weights for sample density compensation.
-  # Uses method of Pipe & Menon, 1999. Mag Reson Med, 186, 179.
-  weights = ones(Complex{T}, p.M)
-  weights_tmp = similar(weights)
-  # Pre-weighting to correct non-uniform sample density
-  for i in 1:iters
-    p.tmpVec[:] = 0.0
-    convolve_adjoint!(p, weights, p.tmpVec)
-    weights_tmp[:] = 0.0
-    convolve!(p, p.tmpVec, weights_tmp)
-    for j in 1:length(weights)
-      weights[j] = weights[j] / (abs(weights_tmp[j]) + eps(T))
-    end
-  end
-  # Post weights to correct image scaling
-  # This finds c, where ||u - c*v||_2^2 = 0 and then uses
-  # c to scale all weights by a scalar factor.
-  u = ones(Complex{T}, p.N)
-  f = nfft(p, u)
-  f = f .* weights # apply weights from above
-  v = nfft_adjoint(p, f)
-  c = v[:] \ u[:]  # least squares diff
-  abs(weights * c[1]) # [1] needed b/c 'c' is a 1x1 Array
-end
-
 ### performance test ###
 
 function nfft_performance()
@@ -674,7 +639,7 @@ function nfft_performance()
   fHat2 = nfft(p, fApprox);
   println("trafo")
   toc()
-  
+
   N = 32
   M = N*N*N
 
@@ -696,10 +661,10 @@ function nfft_performance()
   tic()
   fHat2 = nfft(p, fApprox);
   println("trafo")
-  toc()  
+  toc()
 
 end
 
+include("samplingDensity.jl")
 
 end
-
