@@ -355,30 +355,38 @@ function convolve!{T}(p::NFFTPlan{1,0}, g::AbstractVector{T}, fHat::StridedVecto
   end
 end
 
-@generated function convolve!{D,T}(p::NFFTPlan{D,0}, g::AbstractArray{T,D}, fHat::StridedVector{T})
+function convolve!{D,T}(p::NFFTPlan{D,0}, g::AbstractArray{T,D}, fHat::StridedVector{T})
+    scale = 1.0 / p.m * (p.K-1)
+
+    Threads.@threads for k in 1:p.M
+        fHat[k] = _convolve(p, g, scale, k)
+    end
+end
+
+
+@generated function _convolve{D,T}(p::NFFTPlan{D,0}, g::AbstractArray{T,D}, scale, k)
 	quote
-		fill!(fHat, zero(T))
-		scale = 1.0 / p.m * (p.K-1)
+        @nexprs $D d -> xscale_d = p.x[d,k] * p.n[d]
+        @nexprs $D d -> c_d = floor(Int, xscale_d)
 
-		for k in 1:p.M
-			@nexprs $D d -> xscale_d = p.x[d,k] * p.n[d]
-			@nexprs $D d -> c_d = floor(Int, xscale_d)
+        fHat = zero(T)
 
-			@nloops $D l d -> (c_d-p.m):(c_d+p.m) d->begin
-				# preexpr
-				gidx_d = rem(l_d+p.n[d], p.n[d]) + 1 
-				idx = abs( (xscale_d - l_d)*scale ) + 1
-				idxL = floor(idx)
-				idxInt = Int(idxL)
-				tmpWin_d = p.windowLUT[d][idxInt] + ( idx-idxL ) * (p.windowLUT[d][idxInt+1] - p.windowLUT[d][idxInt])
-			end begin
-				# bodyexpr
-				v = @nref $D g gidx
-				@nexprs $D d -> v *= tmpWin_d
-				fHat[k] += v
-			end
-		end
-	end
+        @nloops $D l d -> (c_d-p.m):(c_d+p.m) d->begin
+            # preexpr
+            gidx_d = rem(l_d+p.n[d], p.n[d]) + 1 
+            idx = abs( (xscale_d - l_d)*scale ) + 1
+            idxL = floor(idx)
+            idxInt = Int(idxL)
+            tmpWin_d = p.windowLUT[d][idxInt] + ( idx-idxL ) * (p.windowLUT[d][idxInt+1] - p.windowLUT[d][idxInt])
+        end begin
+            # bodyexpr
+            v = @nref $D g gidx
+            @nexprs $D d -> v *= tmpWin_d
+            fHat += v
+        end
+
+        return fHat
+    end
 end
 
 @generated function convolve!{D,DIM,T}(p::NFFTPlan{D,DIM}, g::AbstractArray{T,D}, fHat::StridedArray{T,D})
