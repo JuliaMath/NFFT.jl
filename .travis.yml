@@ -7,3 +7,5 @@ julia:
   - nightly
 notifications:
     email: false
+git:
+    depth: 9999999
