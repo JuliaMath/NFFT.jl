@@ -7,7 +7,7 @@ sigma = 2.0
 
 # Test random sampling points and multiple dimensions
 for N in [(128,), (16,16), (12,12,12), (6,6,6,6)]
-  for window in [:kaiser_bessel, :gauss, :kaiser_bessel_rev, :spline ,:sinc]
+  for window in [:kaiser_bessel, :gauss, :kaiser_bessel_rev, :spline]
     D = length(N)
     println("Testing in ", D, " dimensions using ", string(window)," window" )
 
