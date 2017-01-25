@@ -81,7 +81,7 @@ function NFFTPlan{D,T}(x::AbstractMatrix{T}, N::NTuple{D,Int}, m=4, sigma=2.0,
   # Create lookup table
   win, win_hat = getWindow(window)
 
-  windowLUT = Array(Vector{T},D)
+  windowLUT = Array{Vector{T},1}(D)
   Z = round(Int,3*K/2)
   for d=1:D
     windowLUT[d] = zeros(T, Z)
@@ -91,7 +91,7 @@ function NFFTPlan{D,T}(x::AbstractMatrix{T}, N::NTuple{D,Int}, m=4, sigma=2.0,
     end
   end
 
-  windowHatInvLUT = Array(Vector{T}, D)
+  windowHatInvLUT = Array{Vector{T},1}(D)
   for d=1:D
     windowHatInvLUT[d] = zeros(T, N[d])
     for k=1:N[d]
@@ -165,15 +165,14 @@ function Base.show{D,DIM}(io::IO, p::NFFTPlan{D,DIM})
 end
 
 
-function consistencyCheck{D,T}(p::NFFTPlan{D,0}, f::AbstractArray{T,D}, fHat::AbstractVector{T})
-	if p.N != size(f) || p.M != length(fHat)
-		throw(DimensionMismatch("Data is not consistent with NFFTPlan"))
-	end
-end
-
-@generated function consistencyCheck{D,DIM,T}(p::NFFTPlan{D,DIM}, f::AbstractArray{T,D}, fHat::AbstractArray{T,D})
+@generated function consistencyCheck{D,DIM,T}(p::NFFTPlan{D,DIM}, f::AbstractArray{T,D}, fHat::AbstractArray{T})
 	quote
-		fHat_test = @nall $D d -> ( d == $DIM ? size(fHat,d) == p.M : size(fHat,d) == p.N[d] )
+        if $DIM == 0
+            fHat_test = (p.M == length(fHat))
+        elseif $DIM > 0
+            fHat_test = @nall $D d -> ( d == $DIM ? size(fHat,d) == p.M : size(fHat,d) == p.N[d] )
+        end
+
 		if p.N != size(f) || !fHat_test
 			throw(DimensionMismatch("Data is not consistent with NFFTPlan"))
 		end
