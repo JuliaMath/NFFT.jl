@@ -67,7 +67,7 @@ for D in 2:3
 		end
 
 		e = norm( fHat_dir[:] - fHat[:] )
-		@test_approx_eq e 0
+		@test e ≈ 0
 
 		e = norm( g_dir[:] - g[:] ) / norm(g[:])
 		@test e < eps

@@ -81,7 +81,7 @@ function NFFTPlan{D,T}(x::AbstractMatrix{T}, N::NTuple{D,Int}, m=4, sigma=2.0,
   # Create lookup table
   win, win_hat = getWindow(window)
 
-  windowLUT = Array(Vector{T},D)
+  windowLUT = Vector{Vector{T}}(D)
   Z = round(Int,3*K/2)
   for d=1:D
     windowLUT[d] = zeros(T, Z)
@@ -91,7 +91,7 @@ function NFFTPlan{D,T}(x::AbstractMatrix{T}, N::NTuple{D,Int}, m=4, sigma=2.0,
     end
   end
 
-  windowHatInvLUT = Array(Vector{T}, D)
+  windowHatInvLUT = Vector{Vector{T}}(D)
   for d=1:D
     windowHatInvLUT[d] = zeros(T, N[d])
     for k=1:N[d]
@@ -130,7 +130,7 @@ function NFFTPlan{D,T}(x::AbstractVector{T}, dim::Integer, N::NTuple{D,Int64}, m
   # Create lookup table
   win, win_hat = getWindow(window)
 
-  windowLUT = Array(Vector{T}, 1)
+  windowLUT = Vector{Vector{T}}(1)
   Z = round(Int, 3*K/2)
   windowLUT[1] = zeros(T, Z)
   for l = 1:Z
@@ -138,7 +138,7 @@ function NFFTPlan{D,T}(x::AbstractVector{T}, dim::Integer, N::NTuple{D,Int64}, m
 	  windowLUT[1][l] = win(y, n[dim], m, sigma)
   end
 
-  windowHatInvLUT = Array(Vector{T}, 1)
+  windowHatInvLUT = Vector{Vector{T}}(1)
   windowHatInvLUT[1] = zeros(T, N[dim])
   for k = 1:N[dim]
 	  windowHatInvLUT[1][k] = 1. / win_hat(k-1-N[dim]/2, n[dim], m, sigma)
