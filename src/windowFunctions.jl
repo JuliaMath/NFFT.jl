@@ -1,3 +1,6 @@
+if VERSION >= v"0.6.0-"
+  using SpecialFunctions
+end
 
 # This file contains different window functions.
 # The function getWindow returns a pair of window functions based on a string
