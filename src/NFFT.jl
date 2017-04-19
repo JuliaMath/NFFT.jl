@@ -297,7 +297,7 @@ function ndft{T,D}(plan::NFFTPlan{D}, f::AbstractArray{T,D})
       for d=1:D
         arg += plan.x[d,k] * ( idx[d] - 1 - plan.N[d] / 2 )
       end
-      g[k] += f[l] * exp(-2*pi*1im*arg)
+      g[k] += f[l] * cis(-2*pi*arg)
     end
   end
 
@@ -317,7 +317,7 @@ function ndft_adjoint{T,D}(plan::NFFTPlan{D}, fHat::AbstractArray{T,1})
       for d=1:D
         arg += plan.x[d,k] * ( idx[d] - 1 - plan.N[d] / 2 )
       end
-      g[l] += fHat[k] * exp(2*pi*1im*arg)
+      g[l] += fHat[k] * cis(2*pi*arg)
     end
   end
 
