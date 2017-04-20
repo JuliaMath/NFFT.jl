@@ -13,7 +13,7 @@ sigma = 2.0
 
             M = prod(N)
             x = rand(D,M) - 0.5
-            p = NFFTPlan(x, N, m, sigma, window)
+            p = NFFTPlan(x, N, m, sigma, window, flags = FFTW.ESTIMATE)
 
             fHat = rand(M) + rand(M)*im
             f = ndft_adjoint(p, fHat)
@@ -34,7 +34,7 @@ end
 @testset "Abstract sampling points" begin
     M, N = rand(100:200, 2)
     x = linspace(-0.4, 0.4, M)
-    p = NFFTPlan(x, N)
+    p = NFFTPlan(x, N, flags = FFTW.MEASURE)
 end
 
 @testset "Directional NFFT $D dim" for D in 2:3 begin

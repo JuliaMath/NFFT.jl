@@ -52,15 +52,18 @@ end
 
 @inline dim{D,DIM}(::NFFTPlan{D,DIM}) = DIM
 
-@doc """
+"""
 	NFFTPlan(x, N, ...) -> plan
 
 Compute `D` dimensional NFFT plan for sampling locations `x` (a vector or a `D`-by-`M` matrix) that can be applied on arrays of size `N` (a tuple of length `D`).
 
 The optional arguments control the accuracy.
-"""->
+
+It takes as optional keywords all the keywords supported by `plan_fft` function (like
+`flags` and `timelimit`).  See documentation of `plan_fft` for reference.
+"""
 function NFFTPlan{D,T}(x::AbstractMatrix{T}, N::NTuple{D,Int}, m=4, sigma=2.0,
-                       window=:kaiser_bessel, K=2000)
+                       window=:kaiser_bessel, K=2000; kwargs...)
   if !isa(x, Matrix)
 	  x = collect(x)
   end
@@ -75,8 +78,8 @@ function NFFTPlan{D,T}(x::AbstractMatrix{T}, N::NTuple{D,Int}, m=4, sigma=2.0,
 
   M = size(x,2)
 
-  FP = plan_fft!(tmpVec)
-  BP = plan_bfft!(tmpVec)
+  FP = plan_fft!(tmpVec; kwargs...)
+  BP = plan_bfft!(tmpVec; kwargs...)
 
   # Create lookup table
   win, win_hat = getWindow(window)
@@ -102,20 +105,24 @@ function NFFTPlan{D,T}(x::AbstractMatrix{T}, N::NTuple{D,Int}, m=4, sigma=2.0,
   NFFTPlan{D,0,T}(N, M, x, m, sigma, n, K, windowLUT, windowHatInvLUT, FP, BP, tmpVec )
 end
 
-function NFFTPlan(x::AbstractVector, N::Integer, m=4, sigma=2.0, window=:kaiser_bessel, K=2000)
-  NFFTPlan(reshape(x,1,length(x)), (N,), m, sigma, window, K)
+function NFFTPlan(x::AbstractVector, N::Integer, m=4, sigma=2.0, window=:kaiser_bessel,
+                  K=2000; kwargs...)
+  NFFTPlan(reshape(x,1,length(x)), (N,), m, sigma, window, K; kwargs...)
 end
 
 
 # Directional NFFT
-@doc """
+"""
 	NFFTPlan(x, d, N, ...) -> plan
 
 Compute *directional* NFFT plan:
 A 1D plan that is applied along dimension `d` of a `D` dimensional array of size `N` with sampling locations `x` (a vector).
-"""->
+
+It takes as optional keywords all the keywords supported by `plan_fft` function (like
+`flags` and `timelimit`).  See documentation of `plan_fft` for reference.
+"""
 function NFFTPlan{D,T}(x::AbstractVector{T}, dim::Integer, N::NTuple{D,Int64}, m=4,
-                       sigma=2.0, window=:kaiser_bessel, K=2000)
+                       sigma=2.0, window=:kaiser_bessel, K=2000; kwargs...)
   n = ntuple(d->round(Int, sigma*N[d]), D)
 
   sz = [N...]
@@ -124,8 +131,8 @@ function NFFTPlan{D,T}(x::AbstractVector{T}, dim::Integer, N::NTuple{D,Int64}, m
 
   M = length(x)
 
-  FP = plan_fft!(tmpVec, dim)
-  BP = plan_bfft!(tmpVec, dim)
+  FP = plan_fft!(tmpVec, dim; kwargs...)
+  BP = plan_bfft!(tmpVec, dim; kwargs...)
 
   # Create lookup table
   win, win_hat = getWindow(window)
@@ -147,12 +154,13 @@ function NFFTPlan{D,T}(x::AbstractVector{T}, dim::Integer, N::NTuple{D,Int64}, m
   NFFTPlan{D,dim,T}(N, M, reshape(x,1,M), m, sigma, n, K, windowLUT, windowHatInvLUT, FP, BP, tmpVec)
 end
 
-function NFFTPlan{D,T}(x::Matrix{T}, dim::Integer, N::NTuple{D,Int}, m=4, sigma=2.0, window=:kaiser_bessel, K=2000)
+function NFFTPlan{D,T}(x::Matrix{T}, dim::Integer, N::NTuple{D,Int}, m=4, sigma=2.0,
+                       window=:kaiser_bessel, K=2000; kwargs...)
   if size(x,1) != 1 && size(x,2) != 1
 	  throw(DimensionMismatch())
   end
 
-  NFFTPlan(vec(x), dim, N, m, sigma, window, K)
+  NFFTPlan(vec(x), dim, N, m, sigma, window, K; kwargs...)
 end
 
 
@@ -182,13 +190,13 @@ end
 
 ### nfft functions ###
 
-@doc """
+"""
 	nfft!(p, f, fHat) -> fHat
 
 Calculate the NFFT of `f` with plan `p` and store the result in `fHat`.
 
 Both `f` and `fHat` must be complex arrays.
-"""->
+"""
 function nfft!{T}(p::NFFTPlan, f::AbstractArray{T}, fHat::StridedArray{T})
   consistencyCheck(p, f, fHat)
 
@@ -203,7 +211,7 @@ function nfft!{T}(p::NFFTPlan, f::AbstractArray{T}, fHat::StridedArray{T})
   return fHat
 end
 
-@doc """
+"""
 	nfft(p, f) -> fHat
 
 For a **non**-directional `D` dimensional plan `p` this calculates the NFFT of a `D` dimensional array `f` of size `N`.
@@ -213,7 +221,7 @@ For a **non**-directional `D` dimensional plan `p` this calculates the NFFT of a
 For a **directional** `D` dimensional plan `p` both `f` and `fHat` are `D`
 dimensional arrays, and the dimension specified in the plan creation is
 affected.
-"""->
+"""
 function nfft{D,T}(p::NFFTPlan{D,0}, f::AbstractArray{T,D})
   fHat = zeros(T, p.M)
   nfft!(p, f, fHat)
@@ -234,13 +242,13 @@ function nfft{D,DIM,T}(p::NFFTPlan{D,DIM}, f::AbstractArray{T,D})
 end
 
 
-@doc """
+"""
 	nfft_adjoint!(p, fHat, f) -> f
 
 Calculate the adjoint NFFT of `fHat` and store the result in `f`.
 
 Both `f` and `fHat` must be complex arrays.
-"""->
+"""
 function nfft_adjoint!(p::NFFTPlan, fHat::AbstractArray, f::StridedArray)
   consistencyCheck(p, f, fHat)
 
@@ -254,7 +262,7 @@ function nfft_adjoint!(p::NFFTPlan, fHat::AbstractArray, f::StridedArray)
   return f
 end
 
-@doc """
+"""
 	nfft_adjoint(p, f) -> fHat
 
 For a **non**-directional `D` dimensional plan `p` this calculates the adjoint NFFT of a length `M` vector `fHat`
@@ -264,7 +272,7 @@ For a **non**-directional `D` dimensional plan `p` this calculates the adjoint N
 For a **directional** `D` dimensional plan `p` both `f` and `fHat` are `D`
 dimensional arrays, and the dimension specified in the plan creation is
 affected.
-"""->
+"""
 function nfft_adjoint{D,DIM,T}(p::NFFTPlan{D,DIM}, fHat::AbstractArray{T})
   f = Array{T}(p.N)
   nfft_adjoint!(p, fHat, f)
