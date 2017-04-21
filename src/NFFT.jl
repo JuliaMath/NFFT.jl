@@ -228,8 +228,8 @@ function nfft{D,T}(p::NFFTPlan{D,0}, f::AbstractArray{T,D})
   return fHat
 end
 
-function nfft{D,T}(x, f::AbstractArray{T,D})
-  p = NFFTPlan(x, size(f) )
+function nfft{D,T}(x, f::AbstractArray{T,D}, rest...; kwargs...)
+  p = NFFTPlan(x, size(f), rest...; kwargs...)
   return nfft(p, f)
 end
 
@@ -279,8 +279,8 @@ function nfft_adjoint{D,DIM,T}(p::NFFTPlan{D,DIM}, fHat::AbstractArray{T})
   return f
 end
 
-function nfft_adjoint{D,T}(x, N::NTuple{D,Int}, fHat::AbstractVector{T})
-  p = NFFTPlan(x, N)
+function nfft_adjoint{T}(x, N, fHat::AbstractVector{T}, rest...; kwargs...)
+  p = NFFTPlan(x, N, rest...; kwargs...)
   return nfft_adjoint(p, fHat)
 end
 
