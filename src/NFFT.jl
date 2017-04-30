@@ -62,12 +62,10 @@ The optional arguments control the accuracy.
 It takes as optional keywords all the keywords supported by `plan_fft` function (like
 `flags` and `timelimit`).  See documentation of `plan_fft` for reference.
 """
-function NFFTPlan{D,T}(x::AbstractMatrix{T}, N::NTuple{D,Int}, m=4, sigma=2.0,
-                       window=:kaiser_bessel, K=2000; kwargs...)
-    if !isa(x, Matrix)
-        x = collect(x)
-    end
+NFFTPlan
 
+function NFFTPlan{D,T}(x::Matrix{T}, N::NTuple{D,Int}, m=4, sigma=2.0,
+                       window=:kaiser_bessel, K=2000; kwargs...)
     if D != size(x,1)
         throw(ArgumentError())
     end
@@ -105,11 +103,11 @@ function NFFTPlan{D,T}(x::AbstractMatrix{T}, N::NTuple{D,Int}, m=4, sigma=2.0,
     NFFTPlan{D,0,T}(N, M, x, m, sigma, n, K, windowLUT, windowHatInvLUT, FP, BP, tmpVec )
 end
 
-function NFFTPlan(x::AbstractVector, N::Integer, m=4, sigma=2.0, window=:kaiser_bessel,
-                  K=2000; kwargs...)
-    NFFTPlan(reshape(x,1,length(x)), (N,), m, sigma, window, K; kwargs...)
-end
+NFFTPlan{D,T}(x::AbstractMatrix{T}, N::NTuple{D,Int}, rest...; kwargs...) =
+    NFFTPlan(collect(x), N, rest...; kwargs...)
 
+NFFTPlan(x::AbstractVector, N::Integer, rest...; kwargs...) =
+    NFFTPlan(reshape(x,1,length(x)), (N,), rest...; kwargs...)
 
 # Directional NFFT
 """
