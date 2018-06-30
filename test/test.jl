@@ -1,5 +1,7 @@
-using Base.Test
+using Test
 using NFFT
+using LinearAlgebra
+using FFTW
 
 eps = 1e-3
 m = 5
@@ -12,7 +14,7 @@ sigma = 2.0
             println("Testing in ", D, " dimensions using ", string(window)," window" )
 
             M = prod(N)
-            x = rand(D,M) - 0.5
+            x = rand(D,M) .- 0.5
             p = NFFTPlan(x, N, m, sigma, window, flags = FFTW.ESTIMATE)
 
             fHat = rand(M) + rand(M)*im
@@ -43,7 +45,7 @@ end
         N = tuple( 2*rand(4:8,D)... )
         M = prod(N)
         for d in 1:D
-            x = rand(M) - 0.5
+            x = rand(M) .- 0.5
 
             f = rand(N) + rand(N)*im
             p_dir = NFFTPlan(x, d, N)
@@ -74,4 +76,3 @@ end
         end
     end
 end
-

@@ -2,8 +2,10 @@ module NFFT
 
 import Base.ind2sub
 using Base.Cartesian
+using FFTW
+using Distributed
 
-export NFFTPlan, nfft, nfft_adjoint, ndft, ndft_adjoint, nfft_performance
+export NFFTPlan, nfft, nfft_adjoint, ndft, ndft_adjoint
 
 include("windowFunctions.jl")
 
@@ -35,7 +37,7 @@ DIM == 0 is the ordinary NFFT, i.e., where all dimensions are transformed.
 DIM is a type parameter since it allows the @generated macro to
 compile more efficient methods.
 =#
-type NFFTPlan{D,DIM,T}
+mutable struct NFFTPlan{D,DIM,T}
     N::NTuple{D,Int64}
     M::Int64
     x::Matrix{T}
@@ -45,12 +47,12 @@ type NFFTPlan{D,DIM,T}
     K::Int64
     windowLUT::Vector{Vector{T}}
     windowHatInvLUT::Vector{Vector{T}}
-    forwardFFT::Base.DFT.FFTW.cFFTWPlan{Complex{Float64},-1,true,D}
-    backwardFFT::Base.DFT.FFTW.cFFTWPlan{Complex{Float64},1,true,D}
+    forwardFFT::FFTW.cFFTWPlan{Complex{Float64},-1,true,D}
+    backwardFFT::FFTW.cFFTWPlan{Complex{Float64},1,true,D}
     tmpVec::Array{Complex{T},D}
 end
 
-@inline dim{D,DIM}(::NFFTPlan{D,DIM}) = DIM
+@inline dim(::NFFTPlan{D,DIM}) where {D, DIM} = DIM
 
 """
         NFFTPlan(x, N, ...) -> plan
@@ -64,8 +66,8 @@ It takes as optional keywords all the keywords supported by `plan_fft` function 
 """
 NFFTPlan
 
-function NFFTPlan{D,T}(x::Matrix{T}, N::NTuple{D,Int}, m=4, sigma=2.0,
-                       window=:kaiser_bessel, K=2000; kwargs...)
+function NFFTPlan(x::Matrix{T}, N::NTuple{D,Int}, m=4, sigma=2.0,
+                       window=:kaiser_bessel, K=2000; kwargs...) where {D,T}
     if D != size(x,1)
         throw(ArgumentError())
     end
@@ -82,7 +84,7 @@ function NFFTPlan{D,T}(x::Matrix{T}, N::NTuple{D,Int}, m=4, sigma=2.0,
     # Create lookup table
     win, win_hat = getWindow(window)
 
-    windowLUT = Vector{Vector{T}}(D)
+    windowLUT = Vector{Vector{T}}(undef,D)
     Z = round(Int,3*K/2)
     for d=1:D
         windowLUT[d] = zeros(T, Z)
@@ -92,7 +94,7 @@ function NFFTPlan{D,T}(x::Matrix{T}, N::NTuple{D,Int}, m=4, sigma=2.0,
         end
     end
 
-    windowHatInvLUT = Vector{Vector{T}}(D)
+    windowHatInvLUT = Vector{Vector{T}}(undef,D)
     for d=1:D
         windowHatInvLUT[d] = zeros(T, N[d])
         for k=1:N[d]
@@ -103,7 +105,7 @@ function NFFTPlan{D,T}(x::Matrix{T}, N::NTuple{D,Int}, m=4, sigma=2.0,
     NFFTPlan{D,0,T}(N, M, x, m, sigma, n, K, windowLUT, windowHatInvLUT, FP, BP, tmpVec )
 end
 
-NFFTPlan{D,T}(x::AbstractMatrix{T}, N::NTuple{D,Int}, rest...; kwargs...) =
+NFFTPlan(x::AbstractMatrix{T}, N::NTuple{D,Int}, rest...; kwargs...) where {D,T} =
     NFFTPlan(collect(x), N, rest...; kwargs...)
 
 NFFTPlan(x::AbstractVector, N::Integer, rest...; kwargs...) =
@@ -119,8 +121,8 @@ A 1D plan that is applied along dimension `d` of a `D` dimensional array of size
 It takes as optional keywords all the keywords supported by `plan_fft` function (like
 `flags` and `timelimit`).  See documentation of `plan_fft` for reference.
 """
-function NFFTPlan{D,T}(x::AbstractVector{T}, dim::Integer, N::NTuple{D,Int64}, m=4,
-                       sigma=2.0, window=:kaiser_bessel, K=2000; kwargs...)
+function NFFTPlan(x::AbstractVector{T}, dim::Integer, N::NTuple{D,Int64}, m=4,
+                       sigma=2.0, window=:kaiser_bessel, K=2000; kwargs...) where {D,T}
     n = ntuple(d->round(Int, sigma*N[d]), D)
 
     sz = [N...]
@@ -152,8 +154,8 @@ function NFFTPlan{D,T}(x::AbstractVector{T}, dim::Integer, N::NTuple{D,Int64}, m
     NFFTPlan{D,dim,T}(N, M, reshape(x,1,M), m, sigma, n, K, windowLUT, windowHatInvLUT, FP, BP, tmpVec)
 end
 
-function NFFTPlan{D,T}(x::Matrix{T}, dim::Integer, N::NTuple{D,Int}, m=4, sigma=2.0,
-                       window=:kaiser_bessel, K=2000; kwargs...)
+function NFFTPlan(x::Matrix{T}, dim::Integer, N::NTuple{D,Int}, m=4, sigma=2.0,
+                       window=:kaiser_bessel, K=2000; kwargs...) where {D,T}
     if size(x,1) != 1 && size(x,2) != 1
         throw(DimensionMismatch())
     end
@@ -162,16 +164,17 @@ function NFFTPlan{D,T}(x::Matrix{T}, dim::Integer, N::NTuple{D,Int}, m=4, sigma=
 end
 
 
-function Base.show{D}(io::IO, p::NFFTPlan{D,0})
+function Base.show(io::IO, p::NFFTPlan{D,0}) where D
     print(io, "NFFTPlan with ", p.M, " sampling points for ", p.N, " array")
 end
 
-function Base.show{D,DIM}(io::IO, p::NFFTPlan{D,DIM})
+function Base.show(io::IO, p::NFFTPlan{D,DIM}) where {D,DIM}
     print(io, "NFFTPlan with ", p.M, " sampling points for ", p.N, " array along dimension ", DIM)
 end
 
 
-@generated function consistencyCheck{D,DIM,T}(p::NFFTPlan{D,DIM}, f::AbstractArray{T,D}, fHat::AbstractArray{T})
+@generated function consistencyCheck(p::NFFTPlan{D,DIM}, f::AbstractArray{T,D},
+                                     fHat::AbstractArray{T}) where {D,DIM,T}
     quote
         if $DIM == 0
             fHat_test = (p.M == length(fHat))
@@ -195,7 +198,7 @@ Calculate the NFFT of `f` with plan `p` and store the result in `fHat`.
 
 Both `f` and `fHat` must be complex arrays.
 """
-function nfft!{T}(p::NFFTPlan, f::AbstractArray{T}, fHat::StridedArray{T})
+function nfft!(p::NFFTPlan, f::AbstractArray{T}, fHat::StridedArray{T}) where T
     consistencyCheck(p, f, fHat)
 
     fill!(p.tmpVec, zero(T))
@@ -220,21 +223,21 @@ For a **directional** `D` dimensional plan `p` both `f` and `fHat` are `D`
 dimensional arrays, and the dimension specified in the plan creation is
 affected.
 """
-function nfft{D,T}(p::NFFTPlan{D,0}, f::AbstractArray{T,D})
+function nfft(p::NFFTPlan{D,0}, f::AbstractArray{T,D}) where {D,T}
     fHat = zeros(T, p.M)
     nfft!(p, f, fHat)
     return fHat
 end
 
-function nfft{D,T}(x, f::AbstractArray{T,D}, rest...; kwargs...)
+function nfft(x, f::AbstractArray{T,D}, rest...; kwargs...) where {D,T}
     p = NFFTPlan(x, size(f), rest...; kwargs...)
     return nfft(p, f)
 end
 
-function nfft{D,DIM,T}(p::NFFTPlan{D,DIM}, f::AbstractArray{T,D})
+function nfft(p::NFFTPlan{D,DIM}, f::AbstractArray{T,D}) where {D,DIM,T}
     sz = [p.N...]
     sz[DIM] = p.M
-    fHat = Array{T}(sz...)
+    fHat = Array{T}(undef,sz...)
     nfft!(p, f, fHat)
     return fHat
 end
@@ -271,13 +274,13 @@ For a **directional** `D` dimensional plan `p` both `f` and `fHat` are `D`
 dimensional arrays, and the dimension specified in the plan creation is
 affected.
 """
-function nfft_adjoint{D,DIM,T}(p::NFFTPlan{D,DIM}, fHat::AbstractArray{T})
-    f = Array{T}(p.N)
+function nfft_adjoint(p::NFFTPlan{D,DIM}, fHat::AbstractArray{T}) where {D,DIM,T}
+    f = Array{T}(undef,p.N)
     nfft_adjoint!(p, fHat, f)
     return f
 end
 
-function nfft_adjoint{T}(x, N, fHat::AbstractVector{T}, rest...; kwargs...)
+function nfft_adjoint(x, N, fHat::AbstractVector{T}, rest...; kwargs...) where T
     p = NFFTPlan(x, N, rest...; kwargs...)
     return nfft_adjoint(p, fHat)
 end
@@ -286,17 +289,17 @@ end
 ### ndft functions ###
 
 # fallback for 1D
-function ind2sub{T}(::Array{T,1}, idx::Int)
+function ind2sub(::Array{T,1}, idx::Int) where T
     idx
 end
 
-function ndft{T,D}(plan::NFFTPlan{D}, f::AbstractArray{T,D})
+function ndft(plan::NFFTPlan{D}, f::AbstractArray{T,D}) where {D,T}
     plan.N == size(f) || throw(DimensionMismatch("Data is not consistent with NFFTPlan"))
 
     g = zeros(T, plan.M)
 
     for l=1:prod(plan.N)
-        idx = ind2sub(plan.N,l)
+        idx = CartesianIndices(plan.N)[l]
 
         for k=1:plan.M
             arg = zero(T)
@@ -310,13 +313,13 @@ function ndft{T,D}(plan::NFFTPlan{D}, f::AbstractArray{T,D})
     return g
 end
 
-function ndft_adjoint{T,D}(plan::NFFTPlan{D}, fHat::AbstractArray{T,1})
+function ndft_adjoint(plan::NFFTPlan{D}, fHat::AbstractArray{T,1}) where {D,T}
     plan.M == length(fHat) || throw(DimensionMismatch("Data is not consistent with NFFTPlan"))
 
     g = zeros(T, plan.N)
 
     for l=1:prod(plan.N)
-        idx = ind2sub(plan.N,l)
+        idx = CartesianIndices(plan.N)[l]
 
         for k=1:plan.M
             arg = zero(T)
@@ -334,7 +337,7 @@ end
 
 ### convolve! ###
 
-function convolve!{T}(p::NFFTPlan{1,0}, g::AbstractVector{T}, fHat::StridedVector{T})
+function convolve!(p::NFFTPlan{1,0}, g::AbstractVector{T}, fHat::StridedVector{T}) where T
     fill!(fHat, zero(T))
     scale = 1.0 / p.m * (p.K-1)
     n = p.n[1]
@@ -351,7 +354,7 @@ function convolve!{T}(p::NFFTPlan{1,0}, g::AbstractVector{T}, fHat::StridedVecto
     end
 end
 
-function convolve!{D,T}(p::NFFTPlan{D,0}, g::AbstractArray{T,D}, fHat::StridedVector{T})
+function convolve!(p::NFFTPlan{D,0}, g::AbstractArray{T,D}, fHat::StridedVector{T}) where {D,T}
     scale = 1.0 / p.m * (p.K-1)
 
     Threads.@threads for k in 1:p.M
@@ -360,7 +363,7 @@ function convolve!{D,T}(p::NFFTPlan{D,0}, g::AbstractArray{T,D}, fHat::StridedVe
 end
 
 
-@generated function _convolve{D,T}(p::NFFTPlan{D,0}, g::AbstractArray{T,D}, scale, k)
+@generated function _convolve(p::NFFTPlan{D,0}, g::AbstractArray{T,D}, scale, k) where {D,T}
     quote
         @nexprs $D d -> xscale_d = p.x[d,k] * p.n[d]
         @nexprs $D d -> c_d = floor(Int, xscale_d)
@@ -385,7 +388,7 @@ end
     end
 end
 
-@generated function convolve!{D,DIM,T}(p::NFFTPlan{D,DIM}, g::AbstractArray{T,D}, fHat::StridedArray{T,D})
+@generated function convolve!(p::NFFTPlan{D,DIM}, g::AbstractArray{T,D}, fHat::StridedArray{T,D}) where {D,DIM,T}
     quote
         fill!(fHat, zero(T))
         scale = 1.0 / p.m * (p.K-1)
@@ -424,7 +427,7 @@ end
 
 ### convolve_adjoint! ###
 
-function convolve_adjoint!{T}(p::NFFTPlan{1,0}, fHat::AbstractVector{T}, g::StridedVector{T})
+function convolve_adjoint!(p::NFFTPlan{1,0}, fHat::AbstractVector{T}, g::StridedVector{T}) where T
     fill!(g, zero(T))
     scale = 1.0 / p.m * (p.K-1)
     n = p.n[1]
@@ -441,7 +444,7 @@ function convolve_adjoint!{T}(p::NFFTPlan{1,0}, fHat::AbstractVector{T}, g::Stri
     end
 end
 
-@generated function convolve_adjoint!{D,T}(p::NFFTPlan{D,0}, fHat::AbstractVector{T}, g::StridedArray{T,D})
+@generated function convolve_adjoint!(p::NFFTPlan{D,0}, fHat::AbstractVector{T}, g::StridedArray{T,D}) where {D,T}
     quote
         fill!(g, zero(T))
         scale = 1.0 / p.m * (p.K-1)
@@ -467,7 +470,7 @@ end
     end
 end
 
-@generated function convolve_adjoint!{D,DIM,T}(p::NFFTPlan{D,DIM}, fHat::AbstractArray{T,D}, g::StridedArray{T,D})
+@generated function convolve_adjoint!(p::NFFTPlan{D,DIM}, fHat::AbstractArray{T,D}, g::StridedArray{T,D}) where {D,DIM,T}
     quote
         fill!(g, zero(T))
         scale = 1.0 / p.m * (p.K-1)
@@ -506,16 +509,16 @@ end
 
 ### apodization! ###
 
-function apodization!{T}(p::NFFTPlan{1,0}, f::AbstractVector{T}, g::StridedVector{T})
+function apodization!(p::NFFTPlan{1,0}, f::AbstractVector{T}, g::StridedVector{T}) where T
     n = p.n[1]
     N = p.N[1]
-    const offset = round( Int, n - N / 2 ) - 1
+    offset = round( Int, n - N / 2 ) - 1
     for l=1:N
         g[((l+offset)% n) + 1] = f[l] * p.windowHatInvLUT[1][l]
     end
 end
 
-@generated function apodization!{D,T}(p::NFFTPlan{D,0}, f::AbstractArray{T,D}, g::StridedArray{T,D})
+@generated function apodization!(p::NFFTPlan{D,0}, f::AbstractArray{T,D}, g::StridedArray{T,D}) where {D,T}
     quote
         @nexprs $D d -> offset_d = round(Int, p.n[d] - p.N[d]/2) - 1
 
@@ -527,7 +530,7 @@ end
     end
 end
 
-@generated function apodization!{D,DIM,T}(p::NFFTPlan{D,DIM}, f::AbstractArray{T,D}, g::StridedArray{T,D})
+@generated function apodization!(p::NFFTPlan{D,DIM}, f::AbstractArray{T,D}, g::StridedArray{T,D}) where {D,DIM,T}
     quote
         offset = round(Int, p.n[$DIM] - p.N[$DIM]/2) - 1
 
@@ -549,16 +552,16 @@ end
 
 ### apodization_adjoint! ###
 
-function apodization_adjoint!{T}(p::NFFTPlan{1,0}, g::AbstractVector{T}, f::StridedVector{T})
+function apodization_adjoint!(p::NFFTPlan{1,0}, g::AbstractVector{T}, f::StridedVector{T}) where T
     n = p.n[1]
     N = p.N[1]
-    const offset = round( Int, n - N / 2 ) - 1
+    offset = round( Int, n - N / 2 ) - 1
     for l=1:N
         f[l] = g[((l+offset)% n) + 1] * p.windowHatInvLUT[1][l]
     end
 end
 
-@generated function apodization_adjoint!{T,D}(p::NFFTPlan{D,0}, g::AbstractArray{T,D}, f::StridedArray{T,D})
+@generated function apodization_adjoint!(p::NFFTPlan{D,0}, g::AbstractArray{T,D}, f::StridedArray{T,D}) where {D,T}
     quote
         @nexprs $D d -> offset_d = round(Int, p.n[d] - p.N[d]/2) - 1
 
@@ -570,7 +573,7 @@ end
     end
 end
 
-@generated function apodization_adjoint!{D,DIM,T}(p::NFFTPlan{D,DIM}, g::AbstractArray{T,D}, f::StridedArray{T,D})
+@generated function apodization_adjoint!(p::NFFTPlan{D,DIM}, g::AbstractArray{T,D}, f::StridedArray{T,D}) where {D,DIM,T}
     quote
         offset = round(Int, p.n[$DIM] - p.N[$DIM]/2) - 1
 
@@ -589,86 +592,6 @@ end
     end
 end
 
-
-### performance test ###
-
-function nfft_performance()
-
-    m = 4
-    sigma = 2.0
-
-    # 1D
-
-    N = 2^19
-    M = N
-
-    x = rand(M) .- 0.5
-    fHat = rand(M)*1im
-
-    println("NFFT Performance Test 1D")
-
-    tic()
-    p = NFFTPlan(x,N,m,sigma)
-    println("initialization")
-    toc()
-
-    tic()
-    fApprox = nfft_adjoint(p,fHat)
-    println("adjoint")
-    toc()
-
-    tic()
-    fHat2 = nfft(p, fApprox);
-    println("trafo")
-    toc()
-
-    N = 1024
-    M = N*N
-
-    x2 = rand(2,M) .- 0.5
-    fHat = rand(M)*1im
-
-    println("NFFT Performance Test 2D")
-
-    tic()
-    p = NFFTPlan(x2,(N,N),m,sigma)
-    println("initialization")
-    toc()
-
-    tic()
-    fApprox = nfft_adjoint(p,fHat)
-    println("adjoint")
-    toc()
-
-    tic()
-    fHat2 = nfft(p, fApprox);
-    println("trafo")
-    toc()
-
-    N = 32
-    M = N*N*N
-
-    x3 = rand(3,M) .- 0.5
-    fHat = rand(M)*1im
-
-    println("NFFT Performance Test 3D")
-
-    tic()
-    p = NFFTPlan(x3,(N,N,N),m,sigma)
-    println("initialization")
-    toc()
-
-    tic()
-    fApprox = nfft_adjoint(p,fHat)
-    println("adjoint")
-    toc()
-
-    tic()
-    fHat2 = nfft(p, fApprox);
-    println("trafo")
-    toc()
-
-end
 
 include("samplingDensity.jl")
 

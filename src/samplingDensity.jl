@@ -1,6 +1,6 @@
 export sdc
 
-function sdc{D,T}(p::NFFTPlan{D,0,T}; iters=20)
+function sdc(p::NFFTPlan{D,0,T}; iters=20) where {D,T}
     # Weights for sample density compensation.
     # Uses method of Pipe & Menon, 1999. Mag Reson Med, 186, 179.
     weights = ones(Complex{T}, p.M)
