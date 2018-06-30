@@ -14,10 +14,10 @@ sigma = 2.0
             println("Testing in ", D, " dimensions using ", string(window)," window" )
 
             M = prod(N)
-            x = rand(D,M) .- 0.5
+            x = rand(Float64,D,M) .- 0.5
             p = NFFTPlan(x, N, m, sigma, window, flags = FFTW.ESTIMATE)
 
-            fHat = rand(M) + rand(M)*im
+            fHat = rand(Float64,M) + rand(Float64,M)*im
             f = ndft_adjoint(p, fHat)
             fApprox = nfft_adjoint(p, fHat)
             e = norm(f[:] - fApprox[:]) / norm(f[:])
@@ -35,7 +35,7 @@ end
 
 @testset "Abstract sampling points" begin
     M, N = rand(100:200, 2)
-    x = linspace(-0.4, 0.4, M)
+    x = range(-0.4, stop=0.4, length=M)
     p = NFFTPlan(x, N, flags = FFTW.MEASURE)
 end
 

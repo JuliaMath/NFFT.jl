@@ -127,7 +127,7 @@ function NFFTPlan(x::AbstractVector{T}, dim::Integer, N::NTuple{D,Int64}, m=4,
 
     sz = [N...]
     sz[dim] = n[dim]
-    tmpVec = Array{Complex{T}}(sz...)
+    tmpVec = Array{Complex{T}}(undef,sz...)
 
     M = length(x)
 
@@ -137,7 +137,7 @@ function NFFTPlan(x::AbstractVector{T}, dim::Integer, N::NTuple{D,Int64}, m=4,
     # Create lookup table
     win, win_hat = getWindow(window)
 
-    windowLUT = Vector{Vector{T}}(1)
+    windowLUT = Vector{Vector{T}}(undef,1)
     Z = round(Int, 3*K/2)
     windowLUT[1] = zeros(T, Z)
     for l = 1:Z
@@ -145,7 +145,7 @@ function NFFTPlan(x::AbstractVector{T}, dim::Integer, N::NTuple{D,Int64}, m=4,
         windowLUT[1][l] = win(y, n[dim], m, sigma)
     end
 
-    windowHatInvLUT = Vector{Vector{T}}(1)
+    windowHatInvLUT = Vector{Vector{T}}(undef,1)
     windowHatInvLUT[1] = zeros(T, N[dim])
     for k = 1:N[dim]
         windowHatInvLUT[1][k] = 1. / win_hat(k-1-N[dim]/2, n[dim], m, sigma)
