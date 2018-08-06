@@ -15,20 +15,20 @@ function nfft_performance()
 
     println("NFFT Performance Test 1D")
 
-    tic()
+    @time begin
     p = NFFTPlan(x,N,m,sigma)
     println("initialization")
-    toc()
+    end
 
-    tic()
+    @time begin
     fApprox = nfft_adjoint(p,fHat)
     println("adjoint")
-    toc()
+    end
 
-    tic()
+    @time begin
     fHat2 = nfft(p, fApprox);
     println("trafo")
-    toc()
+    end
 
     N = 1024
     M = N*N
@@ -38,20 +38,20 @@ function nfft_performance()
 
     println("NFFT Performance Test 2D")
 
-    tic()
+    @time begin
     p = NFFTPlan(x2,(N,N),m,sigma)
     println("initialization")
-    toc()
+    end
 
-    tic()
+    @time begin
     fApprox = nfft_adjoint(p,fHat)
     println("adjoint")
-    toc()
+    end
 
-    tic()
+    @time begin
     fHat2 = nfft(p, fApprox);
     println("trafo")
-    toc()
+    end
 
     N = 32
     M = N*N*N
@@ -61,19 +61,19 @@ function nfft_performance()
 
     println("NFFT Performance Test 3D")
 
-    tic()
+    @time begin
     p = NFFTPlan(x3,(N,N,N),m,sigma)
     println("initialization")
-    toc()
+    end
 
-    tic()
+    @time begin
     fApprox = nfft_adjoint(p,fHat)
     println("adjoint")
-    toc()
+    end
 
-    tic()
+    @time begin
     fHat2 = nfft(p, fApprox);
     println("trafo")
-    toc()
+    end
 
 end
