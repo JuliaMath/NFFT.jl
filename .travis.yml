@@ -16,4 +16,3 @@ branches:
 matrix:
   allow_failures:
   - julia: nightly
-  - os: osx
