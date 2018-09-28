@@ -1,5 +1,3 @@
-using Test
-using NFFT
 using LinearAlgebra
 using FFTW
 
@@ -11,7 +9,7 @@ sigma = 2.0
     for N in [(128,), (16,16), (12,12,12), (6,6,6,6)]
         for window in [:kaiser_bessel, :gauss, :kaiser_bessel_rev, :spline]
             D = length(N)
-            println("Testing in ", D, " dimensions using ", string(window)," window" )
+            @info "Testing in $D dimensions using $window window"
 
             M = prod(N)
             x = rand(Float64,D,M) .- 0.5
@@ -21,13 +19,13 @@ sigma = 2.0
             f = ndft_adjoint(p, fHat)
             fApprox = nfft_adjoint(p, fHat)
             e = norm(f[:] - fApprox[:]) / norm(f[:])
-            #= println(e) =#
+            @debug e
             @test e < eps
 
             gHat = ndft(p, f)
             gHatApprox = nfft(p, f)
             e = norm(gHat[:] - gHatApprox[:]) / norm(gHat[:])
-            #= println(e) =#
+            @debug e
             @test e < eps
         end
     end
@@ -47,7 +45,7 @@ end
         for d in 1:D
             x = rand(M) .- 0.5
 
-            f = rand(N) + rand(N)*im
+            f = rand(ComplexF64,N)
             p_dir = NFFTPlan(x, d, N)
             fHat_dir = nfft(p_dir, f)
             g_dir = nfft_adjoint(p_dir, fHat_dir)
@@ -57,8 +55,8 @@ end
             g = similar(g_dir)
 
             sz = size(fHat)
-            Rpre = CartesianRange( sz[1:d-1] )
-            Rpost = CartesianRange( sz[d+1:end] )
+            Rpre = CartesianIndices( sz[1:d-1] )
+            Rpost = CartesianIndices( sz[d+1:end] )
             for Ipost in Rpost, Ipre in Rpre
                 idx = [Ipre, :, Ipost]
                 fview = f[idx...]
@@ -69,7 +67,7 @@ end
             end
 
             e = norm( fHat_dir[:] - fHat[:] )
-            @test e ≈ 0
+            @test e ≈ 0 atol=1e-13
 
             e = norm( g_dir[:] - g[:] ) / norm(g[:])
             @test e < eps
