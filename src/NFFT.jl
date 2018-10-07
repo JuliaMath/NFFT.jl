@@ -1,6 +1,5 @@
 module NFFT
 
-import Base.ind2sub
 using Base.Cartesian
 using FFTW
 using Distributed
@@ -287,11 +286,6 @@ end
 
 
 ### ndft functions ###
-
-# fallback for 1D
-function ind2sub(::Array{T,1}, idx::Int) where T
-    idx
-end
 
 function ndft(plan::NFFTPlan{D}, f::AbstractArray{T,D}) where {D,T}
     plan.N == size(f) || throw(DimensionMismatch("Data is not consistent with NFFTPlan"))
