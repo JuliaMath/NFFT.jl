@@ -7,9 +7,9 @@ function sdc(p::NFFTPlan{D,0,T}; iters=20) where {D,T}
     weights_tmp = similar(weights)
     # Pre-weighting to correct non-uniform sample density
     for i in 1:iters
-        p.tmpVec[:] = 0.0
+        p.tmpVec[:] .= 0.0
         convolve_adjoint!(p, weights, p.tmpVec)
-        weights_tmp[:] = 0.0
+        weights_tmp[:] .= 0.0
         convolve!(p, p.tmpVec, weights_tmp)
         for j in 1:length(weights)
             weights[j] = weights[j] / (abs(weights_tmp[j]) + eps(T))
@@ -23,5 +23,5 @@ function sdc(p::NFFTPlan{D,0,T}; iters=20) where {D,T}
     f = f .* weights # apply weights from above
     v = nfft_adjoint(p, f)
     c = v[:] \ u[:]  # least squares diff
-    abs(weights * c[1]) # [1] needed b/c 'c' is a 1x1 Array
+    abs.(weights * c[1]) # [1] needed b/c 'c' is a 1x1 Array
 end
