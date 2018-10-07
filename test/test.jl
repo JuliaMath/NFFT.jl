@@ -67,7 +67,7 @@ end
             end
 
             e = norm( fHat_dir[:] - fHat[:] )
-            @test e ≈ 0 atol=1e-13
+            @test e < eps
 
             e = norm( g_dir[:] - g[:] ) / norm(g[:])
             @test e < eps
