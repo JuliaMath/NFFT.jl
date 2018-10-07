@@ -197,17 +197,20 @@ Calculate the NFFT of `f` with plan `p` and store the result in `fHat`.
 
 Both `f` and `fHat` must be complex arrays.
 """
-function nfft!(p::NFFTPlan, f::AbstractArray{T}, fHat::StridedArray{T}) where T
+function nfft!(p::NFFTPlan, f::AbstractArray{T}, fHat::StridedArray{T}, verbose=false) where T
     consistencyCheck(p, f, fHat)
 
     fill!(p.tmpVec, zero(T))
-    @inbounds apodization!(p, f, p.tmpVec)
+    t1 = @elapsed @inbounds apodization!(p, f, p.tmpVec)
     if nprocs() == 1
-        p.forwardFFT * p.tmpVec # fft!(p.tmpVec) or fft!(p.tmpVec, dim)
+        t2 = @elapsed p.forwardFFT * p.tmpVec # fft!(p.tmpVec) or fft!(p.tmpVec, dim)
     else
-        dim(p) == 0 ? fft!(p.tmpVec) : fft!(p.tmpVec, dim(p))
+        t2 = @elapsed dim(p) == 0 ? fft!(p.tmpVec) : fft!(p.tmpVec, dim(p))
     end
-    @inbounds convolve!(p, p.tmpVec, fHat)
+    t3 = @elapsed @inbounds convolve!(p, p.tmpVec, fHat)
+    if verbose
+      @info "Timing: apod=$t1 fft=$t2 conv=$t3"
+    end
     return fHat
 end
 
@@ -222,9 +225,9 @@ For a **directional** `D` dimensional plan `p` both `f` and `fHat` are `D`
 dimensional arrays, and the dimension specified in the plan creation is
 affected.
 """
-function nfft(p::NFFTPlan{D,0}, f::AbstractArray{T,D}) where {D,T}
+function nfft(p::NFFTPlan{D,0}, f::AbstractArray{T,D}, args...) where {D,T}
     fHat = zeros(T, p.M)
-    nfft!(p, f, fHat)
+    nfft!(p, f, fHat, args...)
     return fHat
 end
 
@@ -233,11 +236,11 @@ function nfft(x, f::AbstractArray{T,D}, rest...; kwargs...) where {D,T}
     return nfft(p, f)
 end
 
-function nfft(p::NFFTPlan{D,DIM}, f::AbstractArray{T,D}) where {D,DIM,T}
+function nfft(p::NFFTPlan{D,DIM}, f::AbstractArray{T,D}, args...) where {D,DIM,T}
     sz = [p.N...]
     sz[DIM] = p.M
     fHat = Array{T}(undef,sz...)
-    nfft!(p, f, fHat)
+    nfft!(p, f, fHat, args...)
     return fHat
 end
 
@@ -249,16 +252,19 @@ Calculate the adjoint NFFT of `fHat` and store the result in `f`.
 
 Both `f` and `fHat` must be complex arrays.
 """
-function nfft_adjoint!(p::NFFTPlan, fHat::AbstractArray, f::StridedArray)
+function nfft_adjoint!(p::NFFTPlan, fHat::AbstractArray, f::StridedArray, verbose=false)
     consistencyCheck(p, f, fHat)
 
-    @inbounds convolve_adjoint!(p, fHat, p.tmpVec)
+    t1 = @elapsed @inbounds convolve_adjoint!(p, fHat, p.tmpVec)
     if nprocs() == 1
-        p.backwardFFT * p.tmpVec # bfft!(p.tmpVec) or bfft!(p.tmpVec, dim)
+        t2 = @elapsed p.backwardFFT * p.tmpVec # bfft!(p.tmpVec) or bfft!(p.tmpVec, dim)
     else
-        dim(p) == 0 ? bfft!(p.tmpVec) : bfft!(p.tmpVec, dim(p))
+        t2 = @elapsed dim(p) == 0 ? bfft!(p.tmpVec) : bfft!(p.tmpVec, dim(p))
     end
-    @inbounds apodization_adjoint!(p, p.tmpVec, f)
+    t3 = @elapsed @inbounds apodization_adjoint!(p, p.tmpVec, f)
+    if verbose
+      @info "Timing: conv=$t1 fft=$t2 apod=$t3"
+    end
     return f
 end
 
@@ -273,9 +279,9 @@ For a **directional** `D` dimensional plan `p` both `f` and `fHat` are `D`
 dimensional arrays, and the dimension specified in the plan creation is
 affected.
 """
-function nfft_adjoint(p::NFFTPlan{D,DIM}, fHat::AbstractArray{T}) where {D,DIM,T}
+function nfft_adjoint(p::NFFTPlan{D,DIM}, fHat::AbstractArray{T}, args...) where {D,DIM,T}
     f = Array{T}(undef,p.N)
-    nfft_adjoint!(p, fHat, f)
+    nfft_adjoint!(p, fHat, f, args...)
     return f
 end
 
@@ -364,7 +370,7 @@ end
 
         fHat = zero(T)
 
-        @nloops $D l d -> (c_d-p.m):(c_d+p.m) d->begin
+        @inbounds @nloops $D l d -> (c_d-p.m):(c_d+p.m) d->begin
             # preexpr
             gidx_d = rem(l_d+p.n[d], p.n[d]) + 1
             idx = abs( (xscale_d - l_d)*scale ) + 1
@@ -428,7 +434,7 @@ function convolve_adjoint!(p::NFFTPlan{1,0}, fHat::AbstractVector{T}, g::Strided
 
     for k=1:p.M # loop over nonequispaced nodes
         c = round(Int,p.x[k]*n)
-        for l=(c-p.m):(c+p.m) # loop over nonzero elements
+        @inbounds @simd for l=(c-p.m):(c+p.m) # loop over nonzero elements
             gidx = rem(l+n, n) + 1
             idx = abs( (p.x[k]*n - l)*scale ) + 1
             idxL = round(Int, idx)
@@ -443,7 +449,7 @@ end
         fill!(g, zero(T))
         scale = 1.0 / p.m * (p.K-1)
 
-        for k in 1:p.M
+        @inbounds @simd for k in 1:p.M
             @nexprs $D d -> xscale_d = p.x[d,k] * p.n[d]
             @nexprs $D d -> c_d = floor(Int, xscale_d)
 

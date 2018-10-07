@@ -1,32 +1,33 @@
 using LinearAlgebra
 using FFTW
 
-eps = 1e-3
-m = 5
-sigma = 2.0
+const m = 5
+const sigma = 2.0
+const K = 200000
 
 @testset "NFFT in multiple dimensions" begin
-    for N in [(128,), (16,16), (12,12,12), (6,6,6,6)]
-        for window in [:kaiser_bessel, :gauss, :kaiser_bessel_rev, :spline]
+    for N in [(256,), (32,32), (12,12,12), (6,6,6,6)]
+        eps = [1e-7, 1e-3, 1e-6, 1e-4]
+        for (l,window) in enumerate([:kaiser_bessel, :gauss, :kaiser_bessel_rev, :spline])
             D = length(N)
             @info "Testing in $D dimensions using $window window"
 
             M = prod(N)
             x = rand(Float64,D,M) .- 0.5
-            p = NFFTPlan(x, N, m, sigma, window, flags = FFTW.ESTIMATE)
+            p = NFFTPlan(x, N, m, sigma, window, K, flags = FFTW.ESTIMATE)
 
             fHat = rand(Float64,M) + rand(Float64,M)*im
             f = ndft_adjoint(p, fHat)
             fApprox = nfft_adjoint(p, fHat)
             e = norm(f[:] - fApprox[:]) / norm(f[:])
             @debug e
-            @test e < eps
+            @test e < eps[l]
 
             gHat = ndft(p, f)
             gHatApprox = nfft(p, f)
             e = norm(gHat[:] - gHatApprox[:]) / norm(gHat[:])
             @debug e
-            @test e < eps
+            @test e < eps[l]
         end
     end
 end
@@ -40,6 +41,7 @@ end
 @testset "Directional NFFT $D dim" for D in 2:3 begin
     # NFFT along a specified dimension should give the same result as
     # running a 1D NFFT on every slice along that dimension
+        eps = 1e-4
         N = tuple( 2*rand(4:8,D)... )
         M = prod(N)
         for d in 1:D

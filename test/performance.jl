@@ -1,16 +1,18 @@
+using NFFT
+
 ### performance test ###
 function nfft_performance()
-  let m = 4, sigma = 2.0
+  let m = 3, sigma = 2.0
     @info "NFFT Performance Test 1D"
     let N = 2^19, M = N, x = rand(M) .- 0.5, fHat = rand(M)*1im
       @info "* initialization"
       @time p = NFFTPlan(x,N,m,sigma)
 
       @info "* adjoint"
-      @time fApprox = nfft_adjoint(p,fHat)
+      @time fApprox = nfft_adjoint(p, fHat, true)
 
       @info "* trafo"
-      @time nfft(p,fApprox)
+      @time nfft(p, fApprox, true)
     end
 
     @info "NFFT Performance Test 2D"
@@ -19,10 +21,10 @@ function nfft_performance()
       @time p = NFFTPlan(x2,(N,N),m,sigma)
 
       @info "* adjoint"
-      @time fApprox = nfft_adjoint(p,fHat)
+      @time fApprox = nfft_adjoint(p, fHat, true)
 
       @info "* trafo"
-      @time nfft(p,fApprox)
+      @time nfft(p, fApprox, true)
     end
 
     @info "NFFT Performance Test 3D"
@@ -31,10 +33,10 @@ function nfft_performance()
       @time p = NFFTPlan(x3,(N,N,N),m,sigma)
 
       @info "* adjoint"
-      @time fApprox = nfft_adjoint(p,fHat)
+      @time fApprox = nfft_adjoint(p, fHat, true)
 
       @info "* trafo"
-      @time nfft(p,fApprox)
+      @time nfft(p, fApprox, true)
     end
   end
   return nothing
