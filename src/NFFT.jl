@@ -357,7 +357,8 @@ end
 function convolve!(p::NFFTPlan{D,0}, g::AbstractArray{T,D}, fHat::StridedVector{T}) where {D,T}
     scale = 1.0 / p.m * (p.K-1)
 
-    Threads.@threads for k in 1:p.M
+    #Threads.@threads 
+    for k in 1:p.M
         fHat[k] = _convolve(p, g, scale, k)
     end
 end
