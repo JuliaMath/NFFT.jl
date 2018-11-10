@@ -6,7 +6,8 @@ const sigma = 2.0
 const K = 200000
 
 @testset "NFFT in multiple dimensions" begin
-    for N in [(256,), (32,32), (12,12,12), (6,6,6,6)]
+    for (u,N) in enumerate([(256,), (32,32), (12,12,12), (6,6,6,6)])
+      for pre in [NFFT.LUT, NFFT.FULL]
         eps = [1e-7, 1e-3, 1e-6, 1e-4]
         for (l,window) in enumerate([:kaiser_bessel, :gauss, :kaiser_bessel_rev, :spline])
             D = length(N)
@@ -14,21 +15,23 @@ const K = 200000
 
             M = prod(N)
             x = rand(Float64,D,M) .- 0.5
-            p = NFFTPlan(x, N, m, sigma, window, K, flags = FFTW.ESTIMATE)
+            p = NFFTPlan(x, N, m, sigma, window, K, precompute = pre,
+                         flags = FFTW.ESTIMATE)
 
             fHat = rand(Float64,M) + rand(Float64,M)*im
             f = ndft_adjoint(p, fHat)
             fApprox = nfft_adjoint(p, fHat)
             e = norm(f[:] - fApprox[:]) / norm(f[:])
-            @debug e
+            @debug "error adjoint nfft "  e
             @test e < eps[l]
 
             gHat = ndft(p, f)
             gHatApprox = nfft(p, f)
             e = norm(gHat[:] - gHatApprox[:]) / norm(gHat[:])
-            @debug e
+            @debug "error nfft "  e
             @test e < eps[l]
         end
+      end
     end
 end
 
