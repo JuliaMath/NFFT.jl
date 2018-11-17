@@ -1,6 +1,7 @@
 name = "NFFT"
 uuid = "8eb238ee-c2ea-11e8-3196-999cce9ed216"
-authors = ["Martin Hofmann <m.hofmann@uke.de>"]
+authors = ["Tobias Knopp <tobias@knoppweb.de>"]
+version = "0.3.4"
 
 [deps]
 Distributed = "8ba89e20-285c-5b6f-9357-94700520ee1b"
