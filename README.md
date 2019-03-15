@@ -1,15 +1,19 @@
-NFFT.jl
-=======
+# NFFT.jl
 
 [![Build Status](https://travis-ci.org/tknopp/NFFT.jl.svg?branch=master)](https://travis-ci.org/tknopp/NFFT.jl)
+
+[![codecov.io](http://codecov.io/github/tknopp/NFFT.jl/coverage.svg?branch=master)](http://codecov.io/github/tknopp/NFFT.jl?branch=master)
+
+[![](https://img.shields.io/badge/docs-latest-blue.svg)](https://tknopp.github.io/NFFT.jl/dev)
+
 
 This package provides a Julia implementation of the Non-equidistant Fast Fourier Transform (NFFT).
 This algorithm is also referred as Gridding in the literature (e.g. in MRI literature).
 For a detailed introduction into the NFFT and its application please have a look at www.nfft.org.
 
 The NFFT is a fast implementation of the Non-equidistant Discrete Fourier Transform (NDFT) that is
-basically a DFT with non-equidistant sampling nodes in either Fourier or time/space domain. 
-In contrast to the FFT, the NFFT is an approximative algorithm whereas the accuracy can be controlled 
+basically a DFT with non-equidistant sampling nodes in either Fourier or time/space domain.
+In contrast to the FFT, the NFFT is an approximative algorithm whereas the accuracy can be controlled
 by two parameters:
 the window width `m` and the oversampling factor `sigma`.
 
@@ -29,7 +33,7 @@ Pkg.add("NFFT")
 Basic usage of NFFT.jl is shown in the following example for 1D:
 
 ```julia
-using NFFT 
+using NFFT
 
 M, N = 1024, 512
 x = range(-0.4, stop=0.4, length=M)  # nodes at which the NFFT is evaluated
@@ -65,7 +69,7 @@ fHat = nfft(P1, f)
 ```
 
 Here `size(f) = (16,20)` and `size(fHat) = (11,20)` since we compute an NFFT along the first dimension.
-To compute the NFFT along the second dimension 
+To compute the NFFT along the second dimension
 
 ```julia
 P2 = NFFTPlan(y, 2, N)
@@ -73,4 +77,3 @@ fHat = nfft(P2, f)
 ```
 
 Now `size(fHat) = (16,11)`.
-
