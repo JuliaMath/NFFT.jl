@@ -13,7 +13,7 @@ var documenterSearchIndex = {"docs": [
     "page": "Home",
     "title": "NFFT.jl",
     "category": "section",
-    "text": "Julia package the Non-equidistant Fast Fourier Transform"
+    "text": "Julia package for the Non-equidistant Fast Fourier Transform"
 },
 
 {
@@ -21,7 +21,7 @@ var documenterSearchIndex = {"docs": [
     "page": "Home",
     "title": "Introduction",
     "category": "section",
-    "text": ""
+    "text": "This package provides a Julia implementation of the Non-equidistant Fast Fourier Transform (NFFT). For a detailed introduction into the NFFT and its application please have a look at www.nfft.org.The NFFT is a fast implementation of the Non-equidistant Discrete Fourier Transform (NDFT) that is basically a DFT with non-equidistant sampling nodes in either Fourier or time/space domain. In contrast to the FFT, the NFFT is an approximative algorithm whereas the accuracy can be controlled by two parameters: the window width m and the oversampling factor sigma."
 },
 
 {
@@ -69,7 +69,7 @@ var documenterSearchIndex = {"docs": [
     "page": "Overview",
     "title": "Overview",
     "category": "section",
-    "text": "TODO"
+    "text": "Basic usage of NFFT.jl is shown in the following example for 1D:using NFFT\n\nM, N = 1024, 512\nx = range(-0.4, stop=0.4, length=M)  # nodes at which the NFFT is evaluated\nfHat = randn(ComplexF64,M)           # data to be transformed\np = NFFTPlan(x, N)                   # create plan. m and sigma are optional parameters\nf = nfft_adjoint(p, fHat)            # calculate adjoint NFFT\ng = nfft(p, f)                       # calculate forward NFFTIn 2D:M, N = 1024, 16\nx = rand(2, M) .- 0.5\nfHat = randn(ComplexF64,M)\np = NFFTPlan(x, (N,N))\nf = nfft_adjoint(p, fHat)\ng = nfft(p, f)"
 },
 
 {
@@ -85,7 +85,7 @@ var documenterSearchIndex = {"docs": [
     "page": "Directional",
     "title": "Directional NFFT",
     "category": "section",
-    "text": "TODO"
+    "text": "There are special methods for computing 1D NFFT\'s for each 1D slice along a particular dimension of a higher dimensional array.M = 11\ny = rand(M) .- 0.5\nN = (16,20)\nP1 = NFFTPlan(y, 1, N)\nf = randn(ComplexF64,N)\nfHat = nfft(P1, f)Here size(f) = (16,20) and size(fHat) = (11,20) since we compute an NFFT along the first dimension. To compute the NFFT along the second dimensionP2 = NFFTPlan(y, 2, N)\nfHat = nfft(P2, f)Now size(fHat) = (16,11)."
 },
 
 {
