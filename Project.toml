@@ -1,5 +1,5 @@
 name = "NFFT"
-uuid = "8eb238ee-c2ea-11e8-3196-999cce9ed216"
+uuid = "efe261a4-0d2b-5849-be55-fc731d526b0d"
 authors = ["Tobias Knopp <tobias@knoppweb.de>"]
 version = "0.3.4"
 
