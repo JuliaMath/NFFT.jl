@@ -1,3 +1,5 @@
 *.DS_Store
 docs/build/*
 *.h5
+
+Manifest.toml
