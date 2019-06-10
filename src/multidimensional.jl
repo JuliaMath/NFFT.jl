@@ -1,4 +1,4 @@
-@generated function apodization!(p::NFFTPlan{D,0}, f::AbstractArray{T,D}, g::StridedArray{T,D}) where {D,T}
+@generated function apodization!(p::NFFTPlan{D,0}, f::AbstractArray{<:Number,D}, g::StridedArray{<:Number,D}) where {D}
     quote
         @nexprs $D d -> offset_d = round(Int, p.n[d] - p.N[d]/2) - 1
 
@@ -22,7 +22,7 @@ end
     end
 end
 
-function convolve!(p::NFFTPlan{D,0}, g::AbstractArray{T,D}, fHat::StridedVector{T}) where {D,T}
+function convolve!(p::NFFTPlan{D,0}, g::AbstractArray{<:Number,D}, fHat::StridedVector{<:Number}) where {D}
   if isempty(p.B)
     convolve_LUT!(p, g, fHat)
   else
