@@ -23,3 +23,17 @@ p = NFFTPlan(x, (N,N))
 f = nfft_adjoint(p, fHat)
 g = nfft(p, f)
 ```
+
+Currently, the eltype of the arguments `f` and `fHat`
+must be compatible that of the variable `x` used in the `NFFTPlan` call.
+For example, if one wants to use `Float32` types to save memory,
+then one can make the plan using something like this:
+
+```
+x = Float32.(LinRange(-0.5,0.5,64))
+p = NFFTPlan(x, N)
+```
+
+The plan will then internally use `Float32` types.
+Then the arguments `f` and `fHat` above should have eltype `Complex{Float32}`
+or equivalently `ComplexF32`, otherwise there will be error messages.
