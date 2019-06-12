@@ -11,4 +11,5 @@ x = rand(2, M) .- 0.5
 fHat = randn(ComplexF64,M)
 p = NFFTPlan(x, (N,N))
 f = nfft_adjoint(p, fHat)
-g = nfft(p, f)</code></pre><footer><hr/><a class="previous" href="index.html"><span class="direction">Previous</span><span class="title">Home</span></a><a class="next" href="directional.html"><span class="direction">Next</span><span class="title">Directional</span></a></footer></article></body></html>
+g = nfft(p, f)</code></pre><p>Currently, the eltype of the arguments <code>f</code> and <code>fHat</code> must be compatible that of the variable <code>x</code> used in the <code>NFFTPlan</code> call. For example, if one wants to use <code>Float32</code> types to save memory, then one can make the plan using something like this:</p><pre><code class="language-none">x = Float32.(LinRange(-0.5,0.5,64))
+p = NFFTPlan(x, N)</code></pre><p>The plan will then internally use <code>Float32</code> types. Then the arguments <code>f</code> and <code>fHat</code> above should have eltype <code>Complex{Float32}</code> or equivalently <code>ComplexF32</code>, otherwise there will be error messages.</p><footer><hr/><a class="previous" href="index.html"><span class="direction">Previous</span><span class="title">Home</span></a><a class="next" href="directional.html"><span class="direction">Next</span><span class="title">Directional</span></a></footer></article></body></html>
