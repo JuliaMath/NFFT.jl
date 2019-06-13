@@ -55,6 +55,18 @@ end
     e = norm(gHat[:] - gHatApprox[:]) / norm(gHat[:])
     @debug "error nfft "  e
     @test e < eps
+
+    f = ndft_adjoint(x, N, ComplexF32.(fHat))
+    fApprox = nfft_adjoint(x, N, ComplexF32.(fHat))
+    e = norm(f[:] - fApprox[:]) / norm(f[:])
+    @debug "error adjoint nfft "  e
+    @test e < eps
+
+    gHat = ndft(x, ComplexF32.(f))
+    gHatApprox = nfft(x, ComplexF32.(f))
+    e = norm(gHat[:] - gHatApprox[:]) / norm(gHat[:])
+    @debug "error nfft "  e
+    @test e < eps
 end
 
 @testset "Abstract sampling points" begin

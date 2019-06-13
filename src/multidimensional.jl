@@ -1,4 +1,4 @@
-@generated function apodization!(p::NFFTPlan{D,0}, f::AbstractArray{T,D}, g::StridedArray{T,D}) where {D,T}
+@generated function apodization!(p::NFFTPlan{D,0,T}, f::AbstractArray{U,D}, g::StridedArray{Complex{T},D}) where {D,T,U}
     quote
         @nexprs $D d -> offset_d = round(Int, p.n[d] - p.N[d]/2) - 1
 
@@ -10,7 +10,7 @@
     end
 end
 
-@generated function apodization_adjoint!(p::NFFTPlan{D,0}, g::AbstractArray{T,D}, f::StridedArray{T,D}) where {D,T}
+@generated function apodization_adjoint!(p::NFFTPlan{D,0,T}, g::AbstractArray{Complex{T},D}, f::StridedArray{U,D}) where {D,T,U}
     quote
         @nexprs $D d -> offset_d = round(Int, p.n[d] - p.N[d]/2) - 1
 
@@ -22,7 +22,7 @@ end
     end
 end
 
-function convolve!(p::NFFTPlan{D,0}, g::AbstractArray{T,D}, fHat::StridedVector{T}) where {D,T}
+function convolve!(p::NFFTPlan{D,0,T}, g::AbstractArray{Complex{T},D}, fHat::StridedVector{U}) where {D,T,U}
   if isempty(p.B)
     convolve_LUT!(p, g, fHat)
   else
@@ -30,7 +30,7 @@ function convolve!(p::NFFTPlan{D,0}, g::AbstractArray{T,D}, fHat::StridedVector{
   end
 end
 
-function convolve_LUT!(p::NFFTPlan{D,0}, g::AbstractArray{T,D}, fHat::StridedVector{T}) where {D,T}
+function convolve_LUT!(p::NFFTPlan{D,0,T}, g::AbstractArray{Complex{T},D}, fHat::StridedVector{U}) where {D,T,U}
     scale = 1.0 / p.m * (p.K-1)
 
     #Threads.@threads
@@ -40,7 +40,7 @@ function convolve_LUT!(p::NFFTPlan{D,0}, g::AbstractArray{T,D}, fHat::StridedVec
 end
 
 
-@generated function _convolve_LUT(p::NFFTPlan{D,0}, g::AbstractArray{T,D}, scale, k) where {D,T}
+@generated function _convolve_LUT(p::NFFTPlan{D,0,T}, g::AbstractArray{Complex{T},D}, scale, k) where {D,T}
     quote
         @nexprs $D d -> xscale_d = p.x[d,k] * p.n[d]
         @nexprs $D d -> c_d = floor(Int, xscale_d)
@@ -65,13 +65,13 @@ end
     end
 end
 
-function convolve_sparse_matrix!(p::NFFTPlan{D,0}, g::AbstractArray{T,D}, fHat::StridedVector{T}) where {D,T}
+function convolve_sparse_matrix!(p::NFFTPlan{D,0,T}, g::AbstractArray{Complex{T},D}, fHat::StridedVector{U}) where {D,T,U}
   fill!(fHat, zero(T))
 
   mul!(fHat, transpose(p.B), vec(g))
 end
 
-function convolve_adjoint!(p::NFFTPlan{D,0}, fHat::AbstractVector{T}, g::StridedArray{T,D}) where {D,T}
+function convolve_adjoint!(p::NFFTPlan{D,0,T}, fHat::AbstractVector{U}, g::StridedArray{Complex{T},D}) where {D,T,U}
   if isempty(p.B)
     convolve_adjoint_LUT!(p, fHat, g)
   else
@@ -79,7 +79,7 @@ function convolve_adjoint!(p::NFFTPlan{D,0}, fHat::AbstractVector{T}, g::Strided
   end
 end
 
-@generated function convolve_adjoint_LUT!(p::NFFTPlan{D,0}, fHat::AbstractVector{T}, g::StridedArray{T,D}) where {D,T}
+@generated function convolve_adjoint_LUT!(p::NFFTPlan{D,0,T}, fHat::AbstractVector{U}, g::StridedArray{Complex{T},D}) where {D,T,U}
     quote
         fill!(g, zero(T))
         scale = 1.0 / p.m * (p.K-1)
@@ -105,8 +105,8 @@ end
     end
 end
 
-function convolve_adjoint_sparse_matrix!(p::NFFTPlan{D,0},
-                        fHat::AbstractVector{T}, g::StridedArray{T,D}) where {D,T}
+function convolve_adjoint_sparse_matrix!(p::NFFTPlan{D,0,T},
+                        fHat::AbstractVector{U}, g::StridedArray{Complex{T},D}) where {D,T,U}
   fill!(g, zero(T))
 
   mul!(vec(g), p.B, fHat)

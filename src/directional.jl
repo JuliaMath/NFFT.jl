@@ -1,5 +1,6 @@
 
-@generated function apodization!(p::NFFTPlan{D,DIM}, f::AbstractArray{T,D}, g::StridedArray{T,D}) where {D,DIM,T}
+@generated function apodization!(p::NFFTPlan{D,DIM,T}, f::AbstractArray{U,D},
+                                 g::StridedArray{Complex{T},D}) where {D,DIM,T,U}
     quote
         offset = round(Int, p.n[$DIM] - p.N[$DIM]/2) - 1
 
@@ -18,7 +19,8 @@
     end
 end
 
-@generated function apodization_adjoint!(p::NFFTPlan{D,DIM}, g::AbstractArray{T,D}, f::StridedArray{T,D}) where {D,DIM,T}
+@generated function apodization_adjoint!(p::NFFTPlan{D,DIM,T},
+           g::AbstractArray{Complex{T},D}, f::StridedArray{U,D}) where {D,DIM,T,U}
     quote
         offset = round(Int, p.n[$DIM] - p.N[$DIM]/2) - 1
 
@@ -39,7 +41,8 @@ end
 
 
 
-@generated function convolve!(p::NFFTPlan{D,DIM}, g::AbstractArray{T,D}, fHat::StridedArray{T,D}) where {D,DIM,T}
+@generated function convolve!(p::NFFTPlan{D,DIM,T}, g::AbstractArray{Complex{T},D},
+                              fHat::StridedArray{U,D}) where {D,DIM,T,U}
     quote
         fill!(fHat, zero(T))
         scale = 1.0 / p.m * (p.K-1)
@@ -76,7 +79,8 @@ end
 end
 
 
-@generated function convolve_adjoint!(p::NFFTPlan{D,DIM}, fHat::AbstractArray{T,D}, g::StridedArray{T,D}) where {D,DIM,T}
+@generated function convolve_adjoint!(p::NFFTPlan{D,DIM,T}, fHat::AbstractArray{U,D},
+                                      g::StridedArray{Complex{T},D}) where {D,DIM,T,U}
     quote
         fill!(g, zero(T))
         scale = 1.0 / p.m * (p.K-1)

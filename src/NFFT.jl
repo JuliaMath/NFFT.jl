@@ -190,8 +190,8 @@ function Base.show(io::IO, p::NFFTPlan{D,DIM}) where {D,DIM}
 end
 
 
-@generated function consistencyCheck(p::NFFTPlan{D,DIM}, f::AbstractArray{T,D},
-                                     fHat::AbstractArray{T}) where {D,DIM,T}
+@generated function consistencyCheck(p::NFFTPlan{D,DIM,T}, f::AbstractArray{U,D},
+                                     fHat::AbstractArray{Y}) where {D,DIM,T,U,Y}
     quote
         if $DIM == 0
             fHat_test = (p.M == length(fHat))
@@ -215,10 +215,10 @@ Calculate the NFFT of `f` with plan `p` and store the result in `fHat`.
 
 Both `f` and `fHat` must be complex arrays.
 """
-function nfft!(p::NFFTPlan, f::AbstractArray{T}, fHat::StridedArray{T}, verbose=false) where T
+function nfft!(p::NFFTPlan{D,DIM,T}, f::AbstractArray, fHat::StridedArray, verbose=false) where {D,DIM,T}
     consistencyCheck(p, f, fHat)
 
-    fill!(p.tmpVec, zero(T))
+    fill!(p.tmpVec, zero(Complex{T}))
     t1 = @elapsed @inbounds apodization!(p, f, p.tmpVec)
     if nprocs() == 1
         t2 = @elapsed p.forwardFFT * p.tmpVec # fft!(p.tmpVec) or fft!(p.tmpVec, dim)
@@ -243,8 +243,8 @@ For a **directional** `D` dimensional plan `p` both `f` and `fHat` are `D`
 dimensional arrays, and the dimension specified in the plan creation is
 affected.
 """
-function nfft(p::NFFTPlan{D,0}, f::AbstractArray{T,D}, args...) where {D,T}
-    fHat = zeros(T, p.M)
+function nfft(p::NFFTPlan{D,0,T}, f::AbstractArray{U,D}, args...) where {D,T,U}
+    fHat = zeros(Complex{T}, p.M)
     nfft!(p, f, fHat, args...)
     return fHat
 end
@@ -254,10 +254,10 @@ function nfft(x, f::AbstractArray{T,D}, rest...; kwargs...) where {D,T}
     return nfft(p, f)
 end
 
-function nfft(p::NFFTPlan{D,DIM}, f::AbstractArray{T,D}, args...) where {D,DIM,T}
+function nfft(p::NFFTPlan{D,DIM,T}, f::AbstractArray{U,D}, args...) where {D,DIM,T,U}
     sz = [p.N...]
     sz[DIM] = p.M
-    fHat = Array{T}(undef,sz...)
+    fHat = Array{Complex{T}}(undef,sz...)
     nfft!(p, f, fHat, args...)
     return fHat
 end
@@ -297,8 +297,8 @@ For a **directional** `D` dimensional plan `p` both `f` and `fHat` are `D`
 dimensional arrays, and the dimension specified in the plan creation is
 affected.
 """
-function nfft_adjoint(p::NFFTPlan{D,DIM}, fHat::AbstractArray{T}, args...) where {D,DIM,T}
-    f = Array{T}(undef,p.N)
+function nfft_adjoint(p::NFFTPlan{D,DIM,T}, fHat::AbstractArray{U}, args...) where {D,DIM,T,U}
+    f = Array{Complex{T}}(undef,p.N)
     nfft_adjoint!(p, fHat, f, args...)
     return f
 end
