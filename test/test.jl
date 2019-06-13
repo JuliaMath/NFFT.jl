@@ -35,6 +35,28 @@ const K = 200000
     end
 end
 
+@testset "High level NFFT " begin
+    N = (32,32)
+    eps =  1e-3
+    D = length(N)
+
+    M = prod(N)
+    x = rand(Float64,D,M) .- 0.5
+
+    fHat = rand(Float64,M) + rand(Float64,M)*im
+    f = ndft_adjoint(x, N, fHat)
+    fApprox = nfft_adjoint(x, N, fHat)
+    e = norm(f[:] - fApprox[:]) / norm(f[:])
+    @debug "error adjoint nfft "  e
+    @test e < eps
+
+    gHat = ndft(x, f)
+    gHatApprox = nfft(x, f)
+    e = norm(gHat[:] - gHatApprox[:]) / norm(gHat[:])
+    @debug "error nfft "  e
+    @test e < eps
+end
+
 @testset "Abstract sampling points" begin
     M, N = rand(100:200, 2)
     x = range(-0.4, stop=0.4, length=M)

@@ -21,6 +21,11 @@ function ndft(plan::NFFTPlan{D}, f::AbstractArray{T,D}) where {D,T}
     return g
 end
 
+function ndft(x, f::AbstractArray{T,D}, rest...; kwargs...) where {D,T}
+    p = NFFTPlan(x, size(f), rest...; kwargs...)
+    return ndft(p, f)
+end
+
 function ndft_adjoint(plan::NFFTPlan{D}, fHat::AbstractArray{T,1}) where {D,T}
     plan.M == length(fHat) || throw(DimensionMismatch("Data is not consistent with NFFTPlan"))
 
@@ -39,4 +44,9 @@ function ndft_adjoint(plan::NFFTPlan{D}, fHat::AbstractArray{T,1}) where {D,T}
     end
 
     return g
+end
+
+function ndft_adjoint(x, N, fHat::AbstractVector{T}, rest...; kwargs...) where T
+    p = NFFTPlan(x, N, rest...; kwargs...)
+    return ndft_adjoint(p, fHat)
 end
