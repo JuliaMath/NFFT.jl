@@ -37,3 +37,11 @@ p = NFFTPlan(x, N)
 The plan will then internally use `Float32` types.
 Then the arguments `f` and `fHat` above should have eltype `Complex{Float32}`
 or equivalently `ComplexF32`, otherwise there will be error messages.
+
+One can also perform NFFT computations directly without first creating a plan:
+```
+g = nfft(x, f)
+f = nfft_adjoint(x, N, fHat)
+```
+These forms are more forgiving about the types of the input arguments.
+The versions based on a plan are more optimized for repeated use with the same `x`
