@@ -1,10 +1,22 @@
 
 ### ndft functions ###
 
-function ndft(plan::NFFTPlan{D}, f::AbstractArray{T,D}) where {D,T}
-    plan.N == size(f) || throw(DimensionMismatch("Data is not consistent with NFFTPlan"))
+"""
+    ndft!(plan::NFFTPlan{D}, g::AbstractArray{Tg,D}, f::AbstractArray{T,D})
 
-    g = zeros(T, plan.M)
+Compute NDFT of input array `f`
+and store result in pre-allocated output array `g`.
+Both arrays must have the same size compatible with the NFFT `plan`.
+
+"""
+function ndft!(plan::NFFTPlan{D}, g::AbstractArray{Tg,D}, f::AbstractArray{T,D}) where {D,T,Tg}
+
+    plan.N == size(f) ||
+        throw(DimensionMismatch("Data f is not consistent with NFFTPlan"))
+    plan.N == size(g) ||
+        throw(DimensionMismatch("Output g is inconsistent with NFFTPlan"))
+
+    g .= zero(Tg)
 
     for l=1:prod(plan.N)
         idx = CartesianIndices(plan.N)[l]
@@ -21,15 +33,36 @@ function ndft(plan::NFFTPlan{D}, f::AbstractArray{T,D}) where {D,T}
     return g
 end
 
-function ndft(x, f::AbstractArray{T,D}, rest...; kwargs...) where {D,T}
-    p = NFFTPlan(x, size(f), rest...; kwargs...)
-    return ndft(p, f)
-end
 
-function ndft_adjoint(plan::NFFTPlan{D}, fHat::AbstractArray{T,1}) where {D,T}
-    plan.M == length(fHat) || throw(DimensionMismatch("Data is not consistent with NFFTPlan"))
+"""
+    ndft(plan::NFFTPlan{D}, f::AbstractArray{T,D})
+    ndft(x, f::AbstractArray, rest...; kwargs...)
 
-    g = zeros(T, plan.N)
+Non pre-allocated versions of NDFT; see `ndft!`.
+"""
+ndft(plan::NFFTPlan{D}, f::AbstractArray{T,D}) where {D,T} =
+    ndft!(plan, similar(f), f)
+
+ndft(x, f::AbstractArray, rest...; kwargs...) =
+    ndft(NFFTPlan(x, size(f), rest...; kwargs...), f)
+
+
+
+"""
+    ndft_adjoint!(plan::NFFTPlan{D}, g::AbstractArray{Tg,D}, fHat::AbstractVector)
+
+Compute adjoint NDFT of input vector `fHat`
+and store result in pre-allocated output array `g`.
+The input arrays must have sizes compatible with the NFFT `plan`.
+"""
+function ndft_adjoint!(plan::NFFTPlan{D}, g::AbstractArray{Tg,D}, fHat::AbstractVector{T}) where {D,T,Tg}
+
+    plan.M == length(fHat) ||
+        throw(DimensionMismatch("Data f inconsistent with NFFTPlan"))
+    plan.N == size(g) ||
+        throw(DimensionMismatch("Output g inconsistent with NFFTPlan"))
+
+    g .= zero(Tg)
 
     for l=1:prod(plan.N)
         idx = CartesianIndices(plan.N)[l]
@@ -46,7 +79,15 @@ function ndft_adjoint(plan::NFFTPlan{D}, fHat::AbstractArray{T,1}) where {D,T}
     return g
 end
 
-function ndft_adjoint(x, N, fHat::AbstractVector{T}, rest...; kwargs...) where T
-    p = NFFTPlan(x, N, rest...; kwargs...)
-    return ndft_adjoint(p, fHat)
-end
+
+"""
+    ndft_adjoint(plan::NFFTPlan, fHat::AbstractVector)
+    ndft_adjoint(x, N, fHat::AbstractVector, rest...; kwargs...)
+
+Non pre-allocated versions of NDFT adjoint; see `ndft_adjoint!`.
+"""
+ndft_adjoint(plan::NFFTPlan, fHat::AbstractVector) =
+    ndft_adjoint!(plan, similar(fHat, plan.N), fHat)
+
+ndft_adjoint(x, N, fHat::AbstractVector, rest...; kwargs...) =
+    ndft_adjoint(NFFTPlan(x, N, rest...; kwargs...), fHat)
