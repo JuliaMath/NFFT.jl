@@ -51,6 +51,26 @@ mutable struct NFFTPlan{D,DIM,T}
     B::SparseMatrixCSC{T,Int64}
 end
 
+function Base.copy(p::NFFTPlan{D,0,T}) where {D, T}
+  tmpVec = similar(p.tmpVec)
+
+  FP = plan_fft!(tmpVec; flags=p.flags)
+  BP = plan_bfft!(tmpVec; flags=p.flags)
+
+  return  NFFTPlan{D,0,T}(p.N, p.M, p.x, p.m, p.sigma, p.n, p.K, p.windowLUT,
+                  p.windowHatInvLUT, FP, BP , tmpVec, p.B)
+end
+
+function Base.copy(p::NFFTPlan{D,DIM,T}) where {D, DIM, T}
+  tmpVec = similar(p.tmpVec)
+
+  FP = plan_fft!(tmpVec, DIM; flags=p.flags)
+  BP = plan_bfft!(tmpVec, DIM; flags=p.flags)
+
+  return  NFFTPlan{D,DIM,T}(p.N, p.M, p.x, p.m, p.sigma, p.n, p.K, p.windowLUT,
+                  p.windowHatInvLUT, FP, BP , tmpVec, p.B)
+end
+
 @inline dim(::NFFTPlan{D,DIM}) where {D, DIM} = DIM
 
 """
