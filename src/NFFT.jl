@@ -5,11 +5,18 @@ using FFTW
 using Distributed
 using SparseArrays
 using LinearAlgebra
+using CUDA
 
 export NFFTPlan, nfft, nfft_adjoint, ndft, ndft_adjoint
 
 include("windowFunctions.jl")
 include("precomputation.jl")
+
+# only include CUDA-based NFFT if CUDA setup is functional
+if CUDA.functional()
+    using CUDA.CUSPARSE
+    include("CuNFFT.jl")
+end
 
 #=
 Some internal documentation (especially for people familiar with the nfft)
