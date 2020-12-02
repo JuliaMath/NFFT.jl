@@ -65,66 +65,18 @@ end
 
 """
 precompute indices of the apodized image in the oversampled grid
-"""
-function precomp_apodIdx(N::NTuple{1,Int64}, sigma::Real, numSlices=1)
-    # size of oversampled grid
-    n = ntuple(d->round(Int,sigma*N[d]), 1)
-    # offsets to centran NxN-region
-    offset = ntuple(d->round(Int, n[d]-N[d]/2)-1, 1)
-    # linear Indices
-    linIdx = LinearIndices((n[1],numSlices))
-    # apodization indices
-    apodIdx = zeros(Int64,N[1],numSlices)
-    for i_1=1:N[1]
-        idx1 = rem(i_1+offset[1], n[1]) + 1
-        # store linearIdx
-        apodIdx[i_1,:] .= linIdx[idx1,:]
-    end
-  
-    return vec(apodIdx)
-end
-  
-function precomp_apodIdx(N::NTuple{2,Int64}, sigma::Real, numSlices=1)
-    # size of oversampled grid
-    n = ntuple(d->round(Int,sigma*N[d]), 2)
-    # offsets to centran NxN-region
-    offset = ntuple(d->round(Int, n[d]-N[d]/2)-1, 2)
-    # linear Indices
-    linIdx = LinearIndices((n[1],n[2],numSlices))
-    # apodization indices
-    apodIdx = zeros(Int64,N[1],N[2],numSlices)
-    for i_2=1:N[2]
-        idx2 = rem(i_2+offset[2], n[2]) + 1
-        for i_1=1:N[1]
-          idx1 = rem(i_1+offset[1], n[1]) + 1
-          # store linearIdx
-          apodIdx[i_1,i_2,:] .= linIdx[idx1,idx2,:]
+""" 
+@generated function precomp_apodIdx(N::NTuple{D,Int64}, n::NTuple{D,Int64}) where D
+    quote
+        # linear indices of the oversampled grid
+        linIdx = LinearIndices(n)
+        # offsets to central NxN-region of the oversampled grid
+        @nexprs $D d -> offset_d = round(Int, n[d] - N[d]/2) - 1
+        # apodization indices
+        apodIdx = zeros(Int64,N)
+        @nloops $D l apodIdx d->(gidx_d = rem(l_d+offset_d, n[d]) + 1) begin
+            (@nref $D apodIdx l) = (@nref $D linIdx gidx)
         end
+        return vec(apodIdx)
     end
-  
-    return vec(apodIdx)
-end
-  
-function precomp_apodIdx(N::NTuple{3,Int64}, sigma::Real, numSlices=1)
-    # size of oversampled grid
-    n = ntuple(d->round(Int,sigma*N[d]), 3)
-    # offsets to centran NxN-region
-    offset = ntuple(d->round(Int, n[d]-N[d]/2)-1, 3)
-    # linear Indices
-    linIdx = LinearIndices((n[1],n[2],n[3],numSlices))
-    # apodization indices
-    apodIdx = zeros(Int64,N[1],N[2],N[3],numSlices)
-    for i_3=1:N[3]
-        idx3 = rem(i_3+offset[3], n[3]) + 1
-        for i_2=1:N[2]
-            idx2 = rem(i_2+offset[2], n[2]) + 1
-            for i_1=1:N[1]
-                idx1 = rem(i_1+offset[1], n[1]) + 1
-                # store linearIdx
-                apodIdx[i_1,i_2,i_3,:] .= linIdx[idx1,idx2,idx3,:]
-            end
-        end
-    end
-  
-    return vec(apodIdx)
 end

@@ -4,16 +4,18 @@ authors = ["Tobias Knopp <tobias@knoppweb.de>"]
 version = "0.5.2"
 
 [deps]
+CUDA = "052768ef-5323-5732-b1bb-66c8b64840ba"
 Distributed = "8ba89e20-285c-5b6f-9357-94700520ee1b"
 FFTW = "7a1cc6ca-52ef-59f5-83cd-3a7055c09341"
+Graphics = "a2bd30eb-e257-5431-a919-1863eab51364"
 LinearAlgebra = "37e2e46d-f89d-539d-b4ee-838fcccc9c8e"
 Random = "9a3f8284-a2c9-5f02-9a11-845980a1fd5c"
 SparseArrays = "2f01184e-e22b-5df5-ae63-d93ebab69eaf"
 SpecialFunctions = "276daf66-3868-5448-9aa4-cd146d93841b"
-CUDA = "052768ef-5323-5732-b1bb-66c8b64840ba"
 
 [compat]
 FFTW = "0.2, 1.0"
+Graphics = "0.4, 1.0"
 SpecialFunctions = "0.8, 0.10, 1.0"
 julia = "1.3"
 

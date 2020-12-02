@@ -16,8 +16,8 @@ const K = 200000
 
             M = prod(N)
             x = rand(Float64,D,M) .- 0.5
-            p = NFFTPlan(x, N, m, sigma, window, K, precompute = pre,
-                         flags = FFTW.ESTIMATE)
+            p = plan_nfft(x, N, m, sigma, window, K, precompute = pre,
+                         flags = FFTW.ESTIMATE, device=NFFT.CPU)
 
             fHat = rand(Float64,M) + rand(Float64,M)*im
             f = ndft_adjoint(p, fHat)
@@ -73,7 +73,7 @@ end
 @testset "Abstract sampling points" begin
     M, N = rand(100:200, 2)
     x = range(-0.4, stop=0.4, length=M)
-    p = NFFTPlan(x, N, flags = FFTW.MEASURE)
+    p = plan_nfft(x, N, flags = FFTW.ESTIMATE)
 end
 
 @testset "Directional NFFT $D dim" for D in 2:3 begin
@@ -86,11 +86,11 @@ end
             x = rand(M) .- 0.5
 
             f = rand(ComplexF64,N)
-            p_dir = NFFTPlan(x, d, N)
+            p_dir = plan_nfft(x, d, N)
             fHat_dir = nfft(p_dir, f)
             g_dir = nfft_adjoint(p_dir, fHat_dir)
 
-            p = NFFTPlan(x, N[d])
+            p = plan_nfft(x, N[d])
             fHat = similar(fHat_dir)
             g = similar(g_dir)
 
@@ -126,9 +126,9 @@ if CUDA.functional()
 
             M = prod(N)
             x = rand(Float64,D,M) .- 0.5
-            p = NFFTPlan(x, N, m, sigma, window, K, precompute = NFFT.FULL,
-                         flags = FFTW.ESTIMATE)
-            p_d = CuNFFTPlan(x, N; m=m, sigma=sigma, window=window, K=K)
+            p = plan_nfft(x, N, m, sigma, window, K, precompute = NFFT.FULL,
+                         flags = FFTW.ESTIMATE, device=NFFT.CPU)
+            p_d = plan_nfft(x, N, m, sigma, window, K, device=NFFT.CUDAGPU)
 
             fHat = rand(Float64,M) + rand(Float64,M)*im
             f = ndft_adjoint(p, fHat)
