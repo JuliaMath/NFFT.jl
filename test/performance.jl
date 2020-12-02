@@ -8,7 +8,7 @@ function nfft_performance()
       for pre in [NFFT.LUT, NFFT.FULL]
         @info "* precomputation = " pre
         @info "* initialization"
-        @time p = NFFTPlan(x, N, m, sigma, precompute=pre)
+        @time p = plan_nfft(x, N, m, sigma, precompute=pre)
 
         @info "* adjoint"
         @time fApprox = nfft_adjoint(p, fHat, true)
@@ -23,7 +23,7 @@ function nfft_performance()
       for pre in [NFFT.LUT, NFFT.FULL]
         @info "* precomputation = " pre
         @info "* initialization"
-        @time p = NFFTPlan(x2, (N,N), m, sigma, precompute=pre)
+        @time p = plan_nfft(x2, (N,N), m, sigma, precompute=pre)
 
         @info "* adjoint"
         @time fApprox = nfft_adjoint(p, fHat, true)
@@ -38,7 +38,7 @@ function nfft_performance()
       for pre in [NFFT.LUT, NFFT.FULL]
         @info "* precomputation = " pre
         @info "* initialization"
-        @time p = NFFTPlan(x3, (N,N,N), m, sigma, precompute=pre)
+        @time p = plan_nfft(x3, (N,N,N), m, sigma, precompute=pre)
 
         @info "* adjoint"
         @time fApprox = nfft_adjoint(p, fHat, true)

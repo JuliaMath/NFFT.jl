@@ -36,3 +36,47 @@
         return S
     end
 end
+
+"""
+precompute LUT for the multidimensional interpolation window
+"""
+function precomp_windowHatInvLUT(T::Type, win_hat::Function, N::NTuple{D,Int64}, sigma::Real, m::Int64) where D
+    # size of oversampled grid
+    n = ntuple(d->round(Int,sigma*N[d]), D)
+    # lookup tables for 1d interpolation kernels
+    windowHatInvLUT1d = Vector{Vector{T}}(undef,D)
+    for d=1:D
+        windowHatInvLUT1d[d] = [1.0/win_hat(k-1-N[d]/2, n[d], m, sigma) for k=1:N[d]]
+    end
+    # lookup table for multi-dimensional kernels
+    windowHatInvLUT = zeros(Complex{T},N)
+    if D==1
+        windowHatInvLUT .= windowHatInvLUT1d[1]
+    elseif D==2
+        windowHatInvLUT .= reshape( kron(windowHatInvLUT1d[1], windowHatInvLUT1d[2]), N )
+    elseif D==3
+        windowHatInvLUT2d = kron(windowHatInvLUT1d[1], windowHatInvLUT1d[2])
+        windowHatInvLUT .= reshape( kron(windowHatInvLUT2d, windowHatInvLUT1d[3]), N )
+    else
+        error("CuNFFT does not yet support $(D) dimensions")
+    end
+    return windowHatInvLUT
+end
+
+"""
+precompute indices of the apodized image in the oversampled grid
+""" 
+@generated function precomp_apodIdx(N::NTuple{D,Int64}, n::NTuple{D,Int64}) where D
+    quote
+        # linear indices of the oversampled grid
+        linIdx = LinearIndices(n)
+        # offsets to central NxN-region of the oversampled grid
+        @nexprs $D d -> offset_d = round(Int, n[d] - N[d]/2) - 1
+        # apodization indices
+        apodIdx = zeros(Int64,N)
+        @nloops $D l apodIdx d->(gidx_d = rem(l_d+offset_d, n[d]) + 1) begin
+            (@nref $D apodIdx l) = (@nref $D linIdx gidx)
+        end
+        return vec(apodIdx)
+    end
+end
