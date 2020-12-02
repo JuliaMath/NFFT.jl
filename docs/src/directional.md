@@ -6,7 +6,7 @@ There are special methods for computing 1D NFFT's for each 1D slice along a part
 M = 11
 y = rand(M) .- 0.5
 N = (16,20)
-P1 = NFFTPlan(y, 1, N)
+P1 = plan_nfft(y, 1, N)
 f = randn(ComplexF64,N)
 fHat = nfft(P1, f)
 ```
@@ -15,7 +15,7 @@ Here `size(f) = (16,20)` and `size(fHat) = (11,20)` since we compute an NFFT alo
 To compute the NFFT along the second dimension
 
 ```julia
-P2 = NFFTPlan(y, 2, N)
+P2 = plan_nfft(y, 2, N)
 fHat = nfft(P2, f)
 ```
 
