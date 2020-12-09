@@ -1,7 +1,6 @@
 using Documenter, NFFT
 
 makedocs(
-    format = :html,
     modules = [NFFT],
     sitename = "NFFT",
     authors = "Tobias Knopp,...",
@@ -13,5 +12,4 @@ makedocs(
     ]
 )
 
-deploydocs(repo   = "github.com/tknopp/NFFT.jl.git",
-           target = "build")
+deploydocs(repo   = "github.com/tknopp/NFFT.jl.git")
