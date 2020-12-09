@@ -10,8 +10,7 @@ makedocs(
         "Overview" => "overview.md",
         "Directional" => "directional.md",
         "Density" => "density.md"
-    ],
-    html_prettyurls = false, #!("local" in ARGS),
+    ]
 )
 
 deploydocs(repo   = "github.com/tknopp/NFFT.jl.git",
