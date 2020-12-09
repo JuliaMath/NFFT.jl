@@ -45,7 +45,7 @@ function Base.copy(p::NFFTPlan{D,0,T}) where {D,T}
     FP = plan_fft!(tmpVec; flags=p.forwardFFT.flags)
     BP = plan_bfft!(tmpVec; flags=p.backwardFFT.flags)
    
-    return  NFFTPlan{T,D,0}(p.N, p.M, p.x, p.m, p.sigma, p.n, p.K, p.windowLUT,
+    return  NFFTPlan{D,0,T}(p.N, p.M, p.x, p.m, p.sigma, p.n, p.K, p.windowLUT,
                     p.windowHatInvLUT, FP, BP , tmpVec, p.B)
 end
     
@@ -55,7 +55,7 @@ function Base.copy(p::NFFTPlan{D,DIM,T}) where {D,DIM,T}
     FP = plan_fft!(tmpVec, DIM; flags=p.forwardFFT.flags)
     BP = plan_bfft!(tmpVec, DIM; flags=p.backwardFFT.flags)
     
-    return  NFFTPlan{T,D,DIM}(p.N, p.M, p.x, p.m, p.sigma, p.n, p.K, p.windowLUT,
+    return  NFFTPlan{D,DIM,T}(p.N, p.M, p.x, p.m, p.sigma, p.n, p.K, p.windowLUT,
                     p.windowHatInvLUT, FP, BP , tmpVec, p.B)
 end
     
