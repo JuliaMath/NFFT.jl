@@ -14,11 +14,11 @@ SparseArrays = "2f01184e-e22b-5df5-ae63-d93ebab69eaf"
 SpecialFunctions = "276daf66-3868-5448-9aa4-cd146d93841b"
 
 [compat]
+CUDA = "1.3.3, 2.3, 3.0"
 FFTW = "0.2, 1.0"
 Graphics = "0.4, 1.0"
 SpecialFunctions = "0.8, 0.10, 1.0"
 julia = "1.3"
-CUDA = "1.3.3, 2.3"
 
 [extras]
 Test = "8dfed614-e22c-5e08-85e1-65c5234f0b40"
