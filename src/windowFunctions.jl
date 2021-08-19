@@ -1,5 +1,5 @@
 if VERSION >= v"0.6.0-"
-    using SpecialFunctions
+    using SpecialFunctions: besseli
 end
 
 # This file contains different window functions.
