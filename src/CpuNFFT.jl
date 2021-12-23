@@ -75,7 +75,7 @@ function NFFTPlan(x::Matrix{T}, N::NTuple{D,Int}, m=4, sigma=2.0,
 
     n = ntuple(d->round(Int,sigma*N[d]), D)
 
-    tmpVec = zeros(Complex{T}, n)
+    tmpVec = Array{Complex{T}}(undef, n)
 
     M = size(x,2)
 
