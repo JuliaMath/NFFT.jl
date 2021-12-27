@@ -71,7 +71,7 @@ function NFFTPlan(x::Matrix{T}, N::NTuple{D,Int}, m = 4, sigma = 2.0,
     precompute::PrecomputeFlags = LUT, kwargs...) where {D,T}
 
     if D != size(x, 1)
-        throw(ArgumentError())
+        throw(ArgumentError("The number of dimensions of x and N do not match"))
     end
 
     n = ntuple(d -> round(Int, sigma * N[d]), D)
@@ -88,6 +88,24 @@ function NFFTPlan(x::Matrix{T}, N::NTuple{D,Int}, m = 4, sigma = 2.0,
     NFFTPlan{D,0,T}(N, M, x, m, sigma, n, K, windowLUT, windowHatInvLUT, FP, BP, tmpVec, B)
 end
 
+function NFFTPlan!(p::AbstractNFFTPlan{D,DIM,T}, x::Matrix{T}, window = :kaiser_bessel) where {D,DIM,T}
+
+    if isempty(p.B)
+        precompute = LUT
+    else
+        precompute = FULL
+    end
+
+    windowLUT, windowHatInvLUT, B = calcLookUpTable(x, p.N, p.n, p.m, p.sigma, window, p.K; precompute=precompute)
+
+    p.M = size(x, 2)
+    p.windowLUT = windowLUT
+    p.windowHatInvLUT = windowHatInvLUT
+    p.B = B
+
+    return p
+end
+
 # Directional NFFT
 """
         NFFTPlan(x, d, N, ...) -> plan
@@ -99,7 +117,7 @@ It takes as optional keywords all the keywords supported by `plan_fft` function 
 `flags` and `timelimit`).  See documentation of `plan_fft` for reference.
 """
 function NFFTPlan(x::AbstractVector{T}, dim::Integer, N::NTuple{D,Int64}, m = 4, sigma = 2.0, window = :kaiser_bessel, K = 2000; kwargs...) where {D,T}
-    
+
     n = ntuple(d -> round(Int, sigma * N[d]), D)
 
     sz = [N...]
