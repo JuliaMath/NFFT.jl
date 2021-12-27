@@ -129,5 +129,6 @@ include("directional.jl")
 include("multidimensional.jl")
 include("samplingDensity.jl")
 include("NDFT.jl")
+include("Toeplitz.jl")
 
 end
