@@ -34,11 +34,11 @@ xOS1 = similar(Ka)
 xOS2 = similar(Ka)
 fftplan = plan_fft(xOS1; flags=FFTW.MEASURE)
 ifftplan = plan_ifft(xOS1; flags=FFTW.MEASURE)
-NFFT.applyToeplitzKernel!(Ka, x, fftplan, ifftplan, xOS1, xOS2)
+NFFT.convolveToeplitzKernel!(x, Ka, fftplan, ifftplan, xOS1, xOS2)
 @test x ≈ xN rtol = 1e-5
 
-## test that applyToeplitzKernel with all arguments is non-allocating
-bm = @benchmark NFFT.applyToeplitzKernel!($Ka, $x, $fftplan, $ifftplan, $xOS1, $xOS2)
+## test that convolveToeplitzKernel! with all arguments is non-allocating
+bm = @benchmark NFFT.convolveToeplitzKernel!($x, $Ka, $fftplan, $ifftplan, $xOS1, $xOS2)
 @test bm.allocs == 0
 
 ## calculateToeplitzKernel vs calculateToeplitzKernel_explicit  (2D-rectangular, Float32)
