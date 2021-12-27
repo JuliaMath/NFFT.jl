@@ -9,6 +9,7 @@ using CUDA
 using Graphics: @mustimplement
 
 export AbstractNFFTPlan, plan_nfft, nfft, nfft_adjoint, ndft, ndft_adjoint
+export calculateToeplitzKernel, calculateToeplitzKernel!, applyToeplitzKernel!
 import Base.size
 
 @enum PrecomputeFlags begin
