@@ -186,7 +186,7 @@ julia> convolveToeplitzKernel!(x, λ2)
 """
 function calculateToeplitzKernel!(p::AbstractNFFTPlan, tr::Matrix{T}, fftplan) where T
     
-    NFFT.NFFTPlan!(p, tr)
+    NFFTPlan!(p, tr)
     eigMat = nfft_adjoint(p, OnesVector(Complex{T}, size(tr,2)))
     return fftplan * fftshift(eigMat)
 end
