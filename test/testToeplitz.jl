@@ -14,6 +14,20 @@ for Nx ∈ [32, 33, 64]
     @test Ka ≈ Kx rtol = 1e-6
 end
 
+## calculateToeplitzKernel with less-allocating constructor vs calculateToeplitzKernel_explicit (2D, Float64)
+for Nx ∈ [32, 33, 64]
+    trj = rand(2, 1000) .- 0.5
+    Kx = NFFT.calculateToeplitzKernel_explicit((Nx, Nx), trj)
+
+    p = NFFT.NFFTPlan(trj, (2Nx,2Nx))
+    Ka = similar(Kx)
+    fftplan = plan_fft(Ka; flags=FFTW.ESTIMATE)
+    NFFT.calculateToeplitzKernel!(Ka, p, trj, fftplan)
+
+    @test typeof(Kx) === Matrix{ComplexF64}
+    @test typeof(Ka) === Matrix{ComplexF64}
+    @test Ka ≈ Kx rtol = 1e-6
+end
 
 ## calculateToeplitzKernel vs calculateToeplitzKernel_explicit (2D, Float32)
 Nx = 32
