@@ -57,7 +57,7 @@ function nfft_performance_2(N = 64, M = N*N*N)
   m = 3; sigma = 2.0
   timing = TimingStats()
 
-  let x3 = rand(3,M) .- 0.5, fHat = rand(M)*1im
+  let x3 = Float32.(rand(3,M) .- 0.5), fHat = ComplexF32.(rand(M)*1im)
 
     for pre in [NFFT.LUT] # right now no MT for NFFT.FULL
       for threading in [true, false]
