@@ -181,7 +181,8 @@ Calculate the NFFT of `f` with plan `p` and store the result in `fHat`.
 
 Both `f` and `fHat` must be complex arrays.
 """
-function nfft!(p::NFFTPlan{D,DIM,T}, f::AbstractArray, fHat::StridedArray, verbose=false) where {D,DIM,T}
+function nfft!(p::NFFTPlan{D,DIM,T}, f::AbstractArray, fHat::StridedArray; 
+               verbose=false, timing::Union{Nothing,TimingStats} = nothing) where {D,DIM,T}
     consistencyCheck(p, f, fHat)
 
     fill!(p.tmpVec, zero(Complex{T}))
@@ -195,6 +196,11 @@ function nfft!(p::NFFTPlan{D,DIM,T}, f::AbstractArray, fHat::StridedArray, verbo
     if verbose
       @info "Timing: apod=$t1 fft=$t2 conv=$t3"
     end
+    if timing != nothing
+      timing.conv = t3
+      timing.fft = t2
+      timing.apod = t1
+    end
     return fHat
 end
 
@@ -205,7 +211,8 @@ Calculate the adjoint NFFT of `fHat` and store the result in `f`.
 
 Both `f` and `fHat` must be complex arrays.
 """
-function nfft_adjoint!(p::NFFTPlan, fHat::AbstractArray, f::StridedArray, verbose=false)
+function nfft_adjoint!(p::NFFTPlan, fHat::AbstractArray, f::StridedArray; 
+                       verbose=false, timing::Union{Nothing,TimingStats} = nothing)
     consistencyCheck(p, f, fHat)
 
     t1 = @elapsed @inbounds convolve_adjoint!(p, fHat, p.tmpVec)
@@ -217,6 +224,11 @@ function nfft_adjoint!(p::NFFTPlan, fHat::AbstractArray, f::StridedArray, verbos
     t3 = @elapsed @inbounds apodization_adjoint!(p, p.tmpVec, f)
     if verbose
       @info "Timing: conv=$t1 fft=$t2 apod=$t3"
+    end
+    if timing != nothing
+      timing.conv_adjoint = t1
+      timing.fft_adjoint = t2
+      timing.apod_adjoint = t3
     end
     return f
 end
