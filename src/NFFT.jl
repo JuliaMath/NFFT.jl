@@ -5,11 +5,14 @@ using FFTW
 using Distributed
 using SparseArrays
 using LinearAlgebra
+using Polyester
 using CUDA
 using Graphics: @mustimplement
 
 export AbstractNFFTPlan, plan_nfft, nfft, nfft_adjoint, ndft, ndft_adjoint
 import Base.size
+
+include("utils.jl")
 
 @enum PrecomputeFlags begin
   LUT = 1
@@ -129,5 +132,10 @@ include("directional.jl")
 include("multidimensional.jl")
 include("samplingDensity.jl")
 include("NDFT.jl")
+
+
+function __init__()
+  NFFT._use_threads[] = (Threads.nthreads() > 1)
+end
 
 end

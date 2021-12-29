@@ -33,8 +33,7 @@ end
 function convolve_LUT!(p::NFFTPlan{D,0,T}, g::AbstractArray{Complex{T},D}, fHat::StridedVector{U}) where {D,T,U}
     scale = 1.0 / p.m * (p.K-1)
 
-    #Threads.@threads
-    for k in 1:p.M
+    @cthreads for k in 1:p.M
         fHat[k] = _convolve_LUT(p, g, scale, k)
     end
 end

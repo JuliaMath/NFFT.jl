@@ -1,7 +1,7 @@
 using NFFT
 
 ### performance test ###
-function nfft_performance()
+function nfft_performance_1()
   let m = 3, sigma = 2.0
     @info "NFFT Performance Test 1D"
     let N = 2^19, M = N, x = rand(M) .- 0.5, fHat = rand(M)*1im
@@ -51,4 +51,24 @@ function nfft_performance()
   return nothing
 end
 
-nfft_performance()
+nfft_performance_1()
+
+
+function nfft_performance_2(N = 64)
+  m = 3; sigma = 2.0
+  let M = N*N*N, x3 = rand(3,M) .- 0.5, fHat = rand(M)*1im
+    for pre in [NFFT.LUT, NFFT.FULL]
+      @info "* precomputation = " pre
+      @info "* initialization"
+      @time p = plan_nfft(x3, (N,N,N), m, sigma, precompute=pre)
+
+      @info "* adjoint"
+      @time fApprox = nfft_adjoint(p, fHat, true)
+
+      @info "* trafo"
+      @time nfft(p, fApprox, true)
+    end
+  end
+end
+
+# @benchmark axpy_serial!($y, eps(), $x)
