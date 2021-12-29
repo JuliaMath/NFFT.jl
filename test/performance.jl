@@ -49,15 +49,15 @@ end
 nfft_performance_1()
 
 
-function nfft_performance_2(N = 64)
+function nfft_performance_2(N = 64, M = N*N*N)
   println("\n\n ##### nfft_performance_2 - multithreading ##### \n\n")
 
   m = 3; sigma = 2.0
   timing = TimingStats()
 
-  let M = N*N*N, x3 = rand(3,M) .- 0.5, fHat = rand(M)*1im
+  let x3 = rand(3,M) .- 0.5, fHat = rand(M)*1im
 
-    for pre in [NFFT.LUT, NFFT.FULL]
+    for pre in [NFFT.LUT] # right now no MT for NFFT.FULL
       for threading in [true, false]
         NFFT._use_threads[] = threading
       
