@@ -7,6 +7,7 @@ using Distributed
 using SparseArrays
 using LinearAlgebra
 using Polyester
+using LoopVectorization
 using CUDA
 using Graphics: @mustimplement
 

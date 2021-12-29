@@ -14,6 +14,7 @@ Random = "9a3f8284-a2c9-5f02-9a11-845980a1fd5c"
 SparseArrays = "2f01184e-e22b-5df5-ae63-d93ebab69eaf"
 SpecialFunctions = "276daf66-3868-5448-9aa4-cd146d93841b"
 Printf = "ade2ca70-3891-5945-98fb-dc099432e06a"
+LoopVectorization = "bdcacae8-1622-11e9-2a5c-532679323890"
 
 [compat]
 CUDA = "1.3.3, 2.3, 3.1"
@@ -22,6 +23,7 @@ Graphics = "0.4, 1.0"
 SpecialFunctions = "0.8, 0.10, 1"
 julia = "1.6"
 Polyester = "0.5.5"
+LoopVectorization = "0.12"
 
 [extras]
 BenchmarkTools = "6e4b80f9-dd63-53aa-95a3-0cdb28fa8baf"

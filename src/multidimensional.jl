@@ -72,36 +72,79 @@ end
 
 function convolve_adjoint!(p::NFFTPlan{D,0,T}, fHat::AbstractVector{U}, g::StridedArray{Complex{T},D}) where {D,T,U}
   if isempty(p.B)
-    convolve_adjoint_LUT!(p, fHat, g)
+    if NFFT._use_threads[]
+      convolve_adjoint_LUT_MT!(p, fHat, g)
+    else
+      convolve_adjoint_LUT!(p, fHat, g)
+    end
   else
     convolve_adjoint_sparse_matrix!(p, fHat, g)
   end
 end
 
-@generated function convolve_adjoint_LUT!(p::NFFTPlan{D,0,T}, fHat::AbstractVector{U}, g::StridedArray{Complex{T},D}) where {D,T,U}
-    quote
-        fill!(g, zero(T))
-        scale = 1.0 / p.m * (p.K-1)
+function convolve_adjoint_LUT_MT!(p::NFFTPlan{D,0,T}, fHat::AbstractVector{U}, g::StridedArray{Complex{T},D}) where {D,T,U}
+  fill!(g, zero(T))
+  scale = 1.0 / p.m * (p.K-1)
+  @time g_tmp = Array{Complex{T}}(undef, size(g)..., Threads.nthreads())
+  @time fill!(g_tmp, zero(T))
 
-        @inbounds @simd for k in 1:p.M
-            @nexprs $D d -> xscale_d = p.x[d,k] * p.n[d]
-            @nexprs $D d -> c_d = floor(Int, xscale_d)
+  @time @cthreads for k in 1:p.M
+    _convolve_adjoint_LUT_MT!(p, fHat, view(g_tmp, :,:,:,Threads.threadid()), scale, k)
+  end   
 
-            @nloops $D l d -> (c_d-p.m):(c_d+p.m) d->begin
-                # preexpr
-                gidx_d = rem(l_d+p.n[d], p.n[d]) + 1
-                idx = abs( (xscale_d - l_d)*scale ) + 1
-                idxL = floor(idx)
-                idxInt = Int(idxL)
-                tmpWin_d = p.windowLUT[d][idxInt] + ( idx-idxL ) * (p.windowLUT[d][idxInt+1] - p.windowLUT[d][idxInt])
-            end begin
-                # bodyexpr
-                v = fHat[k]
-                @nexprs $D d -> v *= tmpWin_d
-                (@nref $D g gidx) += v
-            end
+  @time for l=1:Threads.nthreads()
+     g .+= g_tmp[l]
+  end
+  return g
+end
+
+@generated function _convolve_adjoint_LUT_MT!(p::NFFTPlan{D,0,T}, fHat::AbstractVector{U}, 
+                            g_local::StridedArray{Complex{T},D}, scale, k) where {D,T,U}
+  quote
+        @nexprs $D d -> xscale_d = p.x[d,k] * p.n[d]
+        @nexprs $D d -> c_d = floor(Int, xscale_d)
+
+        @nloops $D l d -> (c_d-p.m):(c_d+p.m) d->begin
+            # preexpr
+            gidx_d = rem(l_d+p.n[d], p.n[d]) + 1
+            idx = abs( (xscale_d - l_d)*scale ) + 1
+            idxL = floor(idx)
+            idxInt = Int(idxL)
+            tmpWin_d = p.windowLUT[d][idxInt] + ( idx-idxL ) * (p.windowLUT[d][idxInt+1] - p.windowLUT[d][idxInt])
+        end begin
+            # bodyexpr
+            v = fHat[k]
+            @nexprs $D d -> v *= tmpWin_d
+            (@nref $D g_local gidx) += v
         end
     end
+end
+
+
+@generated function convolve_adjoint_LUT!(p::NFFTPlan{D,0,T}, fHat::AbstractVector{U}, g::StridedArray{Complex{T},D}) where {D,T,U}
+  quote
+      fill!(g, zero(T))
+      scale = 1.0 / p.m * (p.K-1)
+
+      @inbounds @simd for k in 1:p.M
+          @nexprs $D d -> xscale_d = p.x[d,k] * p.n[d]
+          @nexprs $D d -> c_d = floor(Int, xscale_d)
+
+          @nloops $D l d -> (c_d-p.m):(c_d+p.m) d->begin
+              # preexpr
+              gidx_d = rem(l_d+p.n[d], p.n[d]) + 1
+              idx = abs( (xscale_d - l_d)*scale ) + 1
+              idxL = floor(idx)
+              idxInt = Int(idxL)
+              tmpWin_d = p.windowLUT[d][idxInt] + ( idx-idxL ) * (p.windowLUT[d][idxInt+1] - p.windowLUT[d][idxInt])
+          end begin
+              # bodyexpr
+              v = fHat[k]
+              @nexprs $D d -> v *= tmpWin_d
+              (@nref $D g gidx) += v
+          end
+      end
+  end
 end
 
 function convolve_adjoint_sparse_matrix!(p::NFFTPlan{D,0,T},
