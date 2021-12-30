@@ -16,8 +16,6 @@ using Graphics: @mustimplement
 export AbstractNFFTPlan, plan_nfft, nfft, nfft_adjoint, ndft, ndft_adjoint, TimingStats
 import Base.size
 
-include("utils.jl")
-
 @enum PrecomputeFlags begin
   LUT = 1
   FULL = 2
@@ -34,11 +32,16 @@ end
 #########################
 include("Abstract.jl")
 
+#########################
+# utility functions
+#########################
+include("utils.jl")
+include("windowFunctions.jl")
+include("precomputation.jl")
+
 #################################
 # currently implemented NFFTPlans
 #################################
-include("windowFunctions.jl")
-include("precomputation.jl")
 
 include("CpuNFFT.jl")
 if CUDA.functional()

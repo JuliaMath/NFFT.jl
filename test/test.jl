@@ -71,7 +71,7 @@ end
 end
 
 @testset "Abstract sampling points" begin
-    M, N = rand(100:200, 2)
+    M, N = rand(100:2:200, 2)
     x = range(-0.4, stop=0.4, length=M)
     p = plan_nfft(x, N, flags = FFTW.ESTIMATE)
 end

@@ -70,10 +70,15 @@ function NFFTPlan(x::Matrix{T}, N::NTuple{D,Int}, m=4, sigma=2.0,
                 precompute::PrecomputeFlags=LUT, sortNodes=false, kwargs...) where {D,T}
 
     if D != size(x,1)
-        throw(ArgumentError())
+        throw(ArgumentError("Nodes x have dimension $(size(x,1)) != $D!"))
     end
 
-    n = ntuple(d->round(Int,sigma*N[d]), D)
+    if any(isodd.(N))
+      throw(ArgumentError("N = $N needs to consist of even integers!"))
+    end
+
+    n = ntuple(d->(ceil(Int,sigma*N[d])÷2)*2, D) # ensure that n is an even integer
+    sigma = n[1] / N[1]
 
     tmpVec = Array{Complex{T}}(undef, n)
 
@@ -95,7 +100,7 @@ function NFFTPlan(x::Matrix{T}, N::NTuple{D,Int}, m=4, sigma=2.0,
     for d=1:D
         windowHatInvLUT[d] = zeros(T, N[d])
         for k=1:N[d]
-            windowHatInvLUT[d][k] = 1. / win_hat(k-1-N[d]/2, n[d], m, sigma)
+            windowHatInvLUT[d][k] = 1. / win_hat(k-1-N[d]÷2, n[d], m, sigma)
         end
     end
 
@@ -126,7 +131,13 @@ It takes as optional keywords all the keywords supported by `plan_fft` function 
 """
 function NFFTPlan(x::AbstractVector{T}, dim::Integer, N::NTuple{D,Int64}, m=4,
                        sigma=2.0, window=:kaiser_bessel, K=2000; kwargs...) where {D,T}
-    n = ntuple(d->round(Int, sigma*N[d]), D)
+
+    if any(isodd.(N))
+      throw(ArgumentError("N = $N needs to consist of even integers!"))
+    end
+
+    n = ntuple(d->(ceil(Int,sigma*N[d])÷2)*2, D) # ensure that n is an even integer
+    sigma = n[1] / N[1]
 
     sz = [N...]
     sz[dim] = n[dim]

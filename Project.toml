@@ -26,10 +26,13 @@ Polyester = "0.5.5"
 SpecialFunctions = "0.8, 0.10, 1, 2"
 ThreadedSparseCSR = "0.1.1"
 julia = "1.6"
+DataFrames = "1.3.1"
 
 [extras]
 BenchmarkTools = "6e4b80f9-dd63-53aa-95a3-0cdb28fa8baf"
 Test = "8dfed614-e22c-5e08-85e1-65c5234f0b40"
+NFFT3 = "53104703-03e8-40a5-ab01-812303a44cae"
+DataFrames = "a93c6f00-e57d-5684-b7b6-d8193f3e46c0"
 
 [targets]
-test = ["Test", "BenchmarkTools"]
+test = ["Test", "BenchmarkTools", "NFFT3", "DataFrames"]

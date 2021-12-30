@@ -129,11 +129,11 @@ end
 
 function convolve_adjoint!(p::NFFTPlan{D,0,T}, fHat::AbstractVector{U}, g::StridedArray{Complex{T},D}) where {D,T,U}
   if isempty(p.B)
-    if NFFT._use_threads[]
-      convolve_adjoint_LUT_MT!(p, fHat, g)
-    else
+    #if NFFT._use_threads[]
+    #  convolve_adjoint_LUT_MT!(p, fHat, g)
+    #else
       convolve_adjoint_LUT!(p, fHat, g)
-    end
+    #end
   else
     convolve_adjoint_sparse_matrix!(p, fHat, g)
   end

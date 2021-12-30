@@ -1,5 +1,8 @@
 using NFFT
 using FFTW
+import NFFT3
+using DataFrames
+
 FFTW.set_num_threads(Threads.nthreads())
 
 ### performance test ###
@@ -59,7 +62,7 @@ function nfft_performance_2(N = 64, M = N*N*N)
 
   let x3 = Float32.(rand(3,M) .- 0.5), fHat = ComplexF32.(rand(M)*1im)
 
-    for pre in [NFFT.LUT] # right now no MT for NFFT.FULL
+    for pre in [NFFT.LUT, NFFT.FULL, NFFT.FULL_LUT] 
       for threading in [true, false]
         NFFT._use_threads[] = threading
 
@@ -77,3 +80,65 @@ end
 
 nfft_performance_2()
 nfft_performance_2(128,46_000)
+
+
+
+
+function nfft_performance_comparison(m = 5, sigma = 2.0)
+  println("\n\n ##### nfft_performance_comparison ##### \n\n")
+
+  df = DataFrame(Package=String[], D=Int[], M=Int[], N=Int[], 
+                   Undersampled=Bool[], Pre=String[], m = Int[], sigma=Float64[],
+                   TimePre=Float64[], TimeTrafo=Float64[], TimeAdjoint=Float64[] )  
+
+  preString = ["LUT", "FULL"]
+  preNFFTjl = [NFFT.LUT, NFFT.FULL]
+  N = [collect(4096* (4 .^(0:3))),collect(64* (2 .^ (0:3))),[32,48,64,72]]
+
+  for D = 2:3
+    for U = 1:4
+      NN = ntuple(d->N[D][U], D)
+      M = prod(NN)
+
+      for pre = 1:2
+
+        @info D, NN, M, pre
+        
+        x = rand(D,M) .- 0.5
+        fHat = randn(ComplexF64, M)
+
+        tpre = @elapsed p = plan_nfft(x, NN, m, sigma; precompute=preNFFTjl[pre])
+        tadjoint = @elapsed fApprox = nfft_adjoint(p, fHat)
+        ttrafo = @elapsed nfft(p, fApprox)
+        
+        push!(df, ("NFFT.jl", D, M, N[D][U], false, preString[pre], m, sigma,
+                   tpre, ttrafo, tadjoint))
+
+
+        
+        tpre = @elapsed pnfft3 = NFFT3.NFFT(NN, M, Int32.(p.n), m) 
+        pnfft3.x = x
+        pnfft3.fhat = fHat
+        ttrafo = @elapsed NFFT3.nfft_trafo(pnfft3)
+        tadjoint = @elapsed fApprox = NFFT3.nfft_adjoint(pnfft3)
+        
+        push!(df, ("NFFT3", D, M, N[D][U], false, preString[pre], m, sigma,
+                    tpre, ttrafo, tadjoint))
+          
+      end
+    end
+  end
+  return df
+end
+
+# writedlm("test.csv", Iterators.flatten(([names(iris)], eachrow(iris))), ',')
+#
+#  julia> using DelimitedFiles, DataFrames
+#
+# julia> data, header = readdlm(joinpath(dirname(pathof(DataFrames)),
+# "..", "docs", "src", "assets", "iris.csv"),
+# ',', header=true);
+#
+#julia> iris_raw = DataFrame(data, vec(header))
+#
+#

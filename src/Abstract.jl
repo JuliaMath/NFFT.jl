@@ -57,19 +57,3 @@ function nfft_adjoint(p::AbstractNFFTPlan{D,DIM,T}, fHat::AbstractArray{U}, args
     return f
 end
 
-@generated function consistencyCheck(p::AbstractNFFTPlan{D,DIM,T}, f::AbstractArray{U,D},
-                                     fHat::AbstractArray{Y}) where {D,DIM,T,U,Y}
-    quote
-        M = numFourierSamples(p)
-        N = size(p)
-        if $DIM == 0
-            fHat_test = (M == length(fHat))
-        elseif $DIM > 0
-            fHat_test = @nall $D d -> ( d == $DIM ? size(fHat,d) == M : size(fHat,d) == N[d] )
-        end
-
-        if N != size(f) || !fHat_test
-            throw(DimensionMismatch("Data is not consistent with NFFTPlan"))
-        end
-    end
-end
