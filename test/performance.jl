@@ -79,7 +79,7 @@ end
 
 
 nfft_performance_2()
-nfft_performance_2(128,46_000)
+#nfft_performance_2(128,46_000)
 
 
 
