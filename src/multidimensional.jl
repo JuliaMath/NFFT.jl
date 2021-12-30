@@ -1,4 +1,4 @@
-#=@generated function apodization_!(p::NFFTPlan{D,0,T}, f::AbstractArray{U,D}, g::StridedArray{Complex{T},D}) where {D,T,U}
+#=@generated function apodization!(p::NFFTPlan{D,0,T}, f::AbstractArray{U,D}, g::StridedArray{Complex{T},D}) where {D,T,U}
     quote
         @nexprs $D d -> offset_d = round(Int, p.n[d] - p.N[d]/2) - 1
 
@@ -8,7 +8,8 @@
             (@nref $D g gidx) = v
         end
     end
-end
+end=#
+
 
 function apodization!(p::NFFTPlan{1,0,T}, f::AbstractVector{U}, g::StridedVector{Complex{T}}) where {T,U}
   n = p.n[1]
@@ -19,25 +20,32 @@ function apodization!(p::NFFTPlan{1,0,T}, f::AbstractVector{U}, g::StridedVector
       g[l+offset] = f[l] * p.windowHatInvLUT[1][l]
       g[l] = f[l+N2] * p.windowHatInvLUT[1][l+N2]
   end
-end=#
+end
 
-@generated function apodization!(p::NFFTPlan{D,0,T}, f::AbstractArray{U,D}, g::StridedArray{Complex{T},D}) where {D,T,U}
+function apodization!(p::NFFTPlan{D,0,T}, f::AbstractArray{U,D}, g::StridedArray{Complex{T},D}) where {D,T,U}
+  @cthreads for o = 1:p.N[end]
+      _apodization!(p, f, g, o)  
+  end
+end
+
+@generated function _apodization!(p::NFFTPlan{D,0,T}, f::AbstractArray{U,D}, g::StridedArray{Complex{T},D}, o) where {D,T,U}
   quote
-      @nexprs $D d -> offset_d = p.n[d] - p.N[d]÷ 2 - 1
+    oo = rem(o+p.n[$D] - p.N[$D]÷ 2 - 1, p.n[$D]) + 1
+    @nloops $(D-2) l d->(1:size(f,d+1)) d->(gidx_d = rem(l_d+p.n[d+1] - p.N[d+1]÷2 - 1, p.n[d+1]) + 1) begin
+      N2 = p.N[1]÷2
+      n2 = p.n[1]÷2
+      @inbounds @simd for i = 1:N2
+        v = f[i, CartesianIndex(@ntuple $(D-2) l), o]
+        v *= p.windowHatInvLUT[1][i] * p.windowHatInvLUT[$D][o]
+        @nexprs $(D-2) d -> v *= p.windowHatInvLUT[d+1][l_d]
+        g[i+N2+n2, CartesianIndex(@ntuple $(D-2) gidx), oo] = v
 
-      @nloops $(D-1) l d->(1:size(f,d+1)) d->(gidx_d = rem(l_d+offset_d, p.n[d]) + 1) begin
-        N2 = p.N[1]÷2
-        n2 = p.n[1]÷2
-        @inbounds @simd for i = 1:N2
-          v = p.windowHatInvLUT[$D][i] * @ncall $(D-1) getindex f i l
-          @nexprs $(D-1) d -> v *= p.windowHatInvLUT[d][l_d]
-          @ncall $(D-1) setindex! g v i+N2+n2 gidx
-
-          v = p.windowHatInvLUT[$D][i+N2] * @ncall $(D-1) getindex f i+N2 l
-          @nexprs $(D-1) d -> v *= p.windowHatInvLUT[d][l_d]
-          @ncall $(D-1) setindex! g v i gidx
-        end
+        v = f[i+N2, CartesianIndex(@ntuple $(D-2) l), o] 
+        v *= p.windowHatInvLUT[1][i+N2] * p.windowHatInvLUT[$D][o]
+        @nexprs $(D-2) d -> v *= p.windowHatInvLUT[d+1][l_d]
+        g[i, CartesianIndex(@ntuple $(D-2) gidx), oo] = v
       end
+    end
   end
 end
 
@@ -51,9 +59,9 @@ end
           (@nref $D f l) = v
       end
   end
-end
+end=#
 
-function apodization_adjoint!(p::NFFTPlan{1,0,T}, g::StridedVector{Complex{T}}, f::AbstractVector{U}) where {T,U}
+function apodization_adjoint_1D!(p::NFFTPlan{1,0,T}, g::StridedVector{Complex{T}}, f::AbstractVector{U}) where {T,U}
   n = p.n[1]
   N = p.N[1]
   N2 = N÷2
@@ -62,26 +70,37 @@ function apodization_adjoint!(p::NFFTPlan{1,0,T}, g::StridedVector{Complex{T}}, 
       f[l] =  g[l+offset] * p.windowHatInvLUT[1][l]
       f[l+N2] = g[l] * p.windowHatInvLUT[1][l+N2]
   end
-end=#
+end
 
-@generated function apodization_adjoint!(p::NFFTPlan{D,0,T}, g::AbstractArray{Complex{T},D}, f::StridedArray{U,D}) where {D,T,U}
-    quote
-        @nexprs $D d -> offset_d = p.n[d] - p.N[d]÷ 2 - 1
-
-        @nloops $(D-1) l d->(1:size(f,d+1)) d->(gidx_d = rem(l_d+offset_d, p.n[d]) + 1) begin
-          N2 = p.N[1]÷2
-          n2 = p.n[1]÷2
-          @inbounds @simd for i = 1:N2
-            v = p.windowHatInvLUT[$D][i] * @ncall $(D-1) getindex g i+N2+n2 gidx
-            @nexprs $(D-1) d -> v *= p.windowHatInvLUT[d][l_d]
-            @ncall $(D-1) setindex! f v i l
-
-            v = p.windowHatInvLUT[$D][i+N2] * @ncall $(D-1) getindex g i gidx
-            @nexprs $(D-1) d -> v *= p.windowHatInvLUT[d][l_d]
-            @ncall $(D-1) setindex! f v i+N2 l
-          end
-        end
+function apodization_adjoint!(p::NFFTPlan{D,0,T}, g::AbstractArray{Complex{T},D}, f::StridedArray{U,D}) where {D,T,U}
+  if D == 1
+    apodization_adjoint_1D!(p, g, f)
+  else
+    @cthreads for o = 1:p.N[end]
+      _apodization_adjoint!(p, g, f, o)  
     end
+  end
+end
+
+@generated function _apodization_adjoint!(p::NFFTPlan{D,0,T}, g::AbstractArray{Complex{T},D}, f::StridedArray{U,D}, o) where {D,T,U}
+  quote
+    oo = rem(o+p.n[$D] - p.N[$D]÷ 2 - 1, p.n[$D]) + 1
+    @nloops $(D-2) l d->(1:size(f,d+1)) d->(gidx_d = rem(l_d+p.n[d+1] - p.N[d+1]÷2 - 1, p.n[d+1]) + 1) begin
+      N2 = p.N[1]÷2
+      n2 = p.n[1]÷2
+      @inbounds @simd for i = 1:N2
+        v = g[i+N2+n2, CartesianIndex(@ntuple $(D-2) gidx), oo] 
+        v *= p.windowHatInvLUT[1][i] * p.windowHatInvLUT[$D][o]
+        @nexprs $(D-2) d -> v *= p.windowHatInvLUT[d+1][l_d]
+        f[i, CartesianIndex(@ntuple $(D-2) l), o] = v
+
+        v = g[i, CartesianIndex(@ntuple $(D-2) gidx), oo] 
+        v *= p.windowHatInvLUT[1][i+N2] * p.windowHatInvLUT[$D][o]
+        @nexprs $(D-2) d -> v *= p.windowHatInvLUT[d+1][l_d]
+        f[i+N2, CartesianIndex(@ntuple $(D-2) l), o] = v
+      end
+    end
+  end
 end
 
 function convolve!(p::NFFTPlan{D,0,T}, g::AbstractArray{Complex{T},D}, fHat::StridedVector{U}) where {D,T,U}
