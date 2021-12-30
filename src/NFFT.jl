@@ -1,19 +1,25 @@
 module NFFT
 
+using Printf
 using Base.Cartesian
 using FFTW
 using Distributed
 using SparseArrays
 using LinearAlgebra
+using Polyester
+using LoopVectorization
+using ThreadedSparseCSR
+import ThreadedSparseCSR: SparseMatrixCSR, sparsecsr
 using CUDA
 using Graphics: @mustimplement
 
-export AbstractNFFTPlan, plan_nfft, nfft, nfft_adjoint, ndft, ndft_adjoint
+export AbstractNFFTPlan, plan_nfft, nfft, nfft_adjoint, ndft, ndft_adjoint, TimingStats
 import Base.size
 
 @enum PrecomputeFlags begin
   LUT = 1
   FULL = 2
+  FULL_LUT = 3
 end
 
 @enum Device begin
@@ -26,11 +32,16 @@ end
 #########################
 include("Abstract.jl")
 
+#########################
+# utility functions
+#########################
+include("utils.jl")
+include("windowFunctions.jl")
+include("precomputation.jl")
+
 #################################
 # currently implemented NFFTPlans
 #################################
-include("windowFunctions.jl")
-include("precomputation.jl")
 
 include("CpuNFFT.jl")
 if CUDA.functional()
@@ -49,7 +60,9 @@ compute a plan for the NFFT of a size-`N` array at the nodes contained in `x`.
 The computing device (CPU or GPU) can be set using the keyworkd argument `device` 
 to NFFT.CPU or NFFT.CUDAGPU
 """
-function plan_nfft(x::Matrix{T}, N::NTuple{D,Int}, rest...; device::Device=CPU, kargs...) where {T,D}
+function plan_nfft(x::Matrix{T}, N::NTuple{D,Int}, rest...; device::Device=CPU, 
+                   timing::Union{Nothing,TimingStats} = nothing, kargs...) where {T,D}
+  t = @elapsed begin
     if device==CPU
         p = NFFTPlan(x, N, rest...; kargs...)
     elseif device==CUDAGPU
@@ -58,7 +71,11 @@ function plan_nfft(x::Matrix{T}, N::NTuple{D,Int}, rest...; device::Device=CPU, 
     else
         error("device $(dev) is not yet supported by NFFT.jl")
     end
-    return p
+  end
+  if timing != nothing
+    timing.pre = t
+  end
+  return p
 end
 
 """
@@ -69,7 +86,9 @@ and along the direction `dim`.
 The computing device (CPU or GPU) can be set using the keyworkd argument `device`.
 Currently only NFFT.CPU is supported.
 """
-function plan_nfft(x::Vector{T}, dim::Integer, N::NTuple{D,Int}, rest...; device::Device=CPU, kargs...) where {T,D}
+function plan_nfft(x::Vector{T}, dim::Integer, N::NTuple{D,Int}, rest...; device::Device=CPU, 
+                   timing::Union{Nothing,TimingStats} = nothing, kargs...) where {T,D}
+  t = @elapsed begin
     if device==CPU
         p = NFFTPlan(x, dim, N, rest...; kargs...)
     elseif device==CUDAGPU
@@ -77,10 +96,16 @@ function plan_nfft(x::Vector{T}, dim::Integer, N::NTuple{D,Int}, rest...; device
     else
         error("device $(dev) is not yet supported by NFFT.jl")
     end
-    return p
+  end
+  if timing != nothing
+    timing.pre = t
+  end
+  return p
 end
 
-function plan_nfft(x::Matrix{T}, dim::Integer, N::NTuple{D,Int}, rest...; device::Device=CPU, kargs...) where {T,D}
+function plan_nfft(x::Matrix{T}, dim::Integer, N::NTuple{D,Int}, rest...; device::Device=CPU, 
+                   timing::Union{Nothing,TimingStats} = nothing, kargs...) where {T,D}
+  t = @elapsed begin
     if size(x,1) != 1 && size(x,2) != 1
         throw(DimensionMismatch())
     end
@@ -91,7 +116,11 @@ function plan_nfft(x::Matrix{T}, dim::Integer, N::NTuple{D,Int}, rest...; device
     else
         error("device $(dev) is not yet supported by NFFT.jl")
     end
-    return p
+  end
+  if timing != nothing
+    timing.pre = t
+  end
+  return p
 end
 
 plan_nfft(x::AbstractMatrix{T}, N::NTuple{D,Int}, rest...; kwargs...) where {D,T} =
@@ -129,5 +158,10 @@ include("directional.jl")
 include("multidimensional.jl")
 include("samplingDensity.jl")
 include("NDFT.jl")
+
+
+function __init__()
+  NFFT._use_threads[] = (Threads.nthreads() > 1)
+end
 
 end

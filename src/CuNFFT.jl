@@ -20,7 +20,16 @@ end
 function CuNFFTPlan(x::Matrix{T}, N::NTuple{D,Int}, m=4, sigma=2.0,
   window=:kaiser_bessel, K=2000; kwargs...) where {T,D} 
 
-  n = ntuple(d->round(Int,sigma*N[d]), D)
+  if D != size(x,1)
+    throw(ArgumentError("Nodes x have dimension $(size(x,1)) != $D!"))
+  end
+
+  if any(isodd.(N))
+    throw(ArgumentError("N = $N needs to consist of even integers!"))
+  end
+
+  n = ntuple(d->(ceil(Int,sigma*N[d])÷2)*2, D) # ensure that n is an even integer
+  sigma = n[1] / N[1]
 
   tmpVec = CuArray(zeros(Complex{T},n))
   tmpVec2 = CuArray(zeros(Complex{T},N))

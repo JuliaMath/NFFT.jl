@@ -67,13 +67,18 @@ end
 ##############
 function NFFTPlan(x::Matrix{T}, N::NTuple{D,Int}, m=4, sigma=2.0,
                 window=:kaiser_bessel, K=2000;
-                precompute::PrecomputeFlags=LUT, kwargs...) where {D,T}
+                precompute::PrecomputeFlags=LUT, sortNodes=false, kwargs...) where {D,T}
 
     if D != size(x,1)
-        throw(ArgumentError())
+        throw(ArgumentError("Nodes x have dimension $(size(x,1)) != $D!"))
     end
 
-    n = ntuple(d->round(Int,sigma*N[d]), D)
+    if any(isodd.(N))
+      throw(ArgumentError("N = $N needs to consist of even integers!"))
+    end
+
+    n = ntuple(d->(ceil(Int,sigma*N[d])÷2)*2, D) # ensure that n is an even integer
+    sigma = n[1] / N[1]
 
     tmpVec = Array{Complex{T}}(undef, n)
 
@@ -81,6 +86,11 @@ function NFFTPlan(x::Matrix{T}, N::NTuple{D,Int}, m=4, sigma=2.0,
 
     FP = plan_fft!(tmpVec; kwargs...)
     BP = plan_bfft!(tmpVec; kwargs...)
+
+    # Sort nodes in lexicographic way
+    if sortNodes
+      x .= sortslices(x,dims=2)
+    end
 
     # Create lookup table
     win, win_hat = getWindow(window)
@@ -90,25 +100,20 @@ function NFFTPlan(x::Matrix{T}, N::NTuple{D,Int}, m=4, sigma=2.0,
     for d=1:D
         windowHatInvLUT[d] = zeros(T, N[d])
         for k=1:N[d]
-            windowHatInvLUT[d][k] = 1. / win_hat(k-1-N[d]/2, n[d], m, sigma)
+            windowHatInvLUT[d][k] = 1. / win_hat(k-1-N[d]÷2, n[d], m, sigma)
         end
     end
 
     if precompute == LUT
-        Z = round(Int,3*K/2)
-        for d=1:D
-            windowLUT[d] = zeros(T, Z)
-            for l=1:Z
-                y = ((l-1) / (K-1)) * m/n[d]
-                windowLUT[d][l] = win(y, n[d], m, sigma)
-            end
-        end
-
-        B = sparse([],[],Float64[])
+        precomputeLUT(win, windowLUT, n, m, sigma, K, T)
+        B = sparse([],[],T[])
+    elseif precompute == FULL
+        B = precomputeB(win, x, N, n, m, M, sigma, K, T)
+    elseif precompute == FULL_LUT
+        precomputeLUT(win, windowLUT, n, m, sigma, K, T)
+        B = precomputeB(windowLUT, x, N, n, m, M, sigma, K, T)
     else
-        U1 = ntuple(d-> (d==1) ? 1 : (2*m+1)^(d-1), D)
-        U2 = ntuple(d-> (d==1) ? 1 : prod(n[1:(d-1)]), D)
-        B = precomputeB(win, x, n, m, M, sigma, T, U1, U2)
+        error("precompute = $precompute not supported by NFFT.jl!")
     end
 
     NFFTPlan{D,0,T}(N, M, x, m, sigma, n, K, windowLUT, windowHatInvLUT, FP, BP, tmpVec, B )
@@ -126,7 +131,13 @@ It takes as optional keywords all the keywords supported by `plan_fft` function 
 """
 function NFFTPlan(x::AbstractVector{T}, dim::Integer, N::NTuple{D,Int64}, m=4,
                        sigma=2.0, window=:kaiser_bessel, K=2000; kwargs...) where {D,T}
-    n = ntuple(d->round(Int, sigma*N[d]), D)
+
+    if any(isodd.(N))
+      throw(ArgumentError("N = $N needs to consist of even integers!"))
+    end
+
+    n = ntuple(d->(ceil(Int,sigma*N[d])÷2)*2, D) # ensure that n is an even integer
+    sigma = n[1] / N[1]
 
     sz = [N...]
     sz[dim] = n[dim]
@@ -154,7 +165,7 @@ function NFFTPlan(x::AbstractVector{T}, dim::Integer, N::NTuple{D,Int64}, m=4,
         windowHatInvLUT[1][k] = 1. / win_hat(k-1-N[dim]/2, n[dim], m, sigma)
     end
 
-    B = sparse([],[],Float64[])
+    B = sparse([],[],T[])
 
     NFFTPlan{D,dim,T}(N, M, reshape(x,1,M), m, sigma, n, K, windowLUT,
                       windowHatInvLUT, FP, BP, tmpVec, B)
@@ -181,7 +192,8 @@ Calculate the NFFT of `f` with plan `p` and store the result in `fHat`.
 
 Both `f` and `fHat` must be complex arrays.
 """
-function nfft!(p::NFFTPlan{D,DIM,T}, f::AbstractArray, fHat::StridedArray, verbose=false) where {D,DIM,T}
+function nfft!(p::NFFTPlan{D,DIM,T}, f::AbstractArray, fHat::StridedArray; 
+               verbose=false, timing::Union{Nothing,TimingStats} = nothing) where {D,DIM,T}
     consistencyCheck(p, f, fHat)
 
     fill!(p.tmpVec, zero(Complex{T}))
@@ -195,6 +207,11 @@ function nfft!(p::NFFTPlan{D,DIM,T}, f::AbstractArray, fHat::StridedArray, verbo
     if verbose
       @info "Timing: apod=$t1 fft=$t2 conv=$t3"
     end
+    if timing != nothing
+      timing.conv = t3
+      timing.fft = t2
+      timing.apod = t1
+    end
     return fHat
 end
 
@@ -205,7 +222,8 @@ Calculate the adjoint NFFT of `fHat` and store the result in `f`.
 
 Both `f` and `fHat` must be complex arrays.
 """
-function nfft_adjoint!(p::NFFTPlan, fHat::AbstractArray, f::StridedArray, verbose=false)
+function nfft_adjoint!(p::NFFTPlan, fHat::AbstractArray, f::StridedArray; 
+                       verbose=false, timing::Union{Nothing,TimingStats} = nothing)
     consistencyCheck(p, f, fHat)
 
     t1 = @elapsed @inbounds convolve_adjoint!(p, fHat, p.tmpVec)
@@ -217,6 +235,11 @@ function nfft_adjoint!(p::NFFTPlan, fHat::AbstractArray, f::StridedArray, verbos
     t3 = @elapsed @inbounds apodization_adjoint!(p, p.tmpVec, f)
     if verbose
       @info "Timing: conv=$t1 fft=$t2 apod=$t3"
+    end
+    if timing != nothing
+      timing.conv_adjoint = t1
+      timing.fft_adjoint = t2
+      timing.apod_adjoint = t3
     end
     return f
 end

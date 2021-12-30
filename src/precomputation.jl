@@ -1,40 +1,91 @@
+function precomputeB(win, x, N::NTuple{D,Int}, n::NTuple{D,Int}, m, M, sigma, K, T) where D
+  I = Array{Int64,2}(undef, (2*m+1)^D, M)
+  β = (2*m+1)^D
+  J = [β*k+1 for k=0:M]
+  V = Array{T,2}(undef,(2*m+1)^D, M)
 
-@generated function precomputeB(win, x, n::NTuple{D,Int}, m, M, sigma, T, U1, U2) where D
-    quote
-        I = zeros(Int64, (2*m+1)^D, M)
-        J = zeros(Int64, M+1)
-        V = zeros(T, (2*m+1)^D, M)
+  @cthreads for k in 1:M
+    _precomputeB(win, x, N, n, m, M, sigma, K, T, I, J, V, k)
+  end
 
-        J[1] = 1
-        @inbounds @simd for k in 1:M
-            @nexprs $D d -> xscale_d = x[d,k] * n[d]
-            @nexprs $D d -> c_d = floor(Int, xscale_d)
+  S = SparseMatrixCSC(prod(n), M, J, vec(I), vec(V))
+  return S
+end
 
-            @nloops $D l d -> (c_d-m):(c_d+m) d->begin
-                # preexpr
-                gidx_d = rem(l_d+n[d], n[d]) + 1
-                Iidx_d = l_d - c_d + m + 1
-                idx = abs( (xscale_d - l_d) )
-                tmpWin_d =  win(idx / n[d], n[d], m, sigma)
+## precompute = FULL
 
-            end begin
-                # bodyexpr
-                v = 1
-                @nexprs $D d -> v *= tmpWin_d
-                i1 = 1
-                @nexprs $D d -> i1 += (Iidx_d-1) * U1[d]
-                i2 = 1
-                @nexprs $D d -> i2 += (gidx_d-1) * U2[d]
+@generated function _precomputeB(win::Function, x, N::NTuple{D,Int}, n::NTuple{D,Int}, m, M, sigma, K, T, I,J,V,k) where D
+  quote
+    @nexprs $D d->(xscale_d = x[d,k] * n[d])
+    @nexprs $D d->(c_d = floor(Int, xscale_d))
 
-                I[i1,k] = i2
-                V[i1,k] = v
-            end
-            J[k+1] = J[k] + (2*m+1)^D
-        end
+    N_1 = 1
+    @nexprs $D d->(N_{d+1} = N_d * (2*m+1))
+    n_1 = 1
+    @nexprs $D d->(n_{d+1} = n_d * n[d])
 
-        S = SparseMatrixCSC(prod(n), M, J, vec(I), vec(V))
-        return S
+    @nexprs 1 d -> κ_{$D} = 1 # This is a hack, I actually want to write κ_$D = 1
+    @nexprs 1 d -> ζ_{$D} = 1
+    @nexprs 1 d -> tmpWin_{$D} = one(T)
+    @nloops $D l d -> 1:(2*m+1) d->begin
+        # preexpr
+        off = c_d - m - 1 
+        gidx_d = rem(l_d  + c_d - m - 1 + n[d], n[d]) + 1
+        idx = abs( (xscale_d - l_d - off) )
+        tmpWin_{d-1} = tmpWin_d * win(idx / n[d], n[d], m, sigma)
+        κ_{d-1} = κ_d + (l_d-1) * N_d
+        ζ_{d-1} = ζ_d + (gidx_d-1) * n_d
+    end begin
+        # bodyexpr
+        I[κ_0,k] = ζ_0 
+        V[κ_0,k] = tmpWin_0
     end
+  end
+end
+
+## precompute = FULL_LUT
+
+@generated function _precomputeB(windowLUT::Vector, x, N::NTuple{D,Int}, n::NTuple{D,Int}, m, M, sigma, K, T, I,J,V,k) where D
+  quote
+    scale = T(1.0 / m * (K-1))
+    @nexprs $D d->(xscale_d = x[d,k] * n[d])
+    @nexprs $D d->(c_d = floor(Int, xscale_d))
+
+    N_1 = 1
+    @nexprs $D d->(N_{d+1} = N_d * (2*m+1))
+    n_1 = 1
+    @nexprs $D d->(n_{d+1} = n_d * n[d])
+
+    @nexprs 1 d -> κ_{$D} = 1 # This is a hack, I actually want to write κ_$D = 1
+    @nexprs 1 d -> ζ_{$D} = 1
+    @nexprs 1 d -> tmpWin_{$D} = one(T)
+    @nloops $D l d -> 1:(2*m+1) d->begin
+        # preexpr
+        off = c_d - m - 1 
+        gidx_d = rem(l_d + off + n[d], n[d]) + 1
+        idx = abs( (xscale_d - l_d - off)*scale ) + 1
+        idxL = floor(idx)
+        idxInt = Int(idxL)
+        tmpWin_{d-1} = tmpWin_d * (windowLUT[d][idxInt] + ( idx-idxL ) * (windowLUT[d][idxInt+1] - windowLUT[d][idxInt]))
+        κ_{d-1} = κ_d + (l_d-1) * N_d
+        ζ_{d-1} = ζ_d + (gidx_d-1) * n_d
+    end begin
+        # bodyexpr
+        I[κ_0,k] = ζ_0 
+        V[κ_0,k] = tmpWin_0
+    end
+  end
+end
+
+function precomputeLUT(win, windowLUT, n, m, sigma, K, T)
+  Z = round(Int,3*K/2)
+  for d=1:length(windowLUT)
+      windowLUT[d] = zeros(T, Z)
+      for l=1:Z
+          y = ((l-1) / (K-1)) * m/n[d]
+          windowLUT[d][l] = win(y, n[d], m, sigma)
+      end
+  end
 end
 
 """
