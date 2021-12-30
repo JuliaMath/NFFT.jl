@@ -123,7 +123,8 @@ end
 function convolve_sparse_matrix!(p::NFFTPlan{D,0,T}, g::AbstractArray{Complex{T},D}, fHat::StridedVector{U}) where {D,T,U}
   fill!(fHat, zero(T))
 
-  mul!(fHat, transpose(p.B), vec(g))
+  bmul!(fHat, SparseMatrixCSR(transpose(p.B)), vec(g))
+  #mul!(fHat, transpose(p.B), vec(g))
 end
 
 function convolve_adjoint!(p::NFFTPlan{D,0,T}, fHat::AbstractVector{U}, g::StridedArray{Complex{T},D}) where {D,T,U}
@@ -140,7 +141,7 @@ end
 
 function convolve_adjoint_LUT_MT!(p::NFFTPlan{D,0,T}, fHat::AbstractVector{U}, g::StridedArray{Complex{T},D}) where {D,T,U}
   fill!(g, zero(T))
-  scale = 1.0 / p.m * (p.K-1)
+  scale = T(1.0 / p.m * (p.K-1))
   @time g_tmp = Array{Complex{T}}(undef, size(g)..., Threads.nthreads())
   @time fill!(g_tmp, zero(T))
 
@@ -186,7 +187,7 @@ end
           @nexprs $D d -> xscale_d = p.x[d,k] * p.n[d]
           @nexprs $D d -> c_d = floor(Int, xscale_d)
 
-          @nloops $D l d -> (c_d-p.m):(c_d+p.m) d->begin
+          @nloops_ $D l d -> (c_d-p.m):(c_d+p.m) d->begin
               # preexpr
               gidx_d = rem(l_d+p.n[d], p.n[d]) + 1
               idx = abs( (xscale_d - l_d)*scale ) + 1

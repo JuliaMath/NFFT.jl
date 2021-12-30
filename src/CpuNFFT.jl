@@ -67,7 +67,7 @@ end
 ##############
 function NFFTPlan(x::Matrix{T}, N::NTuple{D,Int}, m=4, sigma=2.0,
                 window=:kaiser_bessel, K=2000;
-                precompute::PrecomputeFlags=LUT, kwargs...) where {D,T}
+                precompute::PrecomputeFlags=LUT, sortNodes=false, kwargs...) where {D,T}
 
     if D != size(x,1)
         throw(ArgumentError())
@@ -82,6 +82,11 @@ function NFFTPlan(x::Matrix{T}, N::NTuple{D,Int}, m=4, sigma=2.0,
     FP = plan_fft!(tmpVec; kwargs...)
     BP = plan_bfft!(tmpVec; kwargs...)
 
+    # Sort nodes in lexicographic way
+    if sortNodes
+      x .= sortslices(x,dims=2)
+    end
+
     # Create lookup table
     win, win_hat = getWindow(window)
 
@@ -95,20 +100,15 @@ function NFFTPlan(x::Matrix{T}, N::NTuple{D,Int}, m=4, sigma=2.0,
     end
 
     if precompute == LUT
-        Z = round(Int,3*K/2)
-        for d=1:D
-            windowLUT[d] = zeros(T, Z)
-            for l=1:Z
-                y = ((l-1) / (K-1)) * m/n[d]
-                windowLUT[d][l] = win(y, n[d], m, sigma)
-            end
-        end
-
-        B = sparse([],[],Float64[])
+        precomputeLUT(win, windowLUT, n, m, sigma, K, T)
+        B = sparse([],[],T[])
+    elseif precompute == FULL
+        B = precomputeB(win, x, N, n, m, M, sigma, K, T)
+    elseif precompute == FULL_LUT
+        precomputeLUT(win, windowLUT, n, m, sigma, K, T)
+        B = precomputeB(windowLUT, x, N, n, m, M, sigma, K, T)
     else
-        U1 = ntuple(d-> (d==1) ? 1 : (2*m+1)^(d-1), D)
-        U2 = ntuple(d-> (d==1) ? 1 : prod(n[1:(d-1)]), D)
-        B = precomputeB(win, x, n, m, M, sigma, T, U1, U2)
+        error("precompute = $precompute not supported by NFFT.jl!")
     end
 
     NFFTPlan{D,0,T}(N, M, x, m, sigma, n, K, windowLUT, windowHatInvLUT, FP, BP, tmpVec, B )
@@ -154,7 +154,7 @@ function NFFTPlan(x::AbstractVector{T}, dim::Integer, N::NTuple{D,Int64}, m=4,
         windowHatInvLUT[1][k] = 1. / win_hat(k-1-N[dim]/2, n[dim], m, sigma)
     end
 
-    B = sparse([],[],Float64[])
+    B = sparse([],[],T[])
 
     NFFTPlan{D,dim,T}(N, M, reshape(x,1,M), m, sigma, n, K, windowLUT,
                       windowHatInvLUT, FP, BP, tmpVec, B)

@@ -31,3 +31,41 @@ function Base.println(t::TimingStats)
   @printf "                       apod = %.4f / %.4f %% fft = %.4f / %.4f %% conv = %.4f / %.4f %%\n" t.apod/total t.apod_adjoint/totalAdj t.fft/total t.fft_adjoint/totalAdj t.conv/total t.conv_adjoint/totalAdj
   
 end
+
+
+import Base.Cartesian.inlineanonymous
+
+
+macro nloops_(N, itersym, rangeexpr, args...)
+  _nloops_(N, itersym, rangeexpr, args...)
+end
+
+function _nloops_(N::Int, itersym, arraysym::Symbol, args::Expr...)
+  @gensym d
+  _nloops_(N, itersym, :($d->Base.axes($arraysym, $d)), args...)
+end
+
+function _nloops_(N::Int, itersym, rangeexpr::Expr, args::Expr...)
+  if rangeexpr.head !== :->
+      throw(ArgumentError("second argument must be an anonymous function expression to compute the range"))
+  end
+  if !(1 <= length(args) <= 3)
+      throw(ArgumentError("number of arguments must be 1 ≤ length(args) ≤ 3, got $nargs"))
+  end
+  body = args[end]
+  ex = Expr(:escape, body)
+  for dim = 1:N
+      itervar = inlineanonymous(itersym, dim)
+      rng = inlineanonymous(rangeexpr, dim)
+      preexpr = length(args) > 1 ? inlineanonymous(args[1], dim) : (:(nothing))
+      postexpr = length(args) > 2 ? inlineanonymous(args[2], dim) : (:(nothing))
+      ex = quote
+        @inbounds for $(esc(itervar)) = $(esc(rng))
+              $(esc(preexpr))
+              $ex
+              $(esc(postexpr))
+          end
+      end
+  end
+  ex
+end

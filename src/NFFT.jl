@@ -8,6 +8,8 @@ using SparseArrays
 using LinearAlgebra
 using Polyester
 using LoopVectorization
+using ThreadedSparseCSR
+import ThreadedSparseCSR: SparseMatrixCSR, sparsecsr
 using CUDA
 using Graphics: @mustimplement
 
@@ -19,6 +21,7 @@ include("utils.jl")
 @enum PrecomputeFlags begin
   LUT = 1
   FULL = 2
+  FULL_LUT = 3
 end
 
 @enum Device begin

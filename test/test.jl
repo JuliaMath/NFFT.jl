@@ -8,7 +8,7 @@ const K = 200000
 
 @testset "NFFT in multiple dimensions" begin
     for (u,N) in enumerate([(256,), (32,32), (12,12,12), (6,6,6,6)])
-      for pre in [NFFT.LUT, NFFT.FULL]
+      for pre in [NFFT.LUT, NFFT.FULL, NFFT.FULL_LUT]
         eps = [1e-7, 1e-3, 1e-6, 1e-4]
         for (l,window) in enumerate([:kaiser_bessel, :gauss, :kaiser_bessel_rev, :spline])
             D = length(N)
