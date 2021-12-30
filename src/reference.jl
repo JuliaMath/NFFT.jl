@@ -52,3 +52,30 @@ function convolve_adjoint!(p::NFFTPlan{1,0}, fHat::AbstractVector{T}, g::Strided
         end
     end
 end
+
+# This is the old Cartesian implementations. Just for reference
+
+@generated function apodization!(p::NFFTPlan{D,0,T}, f::AbstractArray{U,D}, g::StridedArray{Complex{T},D}) where {D,T,U}
+    quote
+        @nexprs $D d -> offset_d = round(Int, p.n[d] - p.N[d]/2) - 1
+
+        @nloops $(D) l f d->(gidx_d = rem(l_d+offset_d, p.n[d]) + 1) begin
+            v = @nref $D f l
+            @nexprs $D d -> v *= p.windowHatInvLUT[d][l_d]
+            (@nref $D g gidx) = v
+        end
+    end
+end
+
+
+@generated function apodization_adjoint!(p::NFFTPlan{D,0,T}, g::AbstractArray{Complex{T},D}, f::StridedArray{U,D}) where {D,T,U}
+  quote
+      @nexprs $D d -> offset_d = round(Int, p.n[d] - p.N[d]/2) - 1
+
+      @inbounds @nloops $D l f begin
+          v = @nref $D g d -> rem(l_d+offset_d, p.n[d]) + 1
+          @nexprs $D d -> v *= p.windowHatInvLUT[d][l_d]
+          (@nref $D f l) = v
+      end
+  end
+end

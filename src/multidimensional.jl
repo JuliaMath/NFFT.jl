@@ -1,16 +1,3 @@
-#=@generated function apodization!(p::NFFTPlan{D,0,T}, f::AbstractArray{U,D}, g::StridedArray{Complex{T},D}) where {D,T,U}
-    quote
-        @nexprs $D d -> offset_d = round(Int, p.n[d] - p.N[d]/2) - 1
-
-        @nloops $(D) l f d->(gidx_d = rem(l_d+offset_d, p.n[d]) + 1) begin
-            v = @nref $D f l
-            @nexprs $D d -> v *= p.windowHatInvLUT[d][l_d]
-            (@nref $D g gidx) = v
-        end
-    end
-end=#
-
-
 function apodization!(p::NFFTPlan{1,0,T}, f::AbstractVector{U}, g::StridedVector{Complex{T}}) where {T,U}
   n = p.n[1]
   N = p.N[1]
@@ -48,18 +35,6 @@ end
     end
   end
 end
-
-#=@generated function apodization_adjoint_!(p::NFFTPlan{D,0,T}, g::AbstractArray{Complex{T},D}, f::StridedArray{U,D}) where {D,T,U}
-  quote
-      @nexprs $D d -> offset_d = round(Int, p.n[d] - p.N[d]/2) - 1
-
-      @inbounds @nloops $D l f begin
-          v = @nref $D g d -> rem(l_d+offset_d, p.n[d]) + 1
-          @nexprs $D d -> v *= p.windowHatInvLUT[d][l_d]
-          (@nref $D f l) = v
-      end
-  end
-end=#
 
 function apodization_adjoint_1D!(p::NFFTPlan{1,0,T}, g::StridedVector{Complex{T}}, f::AbstractVector{U}) where {T,U}
   n = p.n[1]
@@ -112,7 +87,7 @@ function convolve!(p::NFFTPlan{D,0,T}, g::AbstractArray{Complex{T},D}, fHat::Str
 end
 
 function convolve_LUT!(p::NFFTPlan{D,0,T}, g::AbstractArray{Complex{T},D}, fHat::StridedVector{U}) where {D,T,U}
-    scale = 1.0 / p.m * (p.K-1)
+    scale = T(1.0 / p.m * (p.K-1))
 
     @cthreads for k in 1:p.M
         fHat[k] = _convolve_LUT(p, g, scale, k)
@@ -153,11 +128,11 @@ end
 
 function convolve_adjoint!(p::NFFTPlan{D,0,T}, fHat::AbstractVector{U}, g::StridedArray{Complex{T},D}) where {D,T,U}
   if isempty(p.B)
-    #if NFFT._use_threads[]
-    #  convolve_adjoint_LUT_MT!(p, fHat, g)
-    #else
+    if NFFT._use_threads[]
+      convolve_adjoint_LUT_MT!(p, fHat, g)
+    else
       convolve_adjoint_LUT!(p, fHat, g)
-    #end
+    end
   else
     convolve_adjoint_sparse_matrix!(p, fHat, g)
   end
@@ -185,7 +160,7 @@ end
         @nexprs $D d -> xscale_d = p.x[d,k] * p.n[d]
         @nexprs $D d -> c_d = floor(Int, xscale_d)
 
-        @nloops $D l d -> (c_d-p.m):(c_d+p.m) d->begin
+        @inbounds @nloops $D l d -> (c_d-p.m):(c_d+p.m) d->begin
             # preexpr
             gidx_d = rem(l_d+p.n[d], p.n[d]) + 1
             idx = abs( (xscale_d - l_d)*scale ) + 1
@@ -205,9 +180,9 @@ end
 @generated function convolve_adjoint_LUT!(p::NFFTPlan{D,0,T}, fHat::AbstractVector{U}, g::StridedArray{Complex{T},D}) where {D,T,U}
   quote
       fill!(g, zero(T))
-      scale = 1.0 / p.m * (p.K-1)
+      scale = T(1.0 / p.m * (p.K-1))
 
-      @inbounds @simd for k in 1:p.M
+      @inbounds @simd  for k in 1:p.M
           @nexprs $D d -> xscale_d = p.x[d,k] * p.n[d]
           @nexprs $D d -> c_d = floor(Int, xscale_d)
 
