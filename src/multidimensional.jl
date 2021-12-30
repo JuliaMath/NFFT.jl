@@ -20,12 +20,11 @@ end
     oo = rem(o+p.n[$D] - p.N[$D]÷ 2 - 1, p.n[$D]) + 1
     @nloops $(D-2) l d->(1:size(f,d+1)) d->(gidx_d = rem(l_d+p.n[d+1] - p.N[d+1]÷2 - 1, p.n[d+1]) + 1) begin
       N2 = p.N[1]÷2
-      n2 = p.n[1]÷2
       @inbounds @simd for i = 1:N2
         v = f[i, CartesianIndex(@ntuple $(D-2) l), o]
         v *= p.windowHatInvLUT[1][i] * p.windowHatInvLUT[$D][o]
         @nexprs $(D-2) d -> v *= p.windowHatInvLUT[d+1][l_d]
-        g[i+N2+n2, CartesianIndex(@ntuple $(D-2) gidx), oo] = v
+        g[i-N2+p.n[1], CartesianIndex(@ntuple $(D-2) gidx), oo] = v
 
         v = f[i+N2, CartesianIndex(@ntuple $(D-2) l), o] 
         v *= p.windowHatInvLUT[1][i+N2] * p.windowHatInvLUT[$D][o]
@@ -62,9 +61,8 @@ end
     oo = rem(o+p.n[$D] - p.N[$D]÷ 2 - 1, p.n[$D]) + 1
     @nloops $(D-2) l d->(1:size(f,d+1)) d->(gidx_d = rem(l_d+p.n[d+1] - p.N[d+1]÷2 - 1, p.n[d+1]) + 1) begin
       N2 = p.N[1]÷2
-      n2 = p.n[1]÷2
-      @inbounds @simd for i = 1:N2
-        v = g[i+N2+n2, CartesianIndex(@ntuple $(D-2) gidx), oo] 
+      for i = 1:N2
+        v = g[i-N2+p.n[1], CartesianIndex(@ntuple $(D-2) gidx), oo] 
         v *= p.windowHatInvLUT[1][i] * p.windowHatInvLUT[$D][o]
         @nexprs $(D-2) d -> v *= p.windowHatInvLUT[d+1][l_d]
         f[i, CartesianIndex(@ntuple $(D-2) l), o] = v
