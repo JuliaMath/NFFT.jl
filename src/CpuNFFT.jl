@@ -42,22 +42,30 @@ end
 
 function Base.copy(p::NFFTPlan{D,0,T}) where {D,T}
     tmpVec = similar(p.tmpVec)
+    windowLUT = copy(p.windowLUT)
+    windowHatInvLUT = copy(p.windowHatInvLUT)
+    B = copy(p.B)
+    x = copy(p.x)
 
     FP = plan_fft!(tmpVec; flags = p.forwardFFT.flags)
     BP = plan_bfft!(tmpVec; flags = p.backwardFFT.flags)
 
-    return NFFTPlan{D,0,T}(p.N, p.M, p.x, p.m, p.sigma, p.n, p.K, p.windowLUT,
-        p.windowHatInvLUT, FP, BP, tmpVec, p.B)
+    return NFFTPlan{D,0,T}(p.N, p.M, x, p.m, p.sigma, p.n, p.K, windowLUT,
+        windowHatInvLUT, FP, BP, tmpVec, B)
 end
 
 function Base.copy(p::NFFTPlan{D,DIM,T}) where {D,DIM,T}
     tmpVec = similar(p.tmpVec)
+    windowLUT = copy(p.windowLUT)
+    windowHatInvLUT = copy(p.windowHatInvLUT)
+    B = copy(p.B)
+    x = copy(p.x)
 
     FP = plan_fft!(tmpVec, DIM; flags = p.forwardFFT.flags)
     BP = plan_bfft!(tmpVec, DIM; flags = p.backwardFFT.flags)
 
-    return NFFTPlan{D,DIM,T}(p.N, p.M, p.x, p.m, p.sigma, p.n, p.K, p.windowLUT,
-        p.windowHatInvLUT, FP, BP, tmpVec, p.B)
+    return NFFTPlan{D,DIM,T}(p.N, p.M, x, p.m, p.sigma, p.n, p.K, windowLUT,
+        windowHatInvLUT, FP, BP, tmpVec, B)
 end
 
 @inline dim(::NFFTPlan{D,DIM}) where {D,DIM} = DIM
@@ -102,6 +110,7 @@ function NFFTPlan!(p::AbstractNFFTPlan{D,DIM,T}, x::Matrix{T}, window = :kaiser_
     p.windowLUT = windowLUT
     p.windowHatInvLUT = windowHatInvLUT
     p.B = B
+    p.x = x
 
     return p
 end
@@ -148,7 +157,7 @@ numFourierSamples(p::NFFTPlan) = p.M
 
 
 ################
-# helper function 
+# helper function
 ################
 function calcLookUpTable(x::Union{Matrix{T},Vector{T}}, N::NTuple{D,Int}, n, m = 4, sigma = 2.0, window = :kaiser_bessel, K = 2000; precompute::PrecomputeFlags = LUT) where {T,D}
 
@@ -190,7 +199,7 @@ end
 
 
 ################
-# nfft functions 
+# nfft functions
 ################
 """
         nfft!(p, f, fHat) -> fHat
