@@ -26,11 +26,11 @@ function nfft_accuracy_comparison()
           p = plan_nfft(x, NN, m, sigma; precompute=NFFT.FULL)
           f = ndft_adjoint(p, fHat)
           fApprox = nfft_adjoint(p, fHat)
-          etrafo = norm(f[:] - fApprox[:]) / norm(f[:])
+          eadjoint = norm(f[:] - fApprox[:]) / norm(f[:])
 
           gHat = ndft(p, f)
           gHatApprox = nfft(p, f)
-          eadjoint = norm(gHat[:] - gHatApprox[:]) / norm(gHat[:])
+          etrafo = norm(gHat[:] - gHatApprox[:]) / norm(gHat[:])
           
           push!(df, ("NFFT.jl", D, M, N[D], m, sigma, etrafo, eadjoint))
 
@@ -38,12 +38,16 @@ function nfft_accuracy_comparison()
           pnfft3.x = (D==1) ? vec(x) : x
           pnfft3.f = fHat
           NFFT3.nfft_adjoint(pnfft3)
-          fApprox = pnfft3.fhat
-          etrafo = norm(f[:] - fApprox[:]) / norm(f[:])
+          fApprox = reshape(pnfft3.fhat,reverse(NN)...)
+          # switch from column major to row major format
+          fApprox = (D==1) ? vec(fApprox) : vec(collect(permutedims(fApprox,D:-1:1)))   
+          eadjoint = norm(f[:] - fApprox[:]) / norm(f[:])
 
+          # switch from column major to row major format
+          pnfft3.fhat = (D==1) ? vec(f) : vec(collect(permutedims(f,D:-1:1))) 
           NFFT3.nfft_trafo(pnfft3)
           gHatApprox = pnfft3.f
-          eadjoint = norm(gHat[:] - gHatApprox[:]) / norm(gHat[:])
+          etrafo = norm(gHat[:] - gHatApprox[:]) / norm(gHat[:])
           
           push!(df, ("NFFT3", D, M, N[D], m, sigma, etrafo, eadjoint))
       end

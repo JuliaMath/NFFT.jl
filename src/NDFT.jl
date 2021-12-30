@@ -2,18 +2,18 @@
 ### ndft functions ###
 
 """
-    ndft!(plan::NFFTPlan{D}, g::AbstractArray{Tg,D}, f::AbstractArray{T,D})
+    ndft!(plan::NFFTPlan{D}, g::AbstractVector{Tg}, f::AbstractArray{T,D})
 
 Compute NDFT of input array `f`
 and store result in pre-allocated output array `g`.
 Both arrays must have the same size compatible with the NFFT `plan`.
 
 """
-function ndft!(plan::NFFTPlan{D}, g::AbstractArray{Tg,D}, f::AbstractArray{T,D}) where {D,T,Tg}
+function ndft!(plan::NFFTPlan{D}, g::AbstractArray{Tg}, f::AbstractArray{T,D}) where {D,T,Tg}
 
     plan.N == size(f) ||
         throw(DimensionMismatch("Data f is not consistent with NFFTPlan"))
-    plan.N == size(g) ||
+    plan.M == length(g) ||
         throw(DimensionMismatch("Output g is inconsistent with NFFTPlan"))
 
     g .= zero(Tg)
@@ -41,7 +41,7 @@ end
 Non pre-allocated versions of NDFT; see `ndft!`.
 """
 ndft(plan::NFFTPlan{D}, f::AbstractArray{T,D}) where {D,T} =
-    ndft!(plan, similar(f), f)
+    ndft!(plan, similar(f,plan.M), f)
 
 ndft(x, f::AbstractArray, rest...; kwargs...) =
     ndft(NFFTPlan(x, size(f), rest...; kwargs...), f)
