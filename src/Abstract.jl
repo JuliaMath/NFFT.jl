@@ -26,17 +26,17 @@ For a **directional** `D` dimensional plan `p` both `f` and `fHat` are `D`
 dimensional arrays, and the dimension specified in the plan creation is
 affected.
 """
-function nfft(p::AbstractNFFTPlan{D,0,T}, f::AbstractArray{U,D}, args...) where {D,T,U}
+function nfft(p::AbstractNFFTPlan{D,0,T}, f::AbstractArray{U,D}, args...; kargs...) where {D,T,U}
     fHat = similar(f,Complex{T}, p.M)
-    nfft!(p, f, fHat, args...)
+    nfft!(p, f, fHat, args...; kargs...)
     return fHat
 end
 
-function nfft(p::AbstractNFFTPlan{D,DIM,T}, f::AbstractArray{U,D}, args...) where {D,DIM,T,U}
+function nfft(p::AbstractNFFTPlan{D,DIM,T}, f::AbstractArray{U,D}, args...; kargs...) where {D,DIM,T,U}
     sz = [p.N...]
     sz[DIM] = p.M
     fHat = similar(f, Complex{T}, Tuple(sz))
-    nfft!(p, f, fHat, args...)
+    nfft!(p, f, fHat, args...; kargs...)
     return fHat
 end
 
@@ -51,25 +51,9 @@ For a **directional** `D` dimensional plan `p` both `f` and `fHat` are `D`
 dimensional arrays, and the dimension specified in the plan creation is
 affected.
 """
-function nfft_adjoint(p::AbstractNFFTPlan{D,DIM,T}, fHat::AbstractArray{U}, args...) where {D,DIM,T,U}
+function nfft_adjoint(p::AbstractNFFTPlan{D,DIM,T}, fHat::AbstractArray{U}, args...; kargs...) where {D,DIM,T,U}
     f = similar(fHat, Complex{T}, p.N)
-    nfft_adjoint!(p, fHat, f, args...)
+    nfft_adjoint!(p, fHat, f, args...; kargs...)
     return f
 end
 
-@generated function consistencyCheck(p::AbstractNFFTPlan{D,DIM,T}, f::AbstractArray{U,D},
-                                     fHat::AbstractArray{Y}) where {D,DIM,T,U,Y}
-    quote
-        M = numFourierSamples(p)
-        N = size(p)
-        if $DIM == 0
-            fHat_test = (M == length(fHat))
-        elseif $DIM > 0
-            fHat_test = @nall $D d -> ( d == $DIM ? size(fHat,d) == M : size(fHat,d) == N[d] )
-        end
-
-        if N != size(f) || !fHat_test
-            throw(DimensionMismatch("Data is not consistent with NFFTPlan"))
-        end
-    end
-end

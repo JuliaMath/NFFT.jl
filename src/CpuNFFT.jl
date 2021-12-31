@@ -75,14 +75,19 @@ end
 # constructors
 ##############
 function NFFTPlan(x::Matrix{T}, N::NTuple{D,Int}, m = 4, sigma = 2.0,
-    window = :kaiser_bessel, K = 2000;
-    precompute::PrecomputeFlags = LUT, kwargs...) where {D,T}
+                window=:kaiser_bessel, K=2000;
+                precompute::PrecomputeFlags=LUT, sortNodes=false, kwargs...) where {D,T}
 
-    if D != size(x, 1)
-        throw(ArgumentError("The number of dimensions of x and N do not match"))
+    if D != size(x,1)
+        throw(ArgumentError("Nodes x have dimension $(size(x,1)) != $D!"))
     end
 
-    n = ntuple(d -> round(Int, sigma * N[d]), D)
+    if any(isodd.(N))
+      throw(ArgumentError("N = $N needs to consist of even integers!"))
+    end
+
+    n = ntuple(d->(ceil(Int,sigma*N[d])÷2)*2, D) # ensure that n is an even integer
+    sigma = n[1] / N[1]
 
     tmpVec = Array{Complex{T}}(undef, n)
 
@@ -91,18 +96,28 @@ function NFFTPlan(x::Matrix{T}, N::NTuple{D,Int}, m = 4, sigma = 2.0,
     FP = plan_fft!(tmpVec; kwargs...)
     BP = plan_bfft!(tmpVec; kwargs...)
 
+    # Sort nodes in lexicographic way
+    if sortNodes
+        x .= sortslices(x,dims=2)
+      end
+
     windowLUT, windowHatInvLUT, B = calcLookUpTable(x, N, n, m, sigma, window, K; precompute=precompute)
 
     NFFTPlan{D,0,T}(N, M, x, m, sigma, n, K, windowLUT, windowHatInvLUT, FP, BP, tmpVec, B)
 end
 
-function NFFTPlan!(p::AbstractNFFTPlan{D,DIM,T}, x::Matrix{T}, window = :kaiser_bessel) where {D,DIM,T}
+function NFFTPlan!(p::AbstractNFFTPlan{D,DIM,T}, x::Matrix{T}, window = :kaiser_bessel; sortNodes=false) where {D,DIM,T}
 
     if isempty(p.B)
         precompute = LUT
     else
         precompute = FULL
     end
+
+    # Sort nodes in lexicographic way
+    if sortNodes
+        x .= sortslices(x,dims=2)
+      end
 
     windowLUT, windowHatInvLUT, B = calcLookUpTable(x, p.N, p.n, p.m, p.sigma, window, p.K; precompute=precompute)
 
@@ -125,9 +140,15 @@ A 1D plan that is applied along dimension `d` of a `D` dimensional array of size
 It takes as optional keywords all the keywords supported by `plan_fft` function (like
 `flags` and `timelimit`).  See documentation of `plan_fft` for reference.
 """
-function NFFTPlan(x::AbstractVector{T}, dim::Integer, N::NTuple{D,Int64}, m = 4, sigma = 2.0, window = :kaiser_bessel, K = 2000; kwargs...) where {D,T}
+function NFFTPlan(x::AbstractVector{T}, dim::Integer, N::NTuple{D,Int64}, m=4,
+                       sigma=2.0, window=:kaiser_bessel, K=2000; kwargs...) where {D,T}
 
-    n = ntuple(d -> round(Int, sigma * N[d]), D)
+    if any(isodd.(N))
+      throw(ArgumentError("N = $N needs to consist of even integers!"))
+    end
+
+    n = ntuple(d->(ceil(Int,sigma*N[d])÷2)*2, D) # ensure that n is an even integer
+    sigma = n[1] / N[1]
 
     sz = [N...]
     sz[dim] = n[dim]
@@ -162,6 +183,7 @@ numFourierSamples(p::NFFTPlan) = p.M
 function calcLookUpTable(x::Union{Matrix{T},Vector{T}}, N::NTuple{D,Int}, n, m = 4, sigma = 2.0, window = :kaiser_bessel, K = 2000; precompute::PrecomputeFlags = LUT) where {T,D}
 
     win, win_hat = getWindow(window)
+    M = size(x, 2)
 
     windowLUT = Vector{Vector{T}}(undef, D)
     windowHatInvLUT = Vector{Vector{T}}(undef, D)
@@ -173,25 +195,15 @@ function calcLookUpTable(x::Union{Matrix{T},Vector{T}}, N::NTuple{D,Int}, n, m =
     end
 
     if precompute == LUT
-        Z = round(Int, 3 * K / 2)
-        for d = 1:D
-            windowLUT[d] = Vector{T}(undef, Z)
-            @batch for l = 1:Z
-                y = ((l - 1) / (K - 1)) * m / n[d]
-                windowLUT[d][l] = win(y, n[d], m, sigma)
-            end
-        end
-
-        B = sparse([], [], Float64[])
+        precomputeLUT(win, windowLUT, n, m, sigma, K, T)
+        B = sparse([],[],T[])
+    elseif precompute == FULL
+        B = precomputeB(win, x, N, n, m, M, sigma, K, T)
+    elseif precompute == FULL_LUT
+        precomputeLUT(win, windowLUT, n, m, sigma, K, T)
+        B = precomputeB(windowLUT, x, N, n, m, M, sigma, K, T)
     else
-        if typeof(x) <: Vector
-            error("For directional NFFTs, only `precompute = LUT` is supported")
-        end
-
-        M = size(x, 2)
-        U1 = ntuple(d -> (d == 1) ? 1 : (2 * m + 1)^(d - 1), D)
-        U2 = ntuple(d -> (d == 1) ? 1 : prod(n[1:(d-1)]), D)
-        B = precomputeB(win, x, n, m, M, sigma, T, U1, U2)
+        error("precompute = $precompute not supported by NFFT.jl!")
     end
     return (windowLUT, windowHatInvLUT, B)
 end
@@ -208,7 +220,8 @@ Calculate the NFFT of `f` with plan `p` and store the result in `fHat`.
 
 Both `f` and `fHat` must be complex arrays.
 """
-function nfft!(p::NFFTPlan{D,DIM,T}, f::AbstractArray, fHat::StridedArray, verbose = false) where {D,DIM,T}
+function nfft!(p::NFFTPlan{D,DIM,T}, f::AbstractArray, fHat::StridedArray;
+               verbose=false, timing::Union{Nothing,TimingStats} = nothing) where {D,DIM,T}
     consistencyCheck(p, f, fHat)
 
     fill!(p.tmpVec, zero(Complex{T}))
@@ -222,6 +235,11 @@ function nfft!(p::NFFTPlan{D,DIM,T}, f::AbstractArray, fHat::StridedArray, verbo
     if verbose
         @info "Timing: apod=$t1 fft=$t2 conv=$t3"
     end
+    if timing != nothing
+      timing.conv = t3
+      timing.fft = t2
+      timing.apod = t1
+    end
     return fHat
 end
 
@@ -232,7 +250,8 @@ Calculate the adjoint NFFT of `fHat` and store the result in `f`.
 
 Both `f` and `fHat` must be complex arrays.
 """
-function nfft_adjoint!(p::NFFTPlan, fHat::AbstractArray, f::StridedArray, verbose = false)
+function nfft_adjoint!(p::NFFTPlan, fHat::AbstractArray, f::StridedArray;
+                       verbose=false, timing::Union{Nothing,TimingStats} = nothing)
     consistencyCheck(p, f, fHat)
 
     t1 = @elapsed @inbounds convolve_adjoint!(p, fHat, p.tmpVec)
@@ -244,6 +263,11 @@ function nfft_adjoint!(p::NFFTPlan, fHat::AbstractArray, f::StridedArray, verbos
     t3 = @elapsed @inbounds apodization_adjoint!(p, p.tmpVec, f)
     if verbose
         @info "Timing: conv=$t1 fft=$t2 apod=$t3"
+    end
+    if timing != nothing
+      timing.conv_adjoint = t1
+      timing.fft_adjoint = t2
+      timing.apod_adjoint = t3
     end
     return f
 end

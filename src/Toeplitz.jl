@@ -6,7 +6,7 @@
     calculateToeplitzKernel(shape, tr::Matrix{T}[, m = 4, sigma = 2.0, window = :kaiser_bessel, K = 2000; fftplan = plan_fft(zeros(Complex{T}, 2 .* shape); flags=FFTW.ESTIMATE), kwargs...])
 
 Calculate the kernel for an implementation of the Gram matrix that utilizes its Toeplitz structure. The output is an array of twice the size of `shape`, as the Toeplitz trick requires an oversampling factor of 2 (cf. [Wajer, F. T. A. W., and K. P. Pruessmann. "Major speedup of reconstruction for sensitivity encoding with arbitrary trajectories." Proc. Intl. Soc. Mag. Res. Med. 2001.](https://cds.ismrm.org/ismrm-2001/PDF3/0767.pdf)). The type of the kernel is `Complex{T}`, i.e. the complex of the k-space trajectory's type; for speed and memory efficiecy, call this function with `Float32.(tr)`, and the kernel will also be `Float32`.
-    
+
 # Required Arguments
 - `shape::NTuple(Int)`: size of the image; e.g. `(256, 256)` for 2D imaging, or `(256,256,128)` for 3D imaging
 - `tr::Matrix{T}`: non-Cartesian k-space trajectory in units revolutions/voxel, i.e. `tr[i] ∈ [-0.5, 0.5] ∀ i`. The matrix has the size `2 x Nsamples` for 2D imaging with a trajectory length `Nsamples`, and `3 x Nsamples` for 3D imaging.
@@ -18,7 +18,7 @@ Calculate the kernel for an implementation of the Gram matrix that utilizes its 
 - `K::Int`: `default= 2000` # TODO: describe meaning of k
 
 # Keyword Arguments:
-- `fftplan`: plan for the final FFT of the Kernal from image to k-space. Therefore, it has to have twice the size of the original image. `default = plan_fft(zeros(Complex{T}, 2 .* shape); flags=FFTW.ESTIMATE)`. If this constructor is used many times, it is worth to precompute the plan with `plan_fft(zeros(Complex{T}, 2 .* shape); flags=FFTW.MEASURE)` and reuse it. 
+- `fftplan`: plan for the final FFT of the Kernal from image to k-space. Therefore, it has to have twice the size of the original image. `default = plan_fft(zeros(Complex{T}, 2 .* shape); flags=FFTW.ESTIMATE)`. If this constructor is used many times, it is worth to precompute the plan with `plan_fft(zeros(Complex{T}, 2 .* shape); flags=FFTW.MEASURE)` and reuse it.
 - `kwargs`: Passed on to [`plan_fft!`](https://juliamath.github.io/AbstractFFTs.jl/stable/api/#AbstractFFTs.plan_fft!) via `NFFTPlan`; can be used to modify the flags `flags=FFTW.ESTIMATE, timelimit=Inf`.
 
 # Examples
@@ -90,12 +90,12 @@ end
     calculateToeplitzKernel!(f::Array{Complex{T}}, p::AbstractNFFTPlan, tr::Matrix{T}, fftplan)
 
 Calculate the kernel for an implementation of the Gram matrix that utilizes its Toeplitz structure and writes it in-place in `f`, which has to be twice the size of the desired image matrix, as the Toeplitz trick requires an oversampling factor of 2 (cf. [Wajer, F. T. A. W., and K. P. Pruessmann. "Major speedup of reconstruction for sensitivity encoding with arbitrary trajectories." Proc. Intl. Soc. Mag. Res. Med. 2001.](https://cds.ismrm.org/ismrm-2001/PDF3/0767.pdf)). The type of the kernel `f` has to be `Complex{T}`, i.e. the complex of the k-space trajectory's type; for speed and memory efficiecy, call this function with `Float32.(tr)`, and set the type of `f` accordingly.
-    
+
 # Required Arguments
 - `f::Array{T}`: Array in which the kernel will be written.
-- `p::AbstractNFFTPlan`: NFFTPlan with the same dimentions as `tr`, which will be overwritten in place. 
+- `p::AbstractNFFTPlan`: NFFTPlan with the same dimentions as `tr`, which will be overwritten in place.
 - `tr::Matrix{T}`: non-Cartesian k-space trajectory in units revolutions/voxel, i.e. `tr[i] ∈ [-0.5, 0.5] ∀ i`. The matrix has the size `2 x Nsamples` for 2D imaging with a trajectory length `Nsamples`, and `3 x Nsamples` for 3D imaging.
-- `fftplan`: plan for the final FFT of the Kernal from image to k-space. Therefore, it has to have twice the size of the original image. Calculate, e.g., with `fftplan = plan_fft(zeros(Complex{T}, 2 .* shape); flags=FFTW.MEASURE)`, where `shape` is the size of the reconstructed image. 
+- `fftplan`: plan for the final FFT of the Kernal from image to k-space. Therefore, it has to have twice the size of the original image. Calculate, e.g., with `fftplan = plan_fft(zeros(Complex{T}, 2 .* shape); flags=FFTW.MEASURE)`, where `shape` is the size of the reconstructed image.
 
 # Examples
 ```jldoctest
@@ -164,17 +164,17 @@ end
 """
     convolveToeplitzKernel!(x::Array{T,N}, λ::Array{T,N}[, fftplan = plan_fft(λ; flags=FFTW.ESTIMATE), ifftplan = plan_ifft(λ; flags=FFTW.ESTIMATE), xOS1 = similar(λ), xOS2 = similar(λ)])
 
-Convolves the image `x` with the Toeplitz kernel `λ` and overwrites `x` with the result. `x` is also returned for convenience. As this function is commonly applied many times, it is highly recommened to pre-allocate / pre-compute all optional arguments. By doing so, this entire function is non-allocating. 
-    
+Convolves the image `x` with the Toeplitz kernel `λ` and overwrites `x` with the result. `x` is also returned for convenience. As this function is commonly applied many times, it is highly recommened to pre-allocate / pre-compute all optional arguments. By doing so, this entire function is non-allocating.
+
 # Required Arguments
 - `x::Array{T,N}`: Input image that will be overwritten with the result. `x` is a matrix (`N=2`) for 2D imaging and a 3D tensor (`N=3`) for 3D imaging. The type of the elments `T` must match the ones of `λ`.
 - `λ::Array{T,N}`: Toeplitz kernel, which as to be the same type as `x`, but twice the size due to the required oversampling (cf. [`calculateToeplitzKernel`](@ref)).
 
 # Optional, but highly recommended Arguments
-- `fftplan`: plan for the oversampled FFT, i.e. it has to have twice the size of the original image. Calculate, e.g., with `fftplan = plan_fft(λ; flags=FFTW.MEASURE)`, where `shape` is the size of the reconstructed image. 
-- `ifftplan`: plan for the oversampled inverse FFT. Calculate, e.g., with `ifftplan = plan_ifft(λ; flags=FFTW.MEASURE)`, where `shape` is the size of the reconstructed image. 
-- `xOS1`: pre-allocated array of the size of `λ`. Pre-allocate with `xOS1 = similar(λ)`. 
-- `xOS2`: pre-allocated array of the size of `λ`. Pre-allocate with `xOS2 = similar(λ)`. 
+- `fftplan`: plan for the oversampled FFT, i.e. it has to have twice the size of the original image. Calculate, e.g., with `fftplan = plan_fft(λ; flags=FFTW.MEASURE)`, where `shape` is the size of the reconstructed image.
+- `ifftplan`: plan for the oversampled inverse FFT. Calculate, e.g., with `ifftplan = plan_ifft(λ; flags=FFTW.MEASURE)`, where `shape` is the size of the reconstructed image.
+- `xOS1`: pre-allocated array of the size of `λ`. Pre-allocate with `xOS1 = similar(λ)`.
+- `xOS2`: pre-allocated array of the size of `λ`. Pre-allocate with `xOS2 = similar(λ)`.
 
 # Examples
 ```jldoctest
@@ -221,7 +221,7 @@ julia> convolveToeplitzKernel!(x, λ, fftplan, ifftplan, xOS1, xOS2)
 
 ```
 """
-function convolveToeplitzKernel!(x::Array{T,N}, λ::Array{T,N}, 
+function convolveToeplitzKernel!(x::Array{T,N}, λ::Array{T,N},
     fftplan = plan_fft(λ; flags=FFTW.ESTIMATE),
     ifftplan = plan_ifft(λ; flags=FFTW.ESTIMATE),
     xOS1 = similar(λ),
@@ -231,13 +231,8 @@ function convolveToeplitzKernel!(x::Array{T,N}, λ::Array{T,N},
     fill!(xOS1, 0)
     xOS1[CartesianIndices(x)] .= x
     mul!(xOS2, fftplan, xOS1)
-    # println(all(xOS1[CartesianIndices(x)] .== x))
     xOS2 .*= λ
-    # println(norm(xOS2))
     mul!(xOS1, ifftplan, xOS2)
-    # println(norm(xOS1[CartesianIndices(x)] .- x))
-    # println(norm(x))
-    # # xL = ifftplan * (λ .* (fftplan * xL))
     x .= @view xOS1[CartesianIndices(x)]
     return x
 end

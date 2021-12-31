@@ -46,12 +46,14 @@ xN = nfft_adjoint(trj, (Nx,Nx), nfft(trj, x))
 
 xOS1 = similar(Ka)
 xOS2 = similar(Ka)
+
+FFTW.set_num_threads(1)
 fftplan = plan_fft(xOS1; flags=FFTW.MEASURE)
 ifftplan = plan_ifft(xOS1; flags=FFTW.MEASURE)
 NFFT.convolveToeplitzKernel!(x, Ka, fftplan, ifftplan, xOS1, xOS2)
 @test x ≈ xN rtol = 1e-5
 
-## test that convolveToeplitzKernel! with all arguments is non-allocating
+## test that convolveToeplitzKernel! with all arguments is non-allocating (only true with FFTW.set_num_threads(1))
 bm = @benchmark NFFT.convolveToeplitzKernel!($x, $Ka, $fftplan, $ifftplan, $xOS1, $xOS2)
 @test bm.allocs == 0
 
