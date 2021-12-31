@@ -1,3 +1,4 @@
+using Polyester
 
 #=
 Some internal documentation (especially for people familiar with the nfft)
@@ -38,34 +39,42 @@ mutable struct NFFTPlan{D,DIM,T} <: AbstractNFFTPlan{D,DIM,T}
     tmpVec::Array{Complex{T},D}
     B::SparseMatrixCSC{T,Int64}
 end
-    
+
 function Base.copy(p::NFFTPlan{D,0,T}) where {D,T}
     tmpVec = similar(p.tmpVec)
-    
-    FP = plan_fft!(tmpVec; flags=p.forwardFFT.flags)
-    BP = plan_bfft!(tmpVec; flags=p.backwardFFT.flags)
-   
-    return  NFFTPlan{D,0,T}(p.N, p.M, p.x, p.m, p.sigma, p.n, p.K, p.windowLUT,
-                    p.windowHatInvLUT, FP, BP , tmpVec, p.B)
+    windowLUT = copy(p.windowLUT)
+    windowHatInvLUT = copy(p.windowHatInvLUT)
+    B = copy(p.B)
+    x = copy(p.x)
+
+    FP = plan_fft!(tmpVec; flags = p.forwardFFT.flags)
+    BP = plan_bfft!(tmpVec; flags = p.backwardFFT.flags)
+
+    return NFFTPlan{D,0,T}(p.N, p.M, x, p.m, p.sigma, p.n, p.K, windowLUT,
+        windowHatInvLUT, FP, BP, tmpVec, B)
 end
-    
+
 function Base.copy(p::NFFTPlan{D,DIM,T}) where {D,DIM,T}
     tmpVec = similar(p.tmpVec)
-    
-    FP = plan_fft!(tmpVec, DIM; flags=p.forwardFFT.flags)
-    BP = plan_bfft!(tmpVec, DIM; flags=p.backwardFFT.flags)
-    
-    return  NFFTPlan{D,DIM,T}(p.N, p.M, p.x, p.m, p.sigma, p.n, p.K, p.windowLUT,
-                    p.windowHatInvLUT, FP, BP , tmpVec, p.B)
+    windowLUT = copy(p.windowLUT)
+    windowHatInvLUT = copy(p.windowHatInvLUT)
+    B = copy(p.B)
+    x = copy(p.x)
+
+    FP = plan_fft!(tmpVec, DIM; flags = p.forwardFFT.flags)
+    BP = plan_bfft!(tmpVec, DIM; flags = p.backwardFFT.flags)
+
+    return NFFTPlan{D,DIM,T}(p.N, p.M, x, p.m, p.sigma, p.n, p.K, windowLUT,
+        windowHatInvLUT, FP, BP, tmpVec, B)
 end
-    
-@inline dim(::NFFTPlan{D,DIM}) where {D, DIM} = DIM
-    
+
+@inline dim(::NFFTPlan{D,DIM}) where {D,DIM} = DIM
+
 
 ##############
 # constructors
 ##############
-function NFFTPlan(x::Matrix{T}, N::NTuple{D,Int}, m=4, sigma=2.0,
+function NFFTPlan(x::Matrix{T}, N::NTuple{D,Int}, m = 4, sigma = 2.0,
                 window=:kaiser_bessel, K=2000;
                 precompute::PrecomputeFlags=LUT, sortNodes=false, kwargs...) where {D,T}
 
@@ -82,41 +91,43 @@ function NFFTPlan(x::Matrix{T}, N::NTuple{D,Int}, m=4, sigma=2.0,
 
     tmpVec = Array{Complex{T}}(undef, n)
 
-    M = size(x,2)
+    M = size(x, 2)
 
     FP = plan_fft!(tmpVec; kwargs...)
     BP = plan_bfft!(tmpVec; kwargs...)
 
     # Sort nodes in lexicographic way
     if sortNodes
-      x .= sortslices(x,dims=2)
-    end
+        x .= sortslices(x,dims=2)
+      end
 
-    # Create lookup table
-    win, win_hat = getWindow(window)
+    windowLUT, windowHatInvLUT, B = calcLookUpTable(x, N, n, m, sigma, window, K; precompute=precompute)
 
-    windowLUT = Vector{Vector{T}}(undef,D)
-    windowHatInvLUT = Vector{Vector{T}}(undef,D)
-    for d=1:D
-        windowHatInvLUT[d] = zeros(T, N[d])
-        for k=1:N[d]
-            windowHatInvLUT[d][k] = 1. / win_hat(k-1-N[d]÷2, n[d], m, sigma)
-        end
-    end
+    NFFTPlan{D,0,T}(N, M, x, m, sigma, n, K, windowLUT, windowHatInvLUT, FP, BP, tmpVec, B)
+end
 
-    if precompute == LUT
-        precomputeLUT(win, windowLUT, n, m, sigma, K, T)
-        B = sparse([],[],T[])
-    elseif precompute == FULL
-        B = precomputeB(win, x, N, n, m, M, sigma, K, T)
-    elseif precompute == FULL_LUT
-        precomputeLUT(win, windowLUT, n, m, sigma, K, T)
-        B = precomputeB(windowLUT, x, N, n, m, M, sigma, K, T)
+function NFFTPlan!(p::AbstractNFFTPlan{D,DIM,T}, x::Matrix{T}, window = :kaiser_bessel; sortNodes=false) where {D,DIM,T}
+
+    if isempty(p.B)
+        precompute = LUT
     else
-        error("precompute = $precompute not supported by NFFT.jl!")
+        precompute = FULL
     end
 
-    NFFTPlan{D,0,T}(N, M, x, m, sigma, n, K, windowLUT, windowHatInvLUT, FP, BP, tmpVec, B )
+    # Sort nodes in lexicographic way
+    if sortNodes
+        x .= sortslices(x,dims=2)
+      end
+
+    windowLUT, windowHatInvLUT, B = calcLookUpTable(x, p.N, p.n, p.m, p.sigma, window, p.K; precompute=precompute)
+
+    p.M = size(x, 2)
+    p.windowLUT = windowLUT
+    p.windowHatInvLUT = windowHatInvLUT
+    p.B = B
+    p.x = x
+
+    return p
 end
 
 # Directional NFFT
@@ -141,37 +152,20 @@ function NFFTPlan(x::AbstractVector{T}, dim::Integer, N::NTuple{D,Int64}, m=4,
 
     sz = [N...]
     sz[dim] = n[dim]
-    tmpVec = Array{Complex{T}}(undef,sz...)
+    tmpVec = Array{Complex{T}}(undef, sz...)
 
     M = length(x)
 
     FP = plan_fft!(tmpVec, dim; kwargs...)
     BP = plan_bfft!(tmpVec, dim; kwargs...)
 
-    # Create lookup table
-    win, win_hat = getWindow(window)
+    windowLUT, windowHatInvLUT, B = calcLookUpTable(x, (N[dim],), (n[dim],), m, sigma, window, K, precompute=LUT)
 
-    windowLUT = Vector{Vector{T}}(undef,1)
-    Z = round(Int, 3*K/2)
-    windowLUT[1] = zeros(T, Z)
-    for l = 1:Z
-        y = ((l-1) / (K-1)) * m/n[dim]
-        windowLUT[1][l] = win(y, n[dim], m, sigma)
-    end
-
-    windowHatInvLUT = Vector{Vector{T}}(undef,1)
-    windowHatInvLUT[1] = zeros(T, N[dim])
-    for k = 1:N[dim]
-        windowHatInvLUT[1][k] = 1. / win_hat(k-1-N[dim]/2, n[dim], m, sigma)
-    end
-
-    B = sparse([],[],T[])
-
-    NFFTPlan{D,dim,T}(N, M, reshape(x,1,M), m, sigma, n, K, windowLUT,
-                      windowHatInvLUT, FP, BP, tmpVec, B)
+    NFFTPlan{D,dim,T}(N, M, reshape(x, 1, M), m, sigma, n, K, windowLUT,
+        windowHatInvLUT, FP, BP, tmpVec, B)
 end
 
-function Base.show(io::IO, p::NFFTPlan{D,0}) where D
+function Base.show(io::IO, p::NFFTPlan{D,0}) where {D}
     print(io, "NFFTPlan with ", p.M, " sampling points for ", p.N, " array")
 end
 
@@ -182,8 +176,42 @@ end
 size(p::NFFTPlan) = p.N
 numFourierSamples(p::NFFTPlan) = p.M
 
+
 ################
-# nfft functions 
+# helper function
+################
+function calcLookUpTable(x::Union{Matrix{T},Vector{T}}, N::NTuple{D,Int}, n, m = 4, sigma = 2.0, window = :kaiser_bessel, K = 2000; precompute::PrecomputeFlags = LUT) where {T,D}
+
+    win, win_hat = getWindow(window)
+    M = size(x, 2)
+
+    windowLUT = Vector{Vector{T}}(undef, D)
+    windowHatInvLUT = Vector{Vector{T}}(undef, D)
+    for d = 1:D
+        windowHatInvLUT[d] = Vector{T}(undef, N[d])
+        @batch for k = 1:N[d]
+            windowHatInvLUT[d][k] = 1 / win_hat(k - 1 - N[d] / 2, n[d], m, sigma)
+        end
+    end
+
+    if precompute == LUT
+        precomputeLUT(win, windowLUT, n, m, sigma, K, T)
+        B = sparse([],[],T[])
+    elseif precompute == FULL
+        B = precomputeB(win, x, N, n, m, M, sigma, K, T)
+    elseif precompute == FULL_LUT
+        precomputeLUT(win, windowLUT, n, m, sigma, K, T)
+        B = precomputeB(windowLUT, x, N, n, m, M, sigma, K, T)
+    else
+        error("precompute = $precompute not supported by NFFT.jl!")
+    end
+    return (windowLUT, windowHatInvLUT, B)
+end
+
+
+
+################
+# nfft functions
 ################
 """
         nfft!(p, f, fHat) -> fHat
@@ -192,7 +220,7 @@ Calculate the NFFT of `f` with plan `p` and store the result in `fHat`.
 
 Both `f` and `fHat` must be complex arrays.
 """
-function nfft!(p::NFFTPlan{D,DIM,T}, f::AbstractArray, fHat::StridedArray; 
+function nfft!(p::NFFTPlan{D,DIM,T}, f::AbstractArray, fHat::StridedArray;
                verbose=false, timing::Union{Nothing,TimingStats} = nothing) where {D,DIM,T}
     consistencyCheck(p, f, fHat)
 
@@ -205,7 +233,7 @@ function nfft!(p::NFFTPlan{D,DIM,T}, f::AbstractArray, fHat::StridedArray;
     end
     t3 = @elapsed @inbounds convolve!(p, p.tmpVec, fHat)
     if verbose
-      @info "Timing: apod=$t1 fft=$t2 conv=$t3"
+        @info "Timing: apod=$t1 fft=$t2 conv=$t3"
     end
     if timing != nothing
       timing.conv = t3
@@ -222,7 +250,7 @@ Calculate the adjoint NFFT of `fHat` and store the result in `f`.
 
 Both `f` and `fHat` must be complex arrays.
 """
-function nfft_adjoint!(p::NFFTPlan, fHat::AbstractArray, f::StridedArray; 
+function nfft_adjoint!(p::NFFTPlan, fHat::AbstractArray, f::StridedArray;
                        verbose=false, timing::Union{Nothing,TimingStats} = nothing)
     consistencyCheck(p, f, fHat)
 
@@ -234,7 +262,7 @@ function nfft_adjoint!(p::NFFTPlan, fHat::AbstractArray, f::StridedArray;
     end
     t3 = @elapsed @inbounds apodization_adjoint!(p, p.tmpVec, f)
     if verbose
-      @info "Timing: conv=$t1 fft=$t2 apod=$t3"
+        @info "Timing: conv=$t1 fft=$t2 apod=$t3"
     end
     if timing != nothing
       timing.conv_adjoint = t1

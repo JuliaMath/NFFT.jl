@@ -29,7 +29,7 @@ end
     @nexprs 1 d -> tmpWin_{$D} = one(T)
     @nloops $D l d -> 1:(2*m+1) d->begin
         # preexpr
-        off = c_d - m - 1 
+        off = c_d - m - 1
         gidx_d = rem(l_d  + c_d - m - 1 + n[d], n[d]) + 1
         idx = abs( (xscale_d - l_d - off) )
         tmpWin_{d-1} = tmpWin_d * win(idx / n[d], n[d], m, sigma)
@@ -37,7 +37,7 @@ end
         ζ_{d-1} = ζ_d + (gidx_d-1) * n_d
     end begin
         # bodyexpr
-        I[κ_0,k] = ζ_0 
+        I[κ_0,k] = ζ_0
         V[κ_0,k] = tmpWin_0
     end
   end
@@ -61,7 +61,7 @@ end
     @nexprs 1 d -> tmpWin_{$D} = one(T)
     @nloops $D l d -> 1:(2*m+1) d->begin
         # preexpr
-        off = c_d - m - 1 
+        off = c_d - m - 1
         gidx_d = rem(l_d + off + n[d], n[d]) + 1
         idx = abs( (xscale_d - l_d - off)*scale ) + 1
         idxL = floor(idx)
@@ -71,21 +71,21 @@ end
         ζ_{d-1} = ζ_d + (gidx_d-1) * n_d
     end begin
         # bodyexpr
-        I[κ_0,k] = ζ_0 
+        I[κ_0,k] = ζ_0
         V[κ_0,k] = tmpWin_0
     end
   end
 end
 
 function precomputeLUT(win, windowLUT, n, m, sigma, K, T)
-  Z = round(Int,3*K/2)
-  for d=1:length(windowLUT)
-      windowLUT[d] = zeros(T, Z)
-      for l=1:Z
-          y = ((l-1) / (K-1)) * m/n[d]
-          windowLUT[d][l] = win(y, n[d], m, sigma)
-      end
-  end
+    Z = round(Int, 3 * K / 2)
+    for d = 1:length(windowLUT)
+        windowLUT[d] = Vector{T}(undef, Z)
+        @batch for l = 1:Z
+            y = ((l - 1) / (K - 1)) * m / n[d]
+            windowLUT[d][l] = win(y, n[d], m, sigma)
+        end
+    end
 end
 
 """
@@ -116,7 +116,7 @@ end
 
 """
 precompute indices of the apodized image in the oversampled grid
-""" 
+"""
 @generated function precomp_apodIdx(N::NTuple{D,Int64}, n::NTuple{D,Int64}) where D
     quote
         # linear indices of the oversampled grid
