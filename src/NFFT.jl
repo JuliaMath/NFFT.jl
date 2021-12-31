@@ -7,13 +7,15 @@ using Distributed
 using SparseArrays
 using LinearAlgebra
 using Polyester
-using LoopVectorization
-using ThreadedSparseCSR
-import ThreadedSparseCSR: SparseMatrixCSR, sparsecsr
+#using LoopVectorization
+#using ThreadedSparseCSR
+#import ThreadedSparseCSR: SparseMatrixCSR, sparsecsr
 using CUDA
 using Graphics: @mustimplement
 
-export AbstractNFFTPlan, plan_nfft, nfft, nfft_adjoint, ndft, ndft_adjoint, TimingStats
+export AbstractNFFTPlan, plan_nfft, nfft, nfft_adjoint, ndft, ndft_adjoint, 
+       nfft!, nfft_adjoint!
+export TimingStats
 import Base.size
 
 @enum PrecomputeFlags begin

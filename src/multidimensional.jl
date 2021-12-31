@@ -121,8 +121,8 @@ end
 function convolve_sparse_matrix!(p::NFFTPlan{D,0,T}, g::AbstractArray{Complex{T},D}, fHat::StridedVector{U}) where {D,T,U}
   fill!(fHat, zero(T))
 
-  bmul!(fHat, SparseMatrixCSR(transpose(p.B)), vec(g))
-  #mul!(fHat, transpose(p.B), vec(g))
+  #bmul!(fHat, SparseMatrixCSR(transpose(p.B)), vec(g))
+  mul!(fHat, transpose(p.B), vec(g))
 end
 
 function convolve_adjoint!(p::NFFTPlan{D,0,T}, fHat::AbstractVector{U}, g::StridedArray{Complex{T},D}) where {D,T,U}

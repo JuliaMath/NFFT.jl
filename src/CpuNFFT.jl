@@ -80,7 +80,7 @@ function NFFTPlan(x::Matrix{T}, N::NTuple{D,Int}, m=4, sigma=2.0,
     n = ntuple(d->(ceil(Int,sigma*N[d])÷2)*2, D) # ensure that n is an even integer
     sigma = n[1] / N[1]
 
-    tmpVec = Array{Complex{T}}(undef, n)
+    tmpVec = Array{Complex{T},D}(undef, n)
 
     M = size(x,2)
 
@@ -89,7 +89,7 @@ function NFFTPlan(x::Matrix{T}, N::NTuple{D,Int}, m=4, sigma=2.0,
 
     # Sort nodes in lexicographic way
     if sortNodes
-      x .= sortslices(x,dims=2)
+      x .= sortslices(x, dims=2)
     end
 
     # Create lookup table
@@ -97,12 +97,7 @@ function NFFTPlan(x::Matrix{T}, N::NTuple{D,Int}, m=4, sigma=2.0,
 
     windowLUT = Vector{Vector{T}}(undef,D)
     windowHatInvLUT = Vector{Vector{T}}(undef,D)
-    for d=1:D
-        windowHatInvLUT[d] = zeros(T, N[d])
-        for k=1:N[d]
-            windowHatInvLUT[d][k] = 1. / win_hat(k-1-N[d]÷2, n[d], m, sigma)
-        end
-    end
+    precomputeWindowHatInvLUT(windowHatInvLUT, win_hat, N, n, m, sigma, T)
 
     if precompute == LUT
         precomputeLUT(win, windowLUT, n, m, sigma, K, T)

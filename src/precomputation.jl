@@ -80,10 +80,19 @@ end
 function precomputeLUT(win, windowLUT, n, m, sigma, K, T)
   Z = round(Int,3*K/2)
   for d=1:length(windowLUT)
-      windowLUT[d] = zeros(T, Z)
-      for l=1:Z
+      windowLUT[d] = Vector{T}(undef, Z)
+      @cthreads for l=1:Z
           y = ((l-1) / (K-1)) * m/n[d]
           windowLUT[d][l] = win(y, n[d], m, sigma)
+      end
+  end
+end
+
+function precomputeWindowHatInvLUT(windowHatInvLUT, win_hat, N, n, m, sigma, T)
+  for d=1:length(windowHatInvLUT)
+      windowHatInvLUT[d] = zeros(T, N[d])
+      @cthreads for k=1:N[d]
+          windowHatInvLUT[d][k] = 1. / win_hat(k-1-N[d]÷2, n[d], m, sigma)
       end
   end
 end
