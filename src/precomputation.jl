@@ -29,7 +29,7 @@ end
     @nexprs 1 d -> tmpWin_{$D} = one(T)
     @nloops $D l d -> 1:(2*m+1) d->begin
         # preexpr
-        off = c_d - m - 1 
+        off = c_d - m - 1
         gidx_d = rem(l_d  + c_d - m - 1 + n[d], n[d]) + 1
         idx = abs( (xscale_d - l_d - off) )
         tmpWin_{d-1} = tmpWin_d * win(idx / n[d], n[d], m, sigma)
@@ -37,7 +37,7 @@ end
         ζ_{d-1} = ζ_d + (gidx_d-1) * n_d
     end begin
         # bodyexpr
-        I[κ_0,k] = ζ_0 
+        I[κ_0,k] = ζ_0
         V[κ_0,k] = tmpWin_0
     end
   end
@@ -61,7 +61,7 @@ end
     @nexprs 1 d -> tmpWin_{$D} = one(T)
     @nloops $D l d -> 1:(2*m+1) d->begin
         # preexpr
-        off = c_d - m - 1 
+        off = c_d - m - 1
         gidx_d = rem(l_d + off + n[d], n[d]) + 1
         idx = abs( (xscale_d - l_d - off)*scale ) + 1
         idxL = floor(idx)
@@ -71,21 +71,21 @@ end
         ζ_{d-1} = ζ_d + (gidx_d-1) * n_d
     end begin
         # bodyexpr
-        I[κ_0,k] = ζ_0 
+        I[κ_0,k] = ζ_0
         V[κ_0,k] = tmpWin_0
     end
   end
 end
 
 function precomputeLUT(win, windowLUT, n, m, sigma, K, T)
-  Z = round(Int,3*K/2)
-  for d=1:length(windowLUT)
-      windowLUT[d] = Vector{T}(undef, Z)
-      @cthreads for l=1:Z
-          y = ((l-1) / (K-1)) * m/n[d]
-          windowLUT[d][l] = win(y, n[d], m, sigma)
-      end
-  end
+    Z = round(Int, 3 * K / 2)
+    for d = 1:length(windowLUT)
+        windowLUT[d] = Vector{T}(undef, Z)
+        @cthreads for l = 1:Z
+            y = ((l - 1) / (K - 1)) * m / n[d]
+            windowLUT[d][l] = win(y, n[d], m, sigma)
+        end
+    end
 end
 
 function precomputeWindowHatInvLUT(windowHatInvLUT, win_hat, N, n, m, sigma, T)
@@ -95,6 +95,30 @@ function precomputeWindowHatInvLUT(windowHatInvLUT, win_hat, N, n, m, sigma, T)
           windowHatInvLUT[d][k] = 1. / win_hat(k-1-N[d]÷2, n[d], m, sigma)
       end
   end
+end
+
+
+function calcLookUpTable(x::Union{Matrix{T},Vector{T}}, N::NTuple{D,Int}, n, m = 4, sigma = 2.0, window = :kaiser_bessel, K = 2000; precompute::PrecomputeFlags = LUT) where {T,D}
+
+  win, win_hat = getWindow(window)
+  M = size(x, 2)
+
+  windowLUT = Vector{Vector{T}}(undef, D)
+  windowHatInvLUT = Vector{Vector{T}}(undef, D)
+  precomputeWindowHatInvLUT(windowHatInvLUT, win_hat, N, n, m, sigma, T)
+
+  if precompute == LUT
+      precomputeLUT(win, windowLUT, n, m, sigma, K, T)
+      B = sparse([],[],T[])
+  elseif precompute == FULL
+      B = precomputeB(win, x, N, n, m, M, sigma, K, T)
+  elseif precompute == FULL_LUT
+      precomputeLUT(win, windowLUT, n, m, sigma, K, T)
+      B = precomputeB(windowLUT, x, N, n, m, M, sigma, K, T)
+  else
+      error("precompute = $precompute not supported by NFFT.jl!")
+  end
+  return (windowLUT, windowHatInvLUT, B)
 end
 
 """
@@ -125,7 +149,7 @@ end
 
 """
 precompute indices of the apodized image in the oversampled grid
-""" 
+"""
 @generated function precomp_apodIdx(N::NTuple{D,Int64}, n::NTuple{D,Int64}) where D
     quote
         # linear indices of the oversampled grid

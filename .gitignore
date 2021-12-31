@@ -2,5 +2,5 @@
 docs/build/*
 *.h5
 test/*.png
-
+settings.json
 Manifest.toml

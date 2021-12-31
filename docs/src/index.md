@@ -34,3 +34,4 @@ the [issue tracker](https://github.com/tknopp/NFFT.jl/issues) to contact us.
 ## Contributors
 
 * [Tobias Knopp](https://www.tuhh.de/ibi/people/tobias-knopp-head-of-institute.html)
+* [Jakob Assländer](https://med.nyu.edu/faculty/jakob-asslaender)

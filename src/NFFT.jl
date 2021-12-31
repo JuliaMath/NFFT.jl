@@ -12,11 +12,11 @@ using Polyester
 #import ThreadedSparseCSR: SparseMatrixCSR, sparsecsr
 using CUDA
 using Graphics: @mustimplement
+import Base.size
 
 export AbstractNFFTPlan, plan_nfft, nfft, nfft_adjoint, ndft, ndft_adjoint, 
-       nfft!, nfft_adjoint!
-export TimingStats
-import Base.size
+       nfft!, nfft_adjoint!, TimingStats
+export calculateToeplitzKernel, calculateToeplitzKernel!, convolveToeplitzKernel!
 
 @enum PrecomputeFlags begin
   LUT = 1
@@ -59,10 +59,10 @@ end
 
 compute a plan for the NFFT of a size-`N` array at the nodes contained in `x`.
 
-The computing device (CPU or GPU) can be set using the keyworkd argument `device` 
+The computing device (CPU or GPU) can be set using the keyworkd argument `device`
 to NFFT.CPU or NFFT.CUDAGPU
 """
-function plan_nfft(x::Matrix{T}, N::NTuple{D,Int}, rest...; device::Device=CPU, 
+function plan_nfft(x::Matrix{T}, N::NTuple{D,Int}, rest...; device::Device=CPU,
                    timing::Union{Nothing,TimingStats} = nothing, kargs...) where {T,D}
   t = @elapsed begin
     if device==CPU
@@ -88,7 +88,7 @@ and along the direction `dim`.
 The computing device (CPU or GPU) can be set using the keyworkd argument `device`.
 Currently only NFFT.CPU is supported.
 """
-function plan_nfft(x::Vector{T}, dim::Integer, N::NTuple{D,Int}, rest...; device::Device=CPU, 
+function plan_nfft(x::Vector{T}, dim::Integer, N::NTuple{D,Int}, rest...; device::Device=CPU,
                    timing::Union{Nothing,TimingStats} = nothing, kargs...) where {T,D}
   t = @elapsed begin
     if device==CPU
@@ -105,7 +105,7 @@ function plan_nfft(x::Vector{T}, dim::Integer, N::NTuple{D,Int}, rest...; device
   return p
 end
 
-function plan_nfft(x::Matrix{T}, dim::Integer, N::NTuple{D,Int}, rest...; device::Device=CPU, 
+function plan_nfft(x::Matrix{T}, dim::Integer, N::NTuple{D,Int}, rest...; device::Device=CPU,
                    timing::Union{Nothing,TimingStats} = nothing, kargs...) where {T,D}
   t = @elapsed begin
     if size(x,1) != 1 && size(x,2) != 1
@@ -160,6 +160,7 @@ include("directional.jl")
 include("multidimensional.jl")
 include("samplingDensity.jl")
 include("NDFT.jl")
+include("Toeplitz.jl")
 
 
 function __init__()
