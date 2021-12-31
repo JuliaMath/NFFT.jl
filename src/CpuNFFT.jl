@@ -79,7 +79,7 @@ function NFFTPlan(x::Matrix{T}, N::NTuple{D,Int}, m = 4, sigma = 2.0,
                 precompute::PrecomputeFlags=LUT, sortNodes=false, kwargs...) where {D,T}
 
     if D != size(x,1)
-        throw(ArgumentError("Nodes x have dimension $(size(x,1)) != $D!"))
+        throw(ArgumentError("Nodes x have dimension $(size(x,1)) != $D"))
     end
 
     if any(isodd.(N))
