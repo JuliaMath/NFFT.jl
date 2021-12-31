@@ -81,3 +81,24 @@ end
 nfft_performance_2()
 #nfft_performance_2(128,46_000)
 
+
+
+function nfft_performance_simple(;N = 64, M = N*N*N, m = 3, K=100000,
+                                  sigma = 2.0, threading=false, pre=NFFT.LUT, T=Float64)
+  
+  timing = TimingStats()
+  x = T.(rand(3,M) .- 0.5)
+  fHat = Complex{T}.(rand(M)*1im)
+  NFFT._use_threads[] = threading
+  tpre = @elapsed p = plan_nfft(x, (N,N,N), m, sigma, :kaiser_bessel, K; precompute=pre, timing, flags=FFTW.MEASURE)
+  f = similar(fHat, p.N)
+  tadjoint = @elapsed fApprox = nfft_adjoint!(p, fHat, f; timing)
+  ttrafo = @elapsed nfft!(p, fApprox, fHat; timing)
+
+  @info tpre, ttrafo, tadjoint
+
+  println(timing)
+
+end
+
+
