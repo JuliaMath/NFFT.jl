@@ -3,6 +3,35 @@ using NFFT
 using FFTW
 using BenchmarkTools
 
+## test NFFTPlan!(p, tr)
+Nx = 32
+trj1 = rand(2, 1000) .- 0.5
+trj2 = rand(2, 1000) .- 0.5
+
+p1 = NFFT.NFFTPlan(trj1, (Nx, Nx))
+p2 = NFFT.NFFTPlan(trj2, (Nx, Nx))
+NFFT.NFFTPlan!(p2, trj1)
+
+@test p1.N == p2.N
+@test p1.M == p2.M
+@test p1.x == p2.x
+@test p1.m == p2.m
+@test p1.sigma == p2.sigma
+@test p1.n == p2.n
+@test p1.K == p2.K
+@test p1.windowLUT == p2.windowLUT
+@test p1.windowHatInvLUT == p2.windowHatInvLUT
+@test p1.B == p2.B
+
+for n in fieldnames(typeof(p1.forwardFFT))
+    println(n)
+    if n != :pinv
+        @test getfield(p1.forwardFFT,n) == getfield(p1.forwardFFT,n)
+        @test getfield(p1.backwardFFT,n) == getfield(p1.backwardFFT,n)
+    end
+end
+
+
 ## calculateToeplitzKernel vs calculateToeplitzKernel_explicit (2D, Float64)
 for Nx ∈ [32, 33, 64]
     trj = rand(2, 1000) .- 0.5
@@ -19,9 +48,9 @@ for Nx ∈ [32, 33, 64]
     trj = rand(2, 1000) .- 0.5
     Kx = NFFT.calculateToeplitzKernel_explicit((Nx, Nx), trj)
 
-    p = NFFT.NFFTPlan(trj, (2Nx,2Nx))
+    p = NFFT.NFFTPlan(trj, (2Nx, 2Nx))
     Ka = similar(Kx)
-    fftplan = plan_fft(Ka; flags=FFTW.ESTIMATE)
+    fftplan = plan_fft(Ka; flags = FFTW.ESTIMATE)
     NFFT.calculateToeplitzKernel!(Ka, p, trj, fftplan)
 
     @test typeof(Kx) === Matrix{ComplexF64}
@@ -42,14 +71,14 @@ Ka = NFFT.calculateToeplitzKernel((Nx, Nx), trj, 4, 2)
 
 ## compare to the NFFT
 x = randn(ComplexF32, Nx, Nx)
-xN = nfft_adjoint(trj, (Nx,Nx), nfft(trj, x))
+xN = nfft_adjoint(trj, (Nx, Nx), nfft(trj, x))
 
 xOS1 = similar(Ka)
 xOS2 = similar(Ka)
 
 FFTW.set_num_threads(1)
-fftplan = plan_fft(xOS1; flags=FFTW.MEASURE)
-ifftplan = plan_ifft(xOS1; flags=FFTW.MEASURE)
+fftplan = plan_fft(xOS1; flags = FFTW.MEASURE)
+ifftplan = plan_ifft(xOS1; flags = FFTW.MEASURE)
 NFFT.convolveToeplitzKernel!(x, Ka, fftplan, ifftplan, xOS1, xOS2)
 @test x ≈ xN rtol = 1e-5
 
@@ -66,7 +95,7 @@ Ka = NFFT.calculateToeplitzKernel((Nx, Ny), trj, 4, 2)
 
 @test typeof(Kx) === Matrix{ComplexF32}
 @test typeof(Ka) === Matrix{ComplexF32}
-@test size(Ka) == (2Nx,2Ny)
+@test size(Ka) == (2Nx, 2Ny)
 @test Ka ≈ Kx rtol = 1e-5
 
 ## calculateToeplitzKernel vs calculateToeplitzKernel_explicit 3D, Float32
@@ -75,6 +104,6 @@ trj = Float32.(rand(3, 1000) .- 0.5)
 Kx = NFFT.calculateToeplitzKernel_explicit((Nx, Nx, Nx), trj)
 Ka = NFFT.calculateToeplitzKernel((Nx, Nx, Nx), trj, 4, 2)
 
-@test typeof(Kx) === Array{ComplexF32, 3}
-@test typeof(Ka) === Array{ComplexF32, 3}
+@test typeof(Kx) === Array{ComplexF32,3}
+@test typeof(Ka) === Array{ComplexF32,3}
 @test Ka ≈ Kx rtol = 1e-5
