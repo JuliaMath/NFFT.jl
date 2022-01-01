@@ -1,4 +1,4 @@
-using NFFT, DataFrames, Plots, LinearAlgebra, FFTW
+using NFFT, DataFrames, Plots, LinearAlgebra, FFTW, BenchmarkTools
 import NFFT3
 
 
@@ -90,9 +90,14 @@ end
 #plot_accuracy(df, 1)
 #plot_accuracy(df, 2)
 
-const K = 20000
+const K = 100000
 
 FFTW.set_num_threads(Threads.nthreads())
+ccall(("omp_set_num_threads",NFFT3.lib_path_nfft),Nothing,(Int64,),convert(Int64,Threads.nthreads()))
+@info ccall(("nfft_get_num_threads",NFFT3.lib_path_nfft),Int64,())
+if Threads.nthreads() == 1
+  NFFT._use_threads[] = false
+end
 
 function nfft_performance_comparison(m = 5, sigma = 2.0)
   println("\n\n ##### nfft_performance_comparison ##### \n\n")
@@ -101,25 +106,25 @@ function nfft_performance_comparison(m = 5, sigma = 2.0)
                    Undersampled=Bool[], Pre=String[], m = Int[], sigma=Float64[],
                    TimePre=Float64[], TimeTrafo=Float64[], TimeAdjoint=Float64[] )  
 
-  preString = ["LUT", "FULL"]
-  preNFFTjl = [NFFT.LUT, NFFT.FULL_LUT]
-  N = [collect(4096* (4 .^(0:3))),collect(64* (2 .^ (0:3))),[32,48,64,72]]
+  preString = ["LUT", "FULL", "FULL_LUT"]
+  preNFFTjl = [NFFT.LUT, NFFT.FULL, NFFT.FULL_LUT]
+  N = [collect(4096* (4 .^(0:3))),collect(128* (2 .^ (0:3))),[32,48,64,72]]
 
-  for D = 2:3
-    for U = 1:4
+  for D = 2:2
+    for U = 4:4
       NN = ntuple(d->N[D][U], D)
-      M = prod(NN) #÷ 10
+      M = prod(NN) #*2 #÷ 10
 
-      for pre = 2:2
+      for pre = 1:2
 
         @info D, NN, M, pre
         
         T = Float64
 
-        x = rand(T,D,M) .- 0.5
+        x = T.(rand(T,D,M) .- 0.5)
         fHat = randn(Complex{T}, M)
 
-        tpre = @elapsed p = plan_nfft(x, NN, m, sigma, :kaiser_bessel, K; precompute=preNFFTjl[pre], sortNodes=true)
+        tpre = @elapsed p = plan_nfft(x, NN, m, sigma, :kaiser_bessel, K; precompute=preNFFTjl[pre], sortNodes=false)
         f = similar(fHat, p.N)
         tadjoint = @elapsed fApprox = nfft_adjoint!(p, fHat, f)
         ttrafo = @elapsed nfft!(p, fApprox, fHat)
@@ -127,16 +132,18 @@ function nfft_performance_comparison(m = 5, sigma = 2.0)
         push!(df, ("NFFT.jl", D, M, N[D][U], false, preString[pre], m, sigma,
                    tpre, ttrafo, tadjoint))
 
+        prePsi = pre == 1 ? NFFT3.PRE_LIN_PSI : NFFT3.PRE_FULL_PSI
+
         f1 = UInt32(
           NFFT3.PRE_PHI_HUT |
-          NFFT3.PRE_LIN_PSI |
+          prePsi |
           NFFT3.MALLOC_X |
           NFFT3.MALLOC_F_HAT |
           NFFT3.MALLOC_F |
           NFFT3.FFTW_INIT |
-          NFFT3.FFT_OUT_OF_PLACE #|
+          NFFT3.FFT_OUT_OF_PLACE |
           #NFFT3.NFCT_SORT_NODES |
-          #NFFT3.NFCT_OMP_BLOCKWISE_ADJOINT
+          NFFT3.NFCT_OMP_BLOCKWISE_ADJOINT
            )
 
         f2 = UInt32(NFFT3.FFTW_ESTIMATE | NFFT3.FFTW_DESTROY_INPUT)
@@ -145,8 +152,6 @@ function nfft_performance_comparison(m = 5, sigma = 2.0)
           pnfft3 = NFFT3.NFFT(NN, M, Int32.(p.n), m, f1, f2) 
           NFFT3.nfft_init(pnfft3)
         end 
-
-        @info pnfft3.init_done pnfft3.f1
 
         pnfft3.x = Float64.(x)
         pnfft3.fhat = vec(ComplexF64.(f))

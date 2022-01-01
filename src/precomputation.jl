@@ -1,81 +1,77 @@
+### Precomputation of the B matrix ###
+
 function precomputeB(win, x, N::NTuple{D,Int}, n::NTuple{D,Int}, m, M, sigma, K, T) where D
   I = Array{Int64,2}(undef, (2*m+1)^D, M)
   β = (2*m+1)^D
   J = [β*k+1 for k=0:M]
   V = Array{T,2}(undef,(2*m+1)^D, M)
+  mProd = ntuple(d-> (d==1) ? 1 : (2*m+1)^(d-1), D)
+  nProd = ntuple(d-> (d==1) ? 1 : prod(n[1:(d-1)]), D)
+  L = Val(2*m+1)
+  scale = T(1.0 / m * (K-1))
 
   @cthreads for k in 1:M
-    _precomputeB(win, x, N, n, m, M, sigma, K, T, I, J, V, k)
+    _precomputeB(win, x, N, n, m, M, sigma, scale, I, J, V, mProd, nProd, L, k)
   end
 
   S = SparseMatrixCSC(prod(n), M, J, vec(I), vec(V))
   return S
 end
 
-## precompute = FULL
-
-@generated function _precomputeB(win::Function, x, N::NTuple{D,Int}, n::NTuple{D,Int}, m, M, sigma, K, T, I,J,V,k) where D
+@inline @generated function _precomputeB(win, x::AbstractMatrix{T}, N::NTuple{D,Int}, n::NTuple{D,Int}, m, M, 
+                     sigma, scale, I, J, V, mProd, nProd, L::Val{Z}, k) where {T, D, Z}
   quote
-    @nexprs $D d->(xscale_d = x[d,k] * n[d])
-    @nexprs $D d->(c_d = floor(Int, xscale_d))
 
-    N_1 = 1
-    @nexprs $D d->(N_{d+1} = N_d * (2*m+1))
-    n_1 = 1
-    @nexprs $D d->(n_{d+1} = n_d * n[d])
+    @nexprs $(D) d -> ((tmpIdx_d, tmpWin_d) = _precomputeOneNode(win, x, n, m, sigma, scale, k, d, L) )
 
     @nexprs 1 d -> κ_{$D} = 1 # This is a hack, I actually want to write κ_$D = 1
     @nexprs 1 d -> ζ_{$D} = 1
-    @nexprs 1 d -> tmpWin_{$D} = one(T)
-    @nloops $D l d -> 1:(2*m+1) d->begin
+    @nexprs 1 d -> prodWin_{$D} = one(T)
+    @nloops $D l d -> 1:$Z d->begin
         # preexpr
-        off = c_d - m - 1
-        gidx_d = rem(l_d  + c_d - m - 1 + n[d], n[d]) + 1
-        idx = abs( (xscale_d - l_d - off) )
-        tmpWin_{d-1} = tmpWin_d * win(idx / n[d], n[d], m, sigma)
-        κ_{d-1} = κ_d + (l_d-1) * N_d
-        ζ_{d-1} = ζ_d + (gidx_d-1) * n_d
+        prodWin_{d-1} = prodWin_d * tmpWin_d[l_d]
+        κ_{d-1} = κ_d + (l_d-1) * mProd[d]
+        ζ_{d-1} = ζ_d + (tmpIdx_d[l_d]-1) * nProd[d]
     end begin
         # bodyexpr
         I[κ_0,k] = ζ_0
-        V[κ_0,k] = tmpWin_0
+        V[κ_0,k] = prodWin_0
     end
+    return
   end
 end
 
-## precompute = FULL_LUT
+### precomputation of the window and the indices required during convolution ###
 
-@generated function _precomputeB(windowLUT::Vector, x, N::NTuple{D,Int}, n::NTuple{D,Int}, m, M, sigma, K, T, I,J,V,k) where D
+@generated function _precomputeOneNode(win::Function, x::AbstractMatrix{T}, n::NTuple{D,Int}, m, 
+  sigma, scale, k, d, L::Val{Z}) where {T,D,Z}
   quote
-    scale = T(1.0 / m * (K-1))
-    @nexprs $D d->(xscale_d = x[d,k] * n[d])
-    @nexprs $D d->(c_d = floor(Int, xscale_d))
-
-    N_1 = 1
-    @nexprs $D d->(N_{d+1} = N_d * (2*m+1))
-    n_1 = 1
-    @nexprs $D d->(n_{d+1} = n_d * n[d])
-
-    @nexprs 1 d -> κ_{$D} = 1 # This is a hack, I actually want to write κ_$D = 1
-    @nexprs 1 d -> ζ_{$D} = 1
-    @nexprs 1 d -> tmpWin_{$D} = one(T)
-    @nloops $D l d -> 1:(2*m+1) d->begin
-        # preexpr
-        off = c_d - m - 1
-        gidx_d = rem(l_d + off + n[d], n[d]) + 1
-        idx = abs( (xscale_d - l_d - off)*scale ) + 1
-        idxL = floor(idx)
-        idxInt = Int(idxL)
-        tmpWin_{d-1} = tmpWin_d * (windowLUT[d][idxInt] + ( idx-idxL ) * (windowLUT[d][idxInt+1] - windowLUT[d][idxInt]))
-        κ_{d-1} = κ_d + (l_d-1) * N_d
-        ζ_{d-1} = ζ_d + (gidx_d-1) * n_d
-    end begin
-        # bodyexpr
-        I[κ_0,k] = ζ_0
-        V[κ_0,k] = tmpWin_0
-    end
+    xscale = x[d,k] * n[d]
+    off = floor(Int, xscale) - m - 1
+    tmpIdx = @ntuple $(Z) l -> ( rem(l + off + n[d], n[d]) + 1)
+    tmpWin = @ntuple $(Z) l -> (win(abs( (xscale - l - off) )  / n[d], n[d], m, sigma) )
+    return (tmpIdx, tmpWin)
   end
 end
+
+@generated function _precomputeOneNode(windowLUT::Vector, x::AbstractMatrix{T}, n::NTuple{D,Int}, m, 
+  sigma, scale, k, d, L::Val{Z}) where {T,D,Z}
+  quote
+    xscale = x[d,k] * n[d]
+    off = floor(Int, xscale) - m - 1
+    tmpIdx = @ntuple $(Z) l -> ( rem(l + off + n[d], n[d]) + 1)
+    tmpWin = @ntuple $(Z) l -> begin
+      idx = abs( (xscale - l - off)*scale ) + 1
+      idxL = floor(idx)
+      idxInt = Int(idxL)
+      (windowLUT[d][idxInt] + ( idx-idxL ) * (windowLUT[d][idxInt+1] - windowLUT[d][idxInt]))  
+    end
+    return (tmpIdx, tmpWin)
+  end
+end
+
+
+##################
 
 function precomputeLUT(win, windowLUT, n, m, sigma, K, T)
     Z = round(Int, 3 * K / 2)
@@ -98,7 +94,7 @@ function precomputeWindowHatInvLUT(windowHatInvLUT, win_hat, N, n, m, sigma, T)
 end
 
 
-function calcLookUpTable(x::Union{Matrix{T},Vector{T}}, N::NTuple{D,Int}, n, m = 4, sigma = 2.0, window = :kaiser_bessel, K = 2000; precompute::PrecomputeFlags = LUT) where {T,D}
+function precomputation(x::Union{Matrix{T},Vector{T}}, N::NTuple{D,Int}, n, m = 4, sigma = 2.0, window = :kaiser_bessel, K = 2000, precompute::PrecomputeFlags = LUT) where {T,D}
 
   win, win_hat = getWindow(window)
   M = size(x, 2)

@@ -75,7 +75,7 @@ end
 # constructors
 ##############
 function NFFTPlan(x::Matrix{T}, N::NTuple{D,Int}, m = 4, sigma = 2.0,
-                window=:kaiser_bessel, K=2000;
+                window=:kaiser_bessel, K=20000;
                 precompute::PrecomputeFlags=LUT, sortNodes=false, kwargs...) where {D,T}
 
     if D != size(x,1)
@@ -98,10 +98,10 @@ function NFFTPlan(x::Matrix{T}, N::NTuple{D,Int}, m = 4, sigma = 2.0,
 
     # Sort nodes in lexicographic way
     if sortNodes
-        x .= sortslices(x,dims=2)
+        x .= sortslices(x, dims=2)
     end
 
-    windowLUT, windowHatInvLUT, B = calcLookUpTable(x, N, n, m, sigma, window, K; precompute=precompute)
+    windowLUT, windowHatInvLUT, B = precomputation(x, N, n, m, sigma, window, K, precompute)
 
     NFFTPlan{D,0,T}(N, M, x, m, sigma, n, K, windowLUT, windowHatInvLUT, FP, BP, tmpVec, B)
 end
@@ -116,10 +116,10 @@ function NFFTPlan!(p::AbstractNFFTPlan{D,DIM,T}, x::Matrix{T}, window = :kaiser_
 
     # Sort nodes in lexicographic way
     if sortNodes
-        x .= sortslices(x,dims=2)
-      end
+        x .= sortslices(x, dims=2)
+    end
 
-    windowLUT, windowHatInvLUT, B = calcLookUpTable(x, p.N, p.n, p.m, p.sigma, window, p.K; precompute=precompute)
+    windowLUT, windowHatInvLUT, B = precomputation(x, p.N, p.n, p.m, p.sigma, window, p.K, precompute)
 
     p.M = size(x, 2)
     p.windowLUT = windowLUT
@@ -141,7 +141,7 @@ It takes as optional keywords all the keywords supported by `plan_fft` function 
 `flags` and `timelimit`).  See documentation of `plan_fft` for reference.
 """
 function NFFTPlan(x::AbstractVector{T}, dim::Integer, N::NTuple{D,Int64}, m=4,
-                       sigma=2.0, window=:kaiser_bessel, K=2000; kwargs...) where {D,T}
+                       sigma=2.0, window=:kaiser_bessel, K=20000; kwargs...) where {D,T}
 
     if any(isodd.(N))
       throw(ArgumentError("N = $N needs to consist of even integers!"))
@@ -159,7 +159,7 @@ function NFFTPlan(x::AbstractVector{T}, dim::Integer, N::NTuple{D,Int64}, m=4,
     FP = plan_fft!(tmpVec, dim; kwargs...)
     BP = plan_bfft!(tmpVec, dim; kwargs...)
 
-    windowLUT, windowHatInvLUT, B = calcLookUpTable(x, (N[dim],), (n[dim],), m, sigma, window, K, precompute=LUT)
+    windowLUT, windowHatInvLUT, B = precomputation(x, (N[dim],), (n[dim],), m, sigma, window, K, LUT)
 
     NFFTPlan{D,dim,T}(N, M, reshape(x, 1, M), m, sigma, n, K, windowLUT,
         windowHatInvLUT, FP, BP, tmpVec, B)

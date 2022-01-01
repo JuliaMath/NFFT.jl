@@ -28,7 +28,7 @@ function Base.println(t::TimingStats)
 
   total = t.apod + t.fft + t.conv 
   totalAdj = t.apod_adjoint + t.fft_adjoint + t.conv_adjoint
-  @printf "                       apod = %.4f / %.4f %% fft = %.4f / %.4f %% conv = %.4f / %.4f %%\n" t.apod/total t.apod_adjoint/totalAdj t.fft/total t.fft_adjoint/totalAdj t.conv/total t.conv_adjoint/totalAdj
+  @printf "                       apod = %.4f / %.4f %% fft = %.4f / %.4f %% conv = %.4f / %.4f %%\n" 100*t.apod/total 100*t.apod_adjoint/totalAdj 100*t.fft/total 100*t.fft_adjoint/totalAdj 100*t.conv/total 100*t.conv_adjoint/totalAdj
   
 end
 
@@ -86,4 +86,48 @@ end
       throw(DimensionMismatch("Data is not consistent with NFFTPlan"))
     end
   end
+end
+
+
+### Threaded sparse matrix vector multiplications ###
+
+
+function threaded_mul!(y::AbstractVector, A::SparseMatrixCSC{Tv}, x::AbstractVector) where {Tv}
+  nzv = nonzeros(A)
+  rv = rowvals(A)
+  fill!(y, zero(Tv))
+
+  @inbounds @simd for col in 1:size(A, 2)
+       _threaded_mul!(y, A, x, nzv, rv, col)
+  end
+   y
+end
+
+@inline function _threaded_mul!(y, A::SparseMatrixCSC{Tv}, x, nzv, rv, col) where {Tv}
+  tmp = x[col] 
+
+  @inbounds @simd for j in nzrange(A, col)
+      y[rv[j]] += nzv[j]*tmp
+  end
+  return
+end
+
+function threaded_mul!(y::AbstractVector, B::Transpose{Tv,S}, x::AbstractVector) where {Tv,S<:SparseMatrixCSC}
+  A = B.parent
+  nzv = nonzeros(A)
+  rv = rowvals(A)
+
+  @cthreads for col in 1:size(A, 2)
+       _threaded_tmul!(y, A, x, nzv, rv, col)
+  end
+   y
+end
+
+@inline function _threaded_tmul!(y, A::SparseMatrixCSC{Tv}, x, nzv, rv, col) where {Tv}
+  tmp = zero(Tv)
+  @inbounds @simd for j in nzrange(A, col)
+      tmp += nzv[j]*x[rv[j]] 
+  end
+  y[col] = tmp
+  return
 end
