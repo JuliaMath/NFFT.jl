@@ -3,6 +3,8 @@ using NFFT
 using FFTW
 using BenchmarkTools
 
+@testset "Toeplitz" begin
+
 ## test NFFTPlan!(p, tr)
 Nx = 32
 trj1 = rand(2, 1000) .- 0.5
@@ -107,3 +109,5 @@ Ka = NFFT.calculateToeplitzKernel((Nx, Nx, Nx), trj, 4, 2)
 @test typeof(Kx) === Array{ComplexF32,3}
 @test typeof(Ka) === Array{ComplexF32,3}
 @test Ka ≈ Kx rtol = 1e-5
+
+end

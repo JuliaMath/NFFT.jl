@@ -1,12 +1,11 @@
 using Test
 using NFFT
 using Random
+using CuNFFT
 
 Random.seed!(123)
 
-include("test.jl")
+include("constructors.jl")
+include("accuracy.jl")
 include("performance.jl")
-
-@testset "Toeplitz" begin
-    include("testToeplitz.jl")
-end
+include("testToeplitz.jl")

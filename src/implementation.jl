@@ -1,5 +1,3 @@
-using Polyester
-
 #=
 Some internal documentation (especially for people familiar with the nfft)
 
@@ -71,9 +69,10 @@ end
 @inline dim(::NFFTPlan{D,DIM}) where {D,DIM} = DIM
 
 
-##############
+################
 # constructors
-##############
+################
+
 function NFFTPlan(x::Matrix{T}, N::NTuple{D,Int}, m = 4, sigma = 2.0,
                 window=:kaiser_bessel, K=20000;
                 precompute::PrecomputeFlags=LUT, sortNodes=false, kwargs...) where {D,T}
@@ -173,8 +172,8 @@ function Base.show(io::IO, p::NFFTPlan{D,DIM}) where {D,DIM}
     print(io, "NFFTPlan with ", p.M, " sampling points for ", p.N, " array along dimension ", DIM)
 end
 
-size(p::NFFTPlan) = p.N
-numFourierSamples(p::NFFTPlan) = p.M
+Base.size(p::NFFTPlan) = p.N
+AbstractNFFTs.numFourierSamples(p::NFFTPlan) = p.M
 
 
 ################
@@ -187,7 +186,7 @@ Calculate the NFFT of `f` with plan `p` and store the result in `fHat`.
 
 Both `f` and `fHat` must be complex arrays.
 """
-function nfft!(p::NFFTPlan{D,DIM,T}, f::AbstractArray, fHat::StridedArray;
+function AbstractNFFTs.nfft!(p::NFFTPlan{D,DIM,T}, f::AbstractArray, fHat::StridedArray;
                verbose=false, timing::Union{Nothing,TimingStats} = nothing) where {D,DIM,T}
     consistencyCheck(p, f, fHat)
 
@@ -217,7 +216,7 @@ Calculate the adjoint NFFT of `fHat` and store the result in `f`.
 
 Both `f` and `fHat` must be complex arrays.
 """
-function nfft_adjoint!(p::NFFTPlan, fHat::AbstractArray, f::StridedArray;
+function AbstractNFFTs.nfft_adjoint!(p::NFFTPlan, fHat::AbstractArray, f::StridedArray;
                        verbose=false, timing::Union{Nothing,TimingStats} = nothing)
     consistencyCheck(p, f, fHat)
 

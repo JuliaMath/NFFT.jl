@@ -1,10 +1,11 @@
 using LinearAlgebra
 using FFTW
-using CUDA
 
-const m = 5
-const sigma = 2.0
-const K = 200000
+@testset "Accuracy" begin
+
+m = 5
+sigma = 2.0
+K = 200000
 
 @testset "NFFT in multiple dimensions" begin
     for (u,N) in enumerate([(256,), (30,32), (10,12,14), (6,6,6,6)])
@@ -17,16 +18,17 @@ const K = 200000
             M = prod(N)
             x = rand(Float64,D,M) .- 0.5
             p = plan_nfft(x, N, m, sigma, window, K, precompute = pre,
-                         flags = FFTW.ESTIMATE, device=NFFT.CPU)
+                         flags = FFTW.ESTIMATE)
+            pNDFT = NDFTPlan(x, N)
 
             fHat = rand(Float64,M) + rand(Float64,M)*im
-            f = ndft_adjoint(p, fHat)
+            f = ndft_adjoint(pNDFT, fHat)
             fApprox = nfft_adjoint(p, fHat)
             e = norm(f[:] - fApprox[:]) / norm(f[:])
             @debug "error adjoint nfft "  e
             @test e < eps[l]
 
-            gHat = ndft(p, f)
+            gHat = ndft(pNDFT, f)
             gHatApprox = nfft(p, f)
             e = norm(gHat[:] - gHatApprox[:]) / norm(gHat[:])
             @debug "error nfft "  e
@@ -116,7 +118,7 @@ end
 end
 
 # test CuNFFT
-if CUDA.functional()
+if CuNFFT.CUDA.functional()
     @testset "CuNFFT in multiple dimensions" begin
     for (u,N) in enumerate([(256,), (32,32), (12,12,12)])
         eps = [1e-7, 1e-3, 1e-6, 1e-4]
@@ -126,12 +128,13 @@ if CUDA.functional()
 
             M = prod(N)
             x = rand(Float64,D,M) .- 0.5
-            p = plan_nfft(x, N, m, sigma, window, K, precompute = NFFT.FULL,
+            p = plan_nfft(Array, x, N, m, sigma, window, K, precompute = NFFT.FULL,
                          flags = FFTW.ESTIMATE, device=NFFT.CPU)
-            p_d = plan_nfft(x, N, m, sigma, window, K, device=NFFT.CUDAGPU)
+            p_d = plan_nfft(CuArray, x, N, m, sigma, window, K)
+            pNDFT = NDFTPlan(x, N)
 
             fHat = rand(Float64,M) + rand(Float64,M)*im
-            f = ndft_adjoint(p, fHat)
+            f = ndft_adjoint(pNDFT, fHat)
             fHat_d = CuArray(fHat)
             fApprox_d = nfft_adjoint(p_d, fHat_d)
             fApprox = Array(fApprox_d)
@@ -139,13 +142,15 @@ if CUDA.functional()
             @debug "error adjoint nfft "  e
             @test e < eps[l]
 
-            gHat = ndft(p, f)
+            gHat = ndft(pNDFT, f)
             gHatApprox = Array( nfft(p_d, CuArray(f)) )
             e = norm(gHat[:] - gHatApprox[:]) / norm(gHat[:])
             @debug "error nfft "  e
             @test e < eps[l]
         end
     end
+end
+
 end
 
 end
