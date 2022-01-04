@@ -5,13 +5,11 @@ function sdc(p::NFFTPlan{D,0,T}; iters=20) where {D,T}
     # Uses method of Pipe & Menon, 1999. Mag Reson Med, 186, 179.
     weights = ones(Complex{T}, p.M)
     weights_tmp = similar(weights)
-    scaling_factor = !isempty(p.B) ? maximum(p.B) :  maximum(maximum(p.windowLUT))
+    scaling_factor = !isempty(p.B) ? maximum(p.B)^2 :  maximum(maximum(p.windowLUT))^2
     # Pre-weighting to correct non-uniform sample density
     for i in 1:iters
-        p.tmpVec[:] .= 0.0
         convolve_adjoint!(p, weights, p.tmpVec)
         p.tmpVec ./= scaling_factor
-        weights_tmp[:] .= 0.0
         convolve!(p, p.tmpVec, weights_tmp)
         weights_tmp ./= scaling_factor
         for j in 1:length(weights)
@@ -25,6 +23,6 @@ function sdc(p::NFFTPlan{D,0,T}; iters=20) where {D,T}
     f = nfft(p, u)
     f = f .* weights # apply weights from above
     v = nfft_adjoint(p, f)
-    c = v[:] \ u[:]  # least squares diff
-    abs.(weights * c[1]) # [1] needed b/c 'c' is a 1x1 Array
+    c = vec(v) \ vec(u)  # least squares diff
+    abs.(c * weights) 
 end
