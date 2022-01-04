@@ -101,7 +101,7 @@ end
   quote
     @nexprs $(D) d -> ((tmpIdx_d, tmpWin_d) = _precomputeOneNode(p, scale, k, d, L) )
   
-    fHat = zero(T)
+    fHat = zero(Complex{T})
 
     @nexprs 1 d -> prodWin_{$D} = one(T)
     @nloops_ $D l d -> 1:$Z d->begin
