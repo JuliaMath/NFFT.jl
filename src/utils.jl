@@ -71,18 +71,10 @@ function _nloops_(N::Int, itersym, rangeexpr::Expr, args::Expr...)
 end
 
 
-@generated function consistencyCheck(p::AbstractNFFTPlan{D,DIM,T}, f::AbstractArray{U,D},
-                                     fHat::AbstractArray{Y}) where {D,DIM,T,U,Y}
+@generated function consistencyCheck(p::AbstractNFFTPlan{T,D,R}, f::AbstractArray{U,D},
+                                     fHat::AbstractArray{Y}) where {T,D,R,U,Y}
   quote
-    M = numFourierSamples(p)
-    N = size(p)
-    if $DIM == 0
-      fHat_test = (M == length(fHat))
-    elseif $DIM > 0
-      fHat_test = @nall $D d -> ( d == $DIM ? size(fHat,d) == M : size(fHat,d) == N[d] )
-    end
-
-    if N != size(f) || !fHat_test
+    if size_in(p) != size(f) || size_out(p) != size(fHat)
       throw(DimensionMismatch("Data is not consistent with NFFTPlan"))
     end
   end

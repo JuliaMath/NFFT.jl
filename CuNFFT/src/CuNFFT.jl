@@ -5,8 +5,6 @@ using Reexport
 using LinearAlgebra
 using CUDA
 
-import Base.size
-
 if CUDA.functional()
   using CUDA.CUSPARSE
   include("implementation.jl")

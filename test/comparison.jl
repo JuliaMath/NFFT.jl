@@ -90,7 +90,7 @@ end
 #plot_accuracy(df, 1)
 #plot_accuracy(df, 2)
 
-const K = 100000
+const K = 20000
 
 FFTW.set_num_threads(Threads.nthreads())
 ccall(("omp_set_num_threads",NFFT3.lib_path_nfft),Nothing,(Int64,),convert(Int64,Threads.nthreads()))
@@ -124,7 +124,7 @@ function nfft_performance_comparison(m = 5, sigma = 2.0)
         x = T.(rand(T,D,M) .- 0.5)
         fHat = randn(Complex{T}, M)
 
-        tpre = @elapsed p = plan_nfft(x, NN, m, sigma, :kaiser_bessel, K; precompute=preNFFTjl[pre], sortNodes=false)
+        tpre = @elapsed p = plan_nfft(x, NN, m, sigma, :kaiser_bessel, K; precompute=preNFFTjl[pre], sortNodes=false, flags=FFTW.ESTIMATE)
         f = similar(fHat, p.N)
         tadjoint = @elapsed fApprox = nfft_adjoint!(p, fHat, f)
         ttrafo = @elapsed nfft!(p, fApprox, fHat)
@@ -146,14 +146,13 @@ function nfft_performance_comparison(m = 5, sigma = 2.0)
           NFFT3.NFCT_OMP_BLOCKWISE_ADJOINT
            )
 
-        f2 = UInt32(NFFT3.FFTW_ESTIMATE | NFFT3.FFTW_DESTROY_INPUT)
+        f2 = UInt32(NFFT3.FFTW_ESTIMATE)# | NFFT3.FFTW_DESTROY_INPUT)
 
         tpre = @elapsed begin
           pnfft3 = NFFT3.NFFT(NN, M, Int32.(p.n), m, f1, f2) 
-          NFFT3.nfft_init(pnfft3)
+          pnfft3.x = Float64.(x)
         end 
 
-        pnfft3.x = Float64.(x)
         pnfft3.fhat = vec(ComplexF64.(f))
         ttrafo = @elapsed NFFT3.nfft_trafo(pnfft3)
         tadjoint = @elapsed fApprox = NFFT3.nfft_adjoint(pnfft3)

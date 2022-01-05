@@ -60,14 +60,14 @@ function nfft_performance_2(N = 64, M = N*N*N)
   m = 3; sigma = 2.0
   timing = TimingStats()
 
-  let x3 = Float32.(rand(3,M) .- 0.5), fHat = ComplexF32.(rand(M)*1im)
+  let x = Float32.(rand(3,M) .- 0.5), fHat = ComplexF32.(rand(M)*1im)
 
     for pre in [NFFT.LUT, NFFT.FULL, NFFT.FULL_LUT] 
       for threading in [true, false]
         NFFT._use_threads[] = threading
 
         @info "* precomputation = $pre threading = $threading"
-        p = plan_nfft(x3, (N,N,N), m, sigma; precompute=pre, timing, flags=FFTW.MEASURE)
+        p = plan_nfft(x, (N,N,N), m, sigma; precompute=pre, timing, flags=FFTW.MEASURE)
         fApprox = nfft_adjoint(p, fHat; timing)
         nfft(p, fApprox; timing)
 

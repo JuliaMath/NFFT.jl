@@ -1,5 +1,5 @@
 
-mutable struct NDFTPlan{D,DIM,T} <: AbstractNFFTPlan{D,DIM,T}
+mutable struct NDFTPlan{T,D} <: AbstractNFFTPlan{T,D,1}
   N::NTuple{D,Int64}
   M::Int64
   x::Matrix{T}
@@ -7,7 +7,7 @@ end
 
 
 
-function NDFTPlan(x::Matrix{T}, N::NTuple{D,Int}; kwargs...) where {D,T}
+function NDFTPlan(x::Matrix{T}, N::NTuple{D,Int}; kwargs...) where {T,D}
 
   if D != size(x,1)
     throw(ArgumentError("Nodes x have dimension $(size(x,1)) != $D"))
@@ -15,22 +15,22 @@ function NDFTPlan(x::Matrix{T}, N::NTuple{D,Int}; kwargs...) where {D,T}
 
   M = size(x, 2)
 
-  return NDFTPlan{D,0,T}(N, M, x)
+  return NDFTPlan{T,D}(N, M, x)
 end
 
 
 ### ndft functions ###
 
-ndft!(plan::NDFTPlan{D}, g::AbstractArray{Tg}, f::AbstractArray{T,D}) where {D,T,Tg} =
+ndft!(plan::NDFTPlan{Tp,D}, g::AbstractArray{Tg}, f::AbstractArray{T,D}) where {D,Tp,T,Tg} =
    nfft!(plan, g, f) where {D,T,Tg}
 
-ndft_adjoint!(plan::NDFTPlan{D}, g::AbstractArray{Tg,D}, fHat::AbstractVector{T}) where {D,T,Tg} =
+ndft_adjoint!(plan::NDFTPlan{Tp,D}, g::AbstractArray{Tg,D}, fHat::AbstractVector{T}) where {D,Tp,T,Tg} =
    nfft_adjoint!(plan, g, fHat) where {D,T,Tg}
 
-ndft(plan::NDFTPlan{D}, f::AbstractArray{T,D}) where {D,T} =
+ndft(plan::NDFTPlan{Tp,D}, f::AbstractArray{T,D}) where {Tp,T,D} =
    nfft!(plan, similar(f,plan.M), f)
 
-ndft(x, f::AbstractArray, rest...; kwargs...) =
+ndft(x::AbstractArray, f::AbstractArray, rest...; kwargs...) =
    ndft(NDFTPlan(x, size(f), rest...; kwargs...), f)
 
 ndft_adjoint(plan::NDFTPlan, fHat::AbstractVector) =
@@ -41,7 +41,7 @@ ndft_adjoint(x, N, fHat::AbstractVector, rest...; kwargs...) =
 
 
 
-function AbstractNFFTs.nfft!(plan::NDFTPlan{D}, g::AbstractArray{Tg}, f::AbstractArray{T,D}) where {D,T,Tg}
+function AbstractNFFTs.nfft!(plan::NDFTPlan{Tp,D}, g::AbstractArray{Tg}, f::AbstractArray{T,D}) where {D,Tp,T,Tg}
 
     plan.N == size(f) ||
         throw(DimensionMismatch("Data f is not consistent with NDFTPlan"))
@@ -66,7 +66,7 @@ function AbstractNFFTs.nfft!(plan::NDFTPlan{D}, g::AbstractArray{Tg}, f::Abstrac
 end
 
 
-function AbstractNFFTs.nfft_adjoint!(plan::NDFTPlan{D}, g::AbstractArray{Tg,D}, fHat::AbstractVector{T}) where {D,T,Tg}
+function AbstractNFFTs.nfft_adjoint!(plan::NDFTPlan{Tp,D}, g::AbstractArray{Tg,D}, fHat::AbstractVector{T}) where {D,Tp,T,Tg}
 
     plan.M == length(fHat) ||
         throw(DimensionMismatch("Data f inconsistent with NDFTPlan"))

@@ -4,12 +4,11 @@ using Graphics: @mustimplement
 using LinearAlgebra
 
 # interface
-export AbstractNFFTPlan, plan_nfft, numFourierSamples
+export AbstractNFFTPlan, plan_nfft, size_in, size_out, nfft!, nfft_adjoint!
 
 # derived
-export nfft, nfft_adjoint, ndft, ndft_adjoint, nfft!, nfft_adjoint!
+export nfft, nfft_adjoint, ndft, ndft_adjoint
 
-import Base.size
 
 include("interface.jl")
 include("derived.jl")

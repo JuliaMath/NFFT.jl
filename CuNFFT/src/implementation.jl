@@ -1,5 +1,5 @@
 # CuNNFTPlan2d
-mutable struct CuNFFTPlan{D,T} <: AbstractNFFTPlan{D,0,T}
+mutable struct CuNFFTPlan{T,D} <: AbstractNFFTPlan{T,D,1}
   N::NTuple{D,Int64}
   M::Int64
   x::Array{T,2}
@@ -66,15 +66,15 @@ function CuNFFTPlan(x::Matrix{T}, N::NTuple{D,Int}, m=4, sigma=2.0,
   B = precomputeB(win, x, n, m, M, sigma, T, U1, U2)
   B_d = CuSparseMatrixCSC(Complex{T}.(B))
 
-  return CuNFFTPlan{D,T}(N, M, x, m, sigma, n, K, windowHatInvLUT_d,
+  return CuNFFTPlan{T,D}(N, M, x, m, sigma, n, K, windowHatInvLUT_d,
                   FP, BP, tmpVec, tmpVec2, apodIdx_d, B_d )
 end
 
-Base.size(p::CuNFFTPlan) = p.N
-AbstractNFFTs.numFourierSamples(p::CuNFFTPlan) = p.M
+AbstractNFFTs.size_in(p::CuNFFTPlan) = p.N
+AbstractNFFTs.size_out(p::CuNFFTPlan) = (p.M,)
 
 """  in-place NFFT on the GPU"""
-function AbstractNFFTs.nfft!(p::CuNFFTPlan{D,T}, f::CuArray, fHat::CuArray) where {D,T} 
+function AbstractNFFTs.nfft!(p::CuNFFTPlan{T,D}, f::CuArray, fHat::CuArray) where {T,D} 
   consistencyCheck(p, f, fHat)
 
   # apodization
@@ -92,7 +92,7 @@ function AbstractNFFTs.nfft!(p::CuNFFTPlan{D,T}, f::CuArray, fHat::CuArray) wher
 end
 
 """  in-place adjoint NFFT on the GPU"""
-function AbstractNFFTs.nfft_adjoint!(p::CuNFFTPlan{D,T}, fHat::CuArray, f::CuArray) where {D,T}
+function AbstractNFFTs.nfft_adjoint!(p::CuNFFTPlan{T,D}, fHat::CuArray, f::CuArray) where {T,D}
   consistencyCheck(p, f, fHat)
 
   # adjoint convolution

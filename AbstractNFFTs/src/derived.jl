@@ -8,19 +8,16 @@
 plan_nfft(x::AbstractArray, N::Union{Integer,NTuple{D,Int}}, args...; kargs...) where {D} =
     plan_nfft(Array, x, N, args...; kargs...)
 
-plan_nfft(x::AbstractArray, dim::Integer, N::Union{NTuple{D,Int}}, args...; kargs...) where {D} =
-    plan_nfft(Array, x, dim, N, args...; kargs...)
-
 # The follow convert 1D parameters into the format required by the NFFT plan
 
-plan_nfft(Q::Type, x::AbstractRange, N::NTuple{D,Int}, rest...; kwargs...) where {D} =
-    plan_nfft(Q, collect(x), N, rest...; kwargs...)
-
-plan_nfft(Q::Type, x::AbstractVector, N::Integer, rest...; kwargs...) =
+plan_nfft(Q::Type, x::AbstractVector, N::Integer, rest...; kwargs...) where {D}  =
     plan_nfft(Q, collect(reshape(x,1,length(x))), (N,), rest...; kwargs...)
 
-plan_nfft(Q::Type, x::AbstractVector, dim::Integer, N::NTuple{D,Int}, rest...; kwargs...) where {D} =
-    plan_nfft(Q, collect(reshape(x,1,length(x))), dim, N, rest...; kwargs...) 
+plan_nfft(Q::Type, x::AbstractVector, N::NTuple{D,Int}, rest...; kwargs...) where {D}  =
+    plan_nfft(Q, collect(reshape(x,1,length(x))), N, rest...; kwargs...)
+
+
+
 
 
 """
@@ -57,16 +54,8 @@ For a **directional** `D` dimensional plan `p` both `f` and `fHat` are `D`
 dimensional arrays, and the dimension specified in the plan creation is
 affected.
 """
-function nfft(p::AbstractNFFTPlan{D,0,T}, f::AbstractArray{U,D}, args...; kargs...) where {D,T,U}
-    fHat = similar(f,Complex{T}, p.M)
-    nfft!(p, f, fHat, args...; kargs...)
-    return fHat
-end
-
-function nfft(p::AbstractNFFTPlan{D,DIM,T}, f::AbstractArray{U,D}, args...; kargs...) where {D,DIM,T,U}
-    sz = [p.N...]
-    sz[DIM] = p.M
-    fHat = similar(f, Complex{T}, Tuple(sz))
+function nfft(p::AbstractNFFTPlan{T,D,R}, f::AbstractArray{U,D}, args...; kargs...) where {T,D,R,U}
+    fHat = similar(f, Complex{T}, size_out(p))
     nfft!(p, f, fHat, args...; kargs...)
     return fHat
 end
@@ -82,8 +71,8 @@ For a **directional** `D` dimensional plan `p` both `f` and `fHat` are `D`
 dimensional arrays, and the dimension specified in the plan creation is
 affected.
 """
-function nfft_adjoint(p::AbstractNFFTPlan{D,DIM,T}, fHat::AbstractArray{U}, args...; kargs...) where {D,DIM,T,U}
-    f = similar(fHat, Complex{T}, p.N)
+function nfft_adjoint(p::AbstractNFFTPlan{T,D,R}, fHat::AbstractArray{U}, args...; kargs...) where {T,D,R,U}
+    f = similar(fHat, Complex{T}, size_in(p))
     nfft_adjoint!(p, fHat, f, args...; kargs...)
     return f
 end

@@ -5,7 +5,7 @@ using FFTW
 
 m = 5
 sigma = 2.0
-K = 200000
+K = 20000
 
 @testset "NFFT in multiple dimensions" begin
     for (u,N) in enumerate([(256,), (30,32), (10,12,14), (6,6,6,6)])
@@ -72,6 +72,7 @@ end
     @test e < eps
 end
 
+
 @testset "Abstract sampling points" begin
     M, N = rand(100:2:200, 2)
     x = range(-0.4, stop=0.4, length=M)
@@ -88,7 +89,7 @@ end
             x = rand(M) .- 0.5
 
             f = rand(ComplexF64,N)
-            p_dir = plan_nfft(x, d, N)
+            p_dir = plan_nfft(x, N, dims=d)
             fHat_dir = nfft(p_dir, f)
             g_dir = nfft_adjoint(p_dir, fHat_dir)
 

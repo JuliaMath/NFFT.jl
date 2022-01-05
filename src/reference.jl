@@ -55,7 +55,7 @@ end
 
 # This is the old Cartesian implementations. Just for reference
 
-@generated function apodization!(p::NFFTPlan{D,0,T}, f::AbstractArray{U,D}, g::StridedArray{Complex{T},D}) where {D,T,U}
+@generated function apodization!(p::NFFTPlan{T,D,1}, f::AbstractArray{U,D}, g::StridedArray{Complex{T},D}) where {D,T,U}
     quote
         @nexprs $D d -> offset_d = round(Int, p.n[d] - p.N[d]/2) - 1
 
@@ -68,7 +68,7 @@ end
 end
 
 
-@generated function apodization_adjoint!(p::NFFTPlan{D,0,T}, g::AbstractArray{Complex{T},D}, f::StridedArray{U,D}) where {D,T,U}
+@generated function apodization_adjoint!(p::NFFTPlan{T,D,1}, g::AbstractArray{Complex{T},D}, f::StridedArray{U,D}) where {D,T,U}
   quote
       @nexprs $D d -> offset_d = round(Int, p.n[d] - p.N[d]/2) - 1
 
