@@ -1,7 +1,7 @@
 name = "AbstractNFFTs"
 uuid = "7f219486-4aa7-41d6-80a7-e08ef20ceed7"
 author = ["Tobias Knopp <tobias@knoppweb.de>"]
-version = "0.1"
+version = "0.2"
 
 [deps]
 Graphics = "a2bd30eb-e257-5431-a919-1863eab51364"

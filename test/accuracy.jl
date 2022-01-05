@@ -119,7 +119,7 @@ end
 end
 
 # test CuNFFT
-if CuNFFT.CUDA.functional()
+#=if CuNFFT.CUDA.functional()
     @testset "CuNFFT in multiple dimensions" begin
     for (u,N) in enumerate([(256,), (32,32), (12,12,12)])
         eps = [1e-7, 1e-3, 1e-6, 1e-4]
@@ -153,5 +153,6 @@ if CuNFFT.CUDA.functional()
 end
 
 end
+=#
 
 end
