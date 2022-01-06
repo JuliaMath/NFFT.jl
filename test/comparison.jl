@@ -1,7 +1,7 @@
 using NFFT, DataFrames, Plots, LinearAlgebra, FFTW, BenchmarkTools
 import NFFT3
 
-
+include("NFFT3.jl")
 
 function nfft_accuracy_comparison()
   println("\n\n ##### nfft_accuracy_comparison ##### \n\n")
@@ -22,29 +22,22 @@ function nfft_accuracy_comparison()
           fHat = randn(ComplexF64, M)
 
           p = plan_nfft(x, NN; m, σ, precompute=NFFT.FULL)
-          f = ndft_adjoint(p, fHat)
+          pNDFT = NDFTPlan(x, NN)
+          f = ndft_adjoint(pNDFT, fHat)
           fApprox = nfft_adjoint(p, fHat)
           eadjoint = norm(f[:] - fApprox[:]) / norm(f[:])
 
-          gHat = ndft(p, f)
+          gHat = ndft(pNDFT, f)
           gHatApprox = nfft(p, f)
           etrafo = norm(gHat[:] - gHatApprox[:]) / norm(gHat[:])
           
           push!(df, ("NFFT.jl", D, M, N[D], m, σ, etrafo, eadjoint))
 
-          pnfft3 = NFFT3.NFFT(NN, M, Int32.(p.n), m) 
-          pnfft3.x = (D==1) ? vec(x) : x
-          pnfft3.f = fHat
-          NFFT3.nfft_adjoint(pnfft3)
-          fApprox = reshape(pnfft3.fhat,reverse(NN)...)
-          # switch from column major to row major format
-          fApprox = (D==1) ? vec(fApprox) : vec(collect(permutedims(fApprox,D:-1:1)))   
+          p = NFFT3Plan(reshape(x,D,:), NN; m, σ, precompute=NFFT.FULL)
+          fApprox = nfft_adjoint(p, fHat)
           eadjoint = norm(f[:] - fApprox[:]) / norm(f[:])
 
-          # switch from column major to row major format
-          pnfft3.fhat = (D==1) ? vec(f) : vec(collect(permutedims(f,D:-1:1))) 
-          NFFT3.nfft_trafo(pnfft3)
-          gHatApprox = pnfft3.f
+          gHatApprox = nfft(p, f)
           etrafo = norm(gHat[:] - gHatApprox[:]) / norm(gHat[:])
           
           push!(df, ("NFFT3", D, M, N[D], m, σ, etrafo, eadjoint))
@@ -90,6 +83,9 @@ end
 #plot_accuracy(df, 1)
 #plot_accuracy(df, 2)
 
+
+
+
 const LUTSize = 20000
 
 FFTW.set_num_threads(Threads.nthreads())
@@ -124,7 +120,7 @@ function nfft_performance_comparison(m = 5, σ = 2.0)
         x = T.(rand(T,D,M) .- 0.5)
         fHat = randn(Complex{T}, M)
 
-        tpre = @elapsed p = plan_nfft(x, NN; m, σ, :kaiser_bessel, LUTSize, precompute=preNFFTjl[pre], sortNodes=false, flags=FFTW.ESTIMATE)
+        tpre = @elapsed p = plan_nfft(x, NN; m, σ, window=:kaiser_bessel, LUTSize, precompute=preNFFTjl[pre], sortNodes=false, flags=FFTW.ESTIMATE)
         f = similar(fHat, p.N)
         tadjoint = @elapsed fApprox = nfft_adjoint!(p, fHat, f)
         ttrafo = @elapsed nfft!(p, fApprox, fHat)
@@ -132,31 +128,10 @@ function nfft_performance_comparison(m = 5, σ = 2.0)
         push!(df, ("NFFT.jl", D, M, N[D][U], false, preString[pre], m, σ,
                    tpre, ttrafo, tadjoint))
 
-        prePsi = pre == 1 ? NFFT3.PRE_LIN_PSI : NFFT3.PRE_FULL_PSI
-
-        f1 = UInt32(
-          NFFT3.PRE_PHI_HUT |
-          prePsi |
-          NFFT3.MALLOC_X |
-          NFFT3.MALLOC_F_HAT |
-          NFFT3.MALLOC_F |
-          NFFT3.FFTW_INIT |
-          NFFT3.FFT_OUT_OF_PLACE |
-          #NFFT3.NFCT_SORT_NODES |
-          NFFT3.NFCT_OMP_BLOCKWISE_ADJOINT
-           )
-
-        f2 = UInt32(NFFT3.FFTW_ESTIMATE)# | NFFT3.FFTW_DESTROY_INPUT)
-
-        tpre = @elapsed begin
-          pnfft3 = NFFT3.NFFT(NN, M, Int32.(p.n), m, f1, f2) 
-          pnfft3.x = Float64.(x)
-        end 
-
-        pnfft3.fhat = vec(ComplexF64.(f))
-        ttrafo = @elapsed NFFT3.nfft_trafo(pnfft3)
-        tadjoint = @elapsed fApprox = NFFT3.nfft_adjoint(pnfft3)
-        
+        tpre = @elapsed p = NFFT3Plan(x, NN; m, σ, window=:kaiser_bessel, LUTSize, precompute=preNFFTjl[pre], sortNodes=false, flags=FFTW.ESTIMATE)
+        tadjoint = @elapsed fApprox = nfft_adjoint!(p, fHat, f)
+        ttrafo = @elapsed nfft!(p, fApprox, fHat)
+                
         push!(df, ("NFFT3", D, M, N[D][U], false, preString[pre], m, σ,
                     tpre, ttrafo, tadjoint))
           
@@ -167,6 +142,8 @@ function nfft_performance_comparison(m = 5, σ = 2.0)
 end
 
 df = nfft_performance_comparison(3, 2.0)
+
+
 
 # writedlm("test.csv", Iterators.flatten(([names(iris)], eachrow(iris))), ',')
 #

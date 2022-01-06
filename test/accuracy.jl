@@ -118,6 +118,39 @@ end
     end
 end
 
+include("NFFT3.jl")
+
+@testset "NFFT3 Wrapper in multiple dimensions" begin
+  for (u,N) in enumerate([(256,), (30,32), (10,12,14), (6,6,6,6)])
+    for pre in [NFFT.LUT, NFFT.FULL]
+      eps = 1e-7
+      
+      D = length(N)
+      @info "Testing in $D dimensions"
+
+      M = prod(N)
+      x = rand(Float64,D,M) .- 0.5
+      p = NFFT3Plan(x, N; m, σ, LUTSize, precompute = pre,
+                    flags = FFTW.ESTIMATE)
+      pNDFT = NDFTPlan(x, N)
+
+      fHat = rand(Float64,M) + rand(Float64,M)*im
+      f = ndft_adjoint(pNDFT, fHat)
+      fApprox = nfft_adjoint(p, fHat)
+      e = norm(f[:] - fApprox[:]) / norm(f[:])
+      @debug "error adjoint nfft "  e
+      @test e < eps
+
+      gHat = ndft(pNDFT, f)
+      gHatApprox = nfft(p, f)
+      e = norm(gHat[:] - gHatApprox[:]) / norm(gHat[:])
+      @debug "error nfft "  e
+      @test e < eps
+    end
+  end
+end
+
+
 # test CuNFFT
 #=if CuNFFT.CUDA.functional()
     @testset "CuNFFT in multiple dimensions" begin

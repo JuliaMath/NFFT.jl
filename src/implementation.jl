@@ -150,13 +150,7 @@ AbstractNFFTs.size_out(p::NFFTPlan) = p.NOut
 ################
 # nfft functions
 ################
-"""
-        nfft!(p, f, fHat) -> fHat
 
-Calculate the NFFT of `f` with plan `p` and store the result in `fHat`.
-
-Both `f` and `fHat` must be complex arrays.
-"""
 function AbstractNFFTs.nfft!(p::NFFTPlan{T,D,R}, f::AbstractArray, fHat::StridedArray;
                verbose=false, timing::Union{Nothing,TimingStats} = nothing) where {T,D,R}
     consistencyCheck(p, f, fHat)
@@ -180,13 +174,6 @@ function AbstractNFFTs.nfft!(p::NFFTPlan{T,D,R}, f::AbstractArray, fHat::Strided
     return fHat
 end
 
-"""
-        nfft_adjoint!(p, fHat, f) -> f
-
-Calculate the adjoint NFFT of `fHat` and store the result in `f`.
-
-Both `f` and `fHat` must be complex arrays.
-"""
 function AbstractNFFTs.nfft_adjoint!(p::NFFTPlan, fHat::AbstractArray, f::StridedArray;
                        verbose=false, timing::Union{Nothing,TimingStats} = nothing)
     consistencyCheck(p, f, fHat)

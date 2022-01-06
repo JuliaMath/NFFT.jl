@@ -11,17 +11,13 @@ import Base.size
 using Reexport
 
 @reexport using AbstractNFFTs
+import AbstractNFFTs.PrecomputeFlags, AbstractNFFTs.LUT, AbstractNFFTs.FULL, AbstractNFFTs.FULL_LUT
+export PrecomputeFlags, LUT, FULL, FULL_LUT
 
 export TimingStats
 export NDFTPlan, NFFTPlan
 
 export calculateToeplitzKernel, calculateToeplitzKernel!, convolveToeplitzKernel!
-
-@enum PrecomputeFlags begin
-  LUT = 1
-  FULL = 2
-  FULL_LUT = 3
-end
 
 #########################
 # utility functions
