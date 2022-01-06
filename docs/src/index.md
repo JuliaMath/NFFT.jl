@@ -34,4 +34,9 @@ the [issue tracker](https://github.com/tknopp/NFFT.jl/issues) to contact us.
 ## Contributors
 
 * [Tobias Knopp](https://www.tuhh.de/ibi/people/tobias-knopp-head-of-institute.html)
+* [Robert Dahl Jacobsen](https://github.com/robertdj)
+* [Mirco Grosser](https://github.com/migrosser)
 * [Jakob Assländer](https://med.nyu.edu/faculty/jakob-asslaender)
+* [Mosè Giordano](https://github.com/giordano)
+
+A complete list of contributors can be found on the [Github page](https://github.com/tknopp/NFFT.jl/graphs/contributors).

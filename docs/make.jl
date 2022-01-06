@@ -16,8 +16,10 @@ makedocs(;
     pages = [
         "Home" => "index.md",
         "Overview" => "overview.md",
-        "Directional" => "directional.md",
-        "Density" => "density.md",
+        "AbstractNFFTs" => "abstract.md",
+        "GPU" => "gpu.md",
+        "Tools" => "tools.md",
+        "Performance" => "performance.md",
         "API" => "api.md",
     ]
 )

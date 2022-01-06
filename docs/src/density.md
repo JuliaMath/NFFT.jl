@@ -1,3 +1,0 @@
-# Sampling Density
-
-TODO
