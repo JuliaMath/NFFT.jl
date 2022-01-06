@@ -86,7 +86,7 @@ end
 
 function convolve_LUT!(p::NFFTPlan{T,D,1}, g::AbstractArray{Complex{T},D}, fHat::StridedVector{U}) where {D,T,U}
   L = Val(2*p.m+1)
-  scale = T(1.0 / p.m * (p.K-1))
+  scale = T(1.0 / p.m * (p.LUTSize-1))
 
   @cthreads for k in 1:p.M
       fHat[k] = _convolve_LUT(p, g, L, scale, k)
@@ -94,7 +94,7 @@ function convolve_LUT!(p::NFFTPlan{T,D,1}, g::AbstractArray{Complex{T},D}, fHat:
 end
 
 function _precomputeOneNode(p::NFFTPlan{T,D,1}, scale, k, d, L::Val{Z}) where {T,D,Z}
-    return _precomputeOneNode(p.windowLUT, p.x, p.n, p.m, p.sigma, scale, k, d, L) 
+    return _precomputeOneNode(p.windowLUT, p.x, p.n, p.m, p.σ, scale, k, d, L) 
 end
 
 @generated function _convolve_LUT(p::NFFTPlan{T,D,1}, g::AbstractArray{Complex{T},D}, L::Val{Z}, scale, k) where {D,T,Z}
@@ -134,7 +134,7 @@ end
 
 #=function convolve_adjoint_LUT_MT!(p::NFFTPlan{T,D,1}, fHat::AbstractVector{U}, g::StridedArray{Complex{T},D}) where {D,T,U}
   fill!(g, zero(T))
-  scale = T(1.0 / p.m * (p.K-1))
+  scale = T(1.0 / p.m * (p.LUTSize-1))
   @time g_tmp = Array{Complex{T}}(undef, size(g)..., Threads.nthreads())
   @time fill!(g_tmp, zero(T))
 
@@ -152,7 +152,7 @@ end=#
 function convolve_adjoint_LUT!(p::NFFTPlan{T,D,1}, fHat::AbstractVector{U}, g::StridedArray{Complex{T},D}) where {D,T,U}
   fill!(g, zero(T))
   L = Val(2*p.m+1)
-  scale = T(1.0 / p.m * (p.K-1))
+  scale = T(1.0 / p.m * (p.LUTSize-1))
 
   @inbounds @simd for k in 1:p.M
     _convolve_adjoint_LUT!(p, fHat, g, L, scale, k)

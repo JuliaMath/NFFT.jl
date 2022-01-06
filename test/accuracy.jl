@@ -4,8 +4,8 @@ using FFTW
 @testset "Accuracy" begin
 
 m = 5
-sigma = 2.0
-K = 20000
+σ = 2.0
+LUTSize = 20000
 
 @testset "NFFT in multiple dimensions" begin
     for (u,N) in enumerate([(256,), (30,32), (10,12,14), (6,6,6,6)])
@@ -17,7 +17,7 @@ K = 20000
 
             M = prod(N)
             x = rand(Float64,D,M) .- 0.5
-            p = plan_nfft(x, N, m, sigma, window, K, precompute = pre,
+            p = plan_nfft(x, N; m, σ, window, LUTSize, precompute = pre,
                          flags = FFTW.ESTIMATE)
             pNDFT = NDFTPlan(x, N)
 
@@ -129,9 +129,9 @@ end
 
             M = prod(N)
             x = rand(Float64,D,M) .- 0.5
-            p = plan_nfft(Array, x, N, m, sigma, window, K, precompute = NFFT.FULL,
+            p = plan_nfft(Array, x, N, m, σ, window, K, precompute = NFFT.FULL,
                          flags = FFTW.ESTIMATE, device=NFFT.CPU)
-            p_d = plan_nfft(CuArray, x, N, m, sigma, window, K)
+            p_d = plan_nfft(CuArray, x, N, m, σ, window, K)
             pNDFT = NDFTPlan(x, N)
 
             fHat = rand(Float64,M) + rand(Float64,M)*im

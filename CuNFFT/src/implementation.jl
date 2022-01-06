@@ -4,7 +4,7 @@ mutable struct CuNFFTPlan{T,D} <: AbstractNFFTPlan{T,D,1}
   M::Int64
   x::Array{T,2}
   m::Int64
-  sigma::T
+  σ::T
   n::NTuple{D,Int64}
   K::Int64
   windowHatInvLUT::CuArray{Complex{T},D}
@@ -28,7 +28,7 @@ function AbstractNFFTs.plan_nfft(::Type{CuArray}, x::Matrix{T}, N::NTuple{D,Int}
 end
 
 # constructor for CuNFFTPlan2d
-function CuNFFTPlan(x::Matrix{T}, N::NTuple{D,Int}, m=4, sigma=2.0,
+function CuNFFTPlan(x::Matrix{T}, N::NTuple{D,Int}, m=4, σ=2.0,
   window=:kaiser_bessel, K=2000; kwargs...) where {T,D} 
 
   if D != size(x,1)
@@ -39,8 +39,8 @@ function CuNFFTPlan(x::Matrix{T}, N::NTuple{D,Int}, m=4, sigma=2.0,
     throw(ArgumentError("N = $N needs to consist of even integers!"))
   end
 
-  n = ntuple(d->(ceil(Int,sigma*N[d])÷2)*2, D) # ensure that n is an even integer
-  sigma = n[1] / N[1]
+  n = ntuple(d->(ceil(Int,σ*N[d])÷2)*2, D) # ensure that n is an even integer
+  σ = n[1] / N[1]
 
   tmpVec = CuArray(zeros(Complex{T},n))
   tmpVec2 = CuArray(zeros(Complex{T},N))
@@ -53,7 +53,7 @@ function CuNFFTPlan(x::Matrix{T}, N::NTuple{D,Int}, m=4, sigma=2.0,
 
   # Create lookup table for 1d interpolation kernels
   win, win_hat = NFFT.getWindow(window)
-  windowHatInvLUT  = precomp_windowHatInvLUT(T, win_hat, N, sigma, m)
+  windowHatInvLUT  = precomp_windowHatInvLUT(T, win_hat, N, σ, m)
   windowHatInvLUT_d = CuArray(windowHatInvLUT)
 
   # compute (linear) indices for apodization (mapping from regular to oversampled grid)
@@ -63,10 +63,10 @@ function CuNFFTPlan(x::Matrix{T}, N::NTuple{D,Int}, m=4, sigma=2.0,
   # precompute interpolation matrix
   U1 = ntuple(d-> (d==1) ? 1 : (2*m+1)^(d-1), D)
   U2 = ntuple(d-> (d==1) ? 1 : prod(n[1:(d-1)]), D)
-  B = precomputeB(win, x, n, m, M, sigma, T, U1, U2)
+  B = precomputeB(win, x, n, m, M, σ, T, U1, U2)
   B_d = CuSparseMatrixCSC(Complex{T}.(B))
 
-  return CuNFFTPlan{T,D}(N, M, x, m, sigma, n, K, windowHatInvLUT_d,
+  return CuNFFTPlan{T,D}(N, M, x, m, σ, n, K, windowHatInvLUT_d,
                   FP, BP, tmpVec, tmpVec2, apodIdx_d, B_d )
 end
 

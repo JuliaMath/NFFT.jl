@@ -3,7 +3,7 @@
 ###################################################################
 
 """
-    calculateToeplitzKernel(shape, tr::Matrix{T}[, m = 4, sigma = 2.0, window = :kaiser_bessel, K = 2000; fftplan = plan_fft(zeros(Complex{T}, 2 .* shape); flags=FFTW.ESTIMATE), kwargs...])
+    calculateToeplitzKernel(shape, tr::Matrix{T}[; m = 4, σ = 2.0, window = :kaiser_bessel, LUTSize = 2000, fftplan = plan_fft(zeros(Complex{T}, 2 .* shape); flags=FFTW.ESTIMATE), kwargs...])
 
 Calculate the kernel for an implementation of the Gram matrix that utilizes its Toeplitz structure. The output is an array of twice the size of `shape`, as the Toeplitz trick requires an oversampling factor of 2 (cf. [Wajer, F. T. A. W., and K. P. Pruessmann. "Major speedup of reconstruction for sensitivity encoding with arbitrary trajectories." Proc. Intl. Soc. Mag. Res. Med. 2001.](https://cds.ismrm.org/ismrm-2001/PDF3/0767.pdf)). The type of the kernel is `Complex{T}`, i.e. the complex of the k-space trajectory's type; for speed and memory efficiecy, call this function with `Float32.(tr)`, and the kernel will also be `Float32`.
 
@@ -13,7 +13,7 @@ Calculate the kernel for an implementation of the Gram matrix that utilizes its 
 
 # Optional Arguments:
 - `m::Int`: nfft kernel size (used to calculate the Toeplitz kernel); `default = 4`
-- `sigma::Number`: nfft oversampling factor during the calculation of the Toeplitz kernel; `default = 2`
+- `σ::Number`: nfft oversampling factor during the calculation of the Toeplitz kernel; `default = 2`
 - `window::Symbol`: Window function of the nfft (c.f. [`getWindow`](@ref)); `default = :kaiser_bessel`
 - `K::Int`: `default= 2000` # TODO: describe meaning of k
 
@@ -77,11 +77,11 @@ julia> convolveToeplitzKernel!(x, λ)
 
 ```
 """
-function calculateToeplitzKernel(shape, tr::Matrix{T}, m = 4, sigma = 2.0, window = :kaiser_bessel, K = 2000; fftplan = plan_fft(zeros(Complex{T}, 2 .* shape); flags=FFTW.ESTIMATE), kwargs...) where {T}
+function calculateToeplitzKernel(shape, tr::Matrix{T}; m = 4, σ = 2.0, window = :kaiser_bessel, LUTSize = 2000, fftplan = plan_fft(zeros(Complex{T}, 2 .* shape); flags=FFTW.ESTIMATE), kwargs...) where {T}
 
     shape_os = 2 .* shape
 
-    p = NFFTPlan(tr, shape_os, m, sigma, window, K; kwargs...)
+    p = NFFTPlan(tr, shape_os; m, σ, window, LUTSize, kwargs...)
     eigMat = nfft_adjoint(p, ones(Complex{T}, size(tr,2)))
     return fftplan * fftshift(eigMat)
 end

@@ -15,12 +15,15 @@ p2 = NFFT.NFFTPlan(trj2, (Nx, Nx))
 NFFT.NFFTPlan!(p2, trj1)
 
 @test p1.N == p2.N
+@test p1.NOut == p2.NOut
 @test p1.M == p2.M
 @test p1.x == p2.x
 @test p1.m == p2.m
-@test p1.sigma == p2.sigma
+@test p1.σ == p2.σ
 @test p1.n == p2.n
-@test p1.K == p2.K
+@test p1.dims == p2.dims
+@test p1.dimOut == p2.dimOut
+@test p1.LUTSize == p2.LUTSize
 @test p1.windowLUT == p2.windowLUT
 @test p1.windowHatInvLUT == p2.windowHatInvLUT
 @test p1.B == p2.B
@@ -38,7 +41,7 @@ end
 for Nx ∈ [32, 33, 64]
     trj = rand(2, 1000) .- 0.5
     Kx = NFFT.calculateToeplitzKernel_explicit((Nx, Nx), trj)
-    Ka = NFFT.calculateToeplitzKernel((Nx, Nx), trj, 4, 2)
+    Ka = NFFT.calculateToeplitzKernel((Nx, Nx), trj, m=4, σ=2)
 
     @test typeof(Kx) === Matrix{ComplexF64}
     @test typeof(Ka) === Matrix{ComplexF64}
@@ -64,7 +67,7 @@ end
 Nx = 32
 trj = Float32.(rand(2, 10000) .- 0.5)
 Kx = NFFT.calculateToeplitzKernel_explicit((Nx, Nx), trj)
-Ka = NFFT.calculateToeplitzKernel((Nx, Nx), trj, 4, 2)
+Ka = NFFT.calculateToeplitzKernel((Nx, Nx), trj, m=4, σ=2)
 
 @test typeof(Kx) === Matrix{ComplexF32}
 @test typeof(Ka) === Matrix{ComplexF32}
@@ -93,7 +96,7 @@ Nx = 32
 Ny = 33
 trj = Float32.(rand(2, 1000) .- 0.5)
 Kx = NFFT.calculateToeplitzKernel_explicit((Nx, Ny), trj)
-Ka = NFFT.calculateToeplitzKernel((Nx, Ny), trj, 4, 2)
+Ka = NFFT.calculateToeplitzKernel((Nx, Ny), trj, m=4, σ=2)
 
 @test typeof(Kx) === Matrix{ComplexF32}
 @test typeof(Ka) === Matrix{ComplexF32}
@@ -104,7 +107,7 @@ Ka = NFFT.calculateToeplitzKernel((Nx, Ny), trj, 4, 2)
 Nx = 32
 trj = Float32.(rand(3, 1000) .- 0.5)
 Kx = NFFT.calculateToeplitzKernel_explicit((Nx, Nx, Nx), trj)
-Ka = NFFT.calculateToeplitzKernel((Nx, Nx, Nx), trj, 4, 2)
+Ka = NFFT.calculateToeplitzKernel((Nx, Nx, Nx), trj, m=4, σ=2)
 
 @test typeof(Kx) === Array{ComplexF32,3}
 @test typeof(Ka) === Array{ComplexF32,3}

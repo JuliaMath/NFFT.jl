@@ -6,7 +6,7 @@ import NFFT3
 function nfft_accuracy_comparison()
   println("\n\n ##### nfft_accuracy_comparison ##### \n\n")
 
-  df = DataFrame(Package=String[], D=Int[], M=Int[], N=Int[], m = Int[], sigma=Float64[],
+  df = DataFrame(Package=String[], D=Int[], M=Int[], N=Int[], m = Int[], σ=Float64[],
                    ErrorTrafo=Float64[], ErrorAdjoint=Float64[] )  
   N = [256, 64]
 
@@ -15,13 +15,13 @@ function nfft_accuracy_comparison()
       NN = ntuple(d->N[D], D)
       M = prod(NN)
       
-      for sigma in [1.25, 1.5, 2.0]
+      for σ in [1.25, 1.5, 2.0]
         for m = 1:14
-          @info "D=$D  sigma=$sigma  m=$m "
+          @info "D=$D  σ=$σ  m=$m "
           x = rand(D,M) .- 0.5
           fHat = randn(ComplexF64, M)
 
-          p = plan_nfft(x, NN, m, sigma; precompute=NFFT.FULL)
+          p = plan_nfft(x, NN; m, σ, precompute=NFFT.FULL)
           f = ndft_adjoint(p, fHat)
           fApprox = nfft_adjoint(p, fHat)
           eadjoint = norm(f[:] - fApprox[:]) / norm(f[:])
@@ -30,7 +30,7 @@ function nfft_accuracy_comparison()
           gHatApprox = nfft(p, f)
           etrafo = norm(gHat[:] - gHatApprox[:]) / norm(gHat[:])
           
-          push!(df, ("NFFT.jl", D, M, N[D], m, sigma, etrafo, eadjoint))
+          push!(df, ("NFFT.jl", D, M, N[D], m, σ, etrafo, eadjoint))
 
           pnfft3 = NFFT3.NFFT(NN, M, Int32.(p.n), m) 
           pnfft3.x = (D==1) ? vec(x) : x
@@ -47,7 +47,7 @@ function nfft_accuracy_comparison()
           gHatApprox = pnfft3.f
           etrafo = norm(gHat[:] - gHatApprox[:]) / norm(gHat[:])
           
-          push!(df, ("NFFT3", D, M, N[D], m, sigma, etrafo, eadjoint))
+          push!(df, ("NFFT3", D, M, N[D], m, σ, etrafo, eadjoint))
       end
     end
   end
@@ -58,31 +58,31 @@ end
 
 function plot_accuracy(df, D=1)
 
-  sigmas = [1.25, 1.5, 2.0]
+  σs = [1.25, 1.5, 2.0]
 
-  plots = Matrix{Any}(undef, length(sigmas), 2)
+  plots = Matrix{Any}(undef, length(σs), 2)
 
   m = 1:14
 
-  for (i,sigma) in enumerate(sigmas)
-    df_ = df[df.sigma.==sigma .&& df.D.==D,:]
+  for (i,σ) in enumerate(σs)
+    df_ = df[df.σ.==σ .&& df.D.==D,:]
 
     p1 = plot(m, df_[df_.Package.=="NFFT.jl",:ErrorTrafo], 
-              yscale = :log10, label="NFFT.jl", lw=2, xlabel = "m", title="Trafo σ=$(sigma)")
+              yscale = :log10, label="NFFT.jl", lw=2, xlabel = "m", title="Trafo σ=$(σ)")
     plot!(p1, m, df_[df_.Package.=="NFFT3",:ErrorTrafo], 
           yscale = :log10, label="NFFT3", lw=2)
 
     plots[i,1] = p1
 
     p2 = plot(m, df_[df_.Package.=="NFFT.jl",:ErrorAdjoint], 
-          yscale = :log10, label="NFFT.jl", lw=2, xlabel = "m", title="Adjoint σ=$(sigma)")
+          yscale = :log10, label="NFFT.jl", lw=2, xlabel = "m", title="Adjoint σ=$(σ)")
     plot!(p2, m, df_[df_.Package.=="NFFT3",:ErrorAdjoint], 
       yscale = :log10, label="NFFT3", lw=2)
 
     plots[i,2] = p2
   end
 
-  p = plot(plots..., layout=(2,length(sigmas)))
+  p = plot(plots..., layout=(2,length(σs)))
   savefig(p, "accuracy_D$(D).png")
 end
 
@@ -90,7 +90,7 @@ end
 #plot_accuracy(df, 1)
 #plot_accuracy(df, 2)
 
-const K = 20000
+const LUTSize = 20000
 
 FFTW.set_num_threads(Threads.nthreads())
 ccall(("omp_set_num_threads",NFFT3.lib_path_nfft),Nothing,(Int64,),convert(Int64,Threads.nthreads()))
@@ -99,11 +99,11 @@ if Threads.nthreads() == 1
   NFFT._use_threads[] = false
 end
 
-function nfft_performance_comparison(m = 5, sigma = 2.0)
+function nfft_performance_comparison(m = 5, σ = 2.0)
   println("\n\n ##### nfft_performance_comparison ##### \n\n")
 
   df = DataFrame(Package=String[], D=Int[], M=Int[], N=Int[], 
-                   Undersampled=Bool[], Pre=String[], m = Int[], sigma=Float64[],
+                   Undersampled=Bool[], Pre=String[], m = Int[], σ=Float64[],
                    TimePre=Float64[], TimeTrafo=Float64[], TimeAdjoint=Float64[] )  
 
   preString = ["LUT", "FULL", "FULL_LUT"]
@@ -124,12 +124,12 @@ function nfft_performance_comparison(m = 5, sigma = 2.0)
         x = T.(rand(T,D,M) .- 0.5)
         fHat = randn(Complex{T}, M)
 
-        tpre = @elapsed p = plan_nfft(x, NN, m, sigma, :kaiser_bessel, K; precompute=preNFFTjl[pre], sortNodes=false, flags=FFTW.ESTIMATE)
+        tpre = @elapsed p = plan_nfft(x, NN; m, σ, :kaiser_bessel, LUTSize, precompute=preNFFTjl[pre], sortNodes=false, flags=FFTW.ESTIMATE)
         f = similar(fHat, p.N)
         tadjoint = @elapsed fApprox = nfft_adjoint!(p, fHat, f)
         ttrafo = @elapsed nfft!(p, fApprox, fHat)
         
-        push!(df, ("NFFT.jl", D, M, N[D][U], false, preString[pre], m, sigma,
+        push!(df, ("NFFT.jl", D, M, N[D][U], false, preString[pre], m, σ,
                    tpre, ttrafo, tadjoint))
 
         prePsi = pre == 1 ? NFFT3.PRE_LIN_PSI : NFFT3.PRE_FULL_PSI
@@ -157,7 +157,7 @@ function nfft_performance_comparison(m = 5, sigma = 2.0)
         ttrafo = @elapsed NFFT3.nfft_trafo(pnfft3)
         tadjoint = @elapsed fApprox = NFFT3.nfft_adjoint(pnfft3)
         
-        push!(df, ("NFFT3", D, M, N[D][U], false, preString[pre], m, sigma,
+        push!(df, ("NFFT3", D, M, N[D][U], false, preString[pre], m, σ,
                     tpre, ttrafo, tadjoint))
           
       end

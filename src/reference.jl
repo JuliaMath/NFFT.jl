@@ -20,7 +20,7 @@ end
 
 function convolve!(p::NFFTPlan{1,0}, g::AbstractVector{T}, fHat::StridedVector{T}) where T
     fill!(fHat, zero(T))
-    scale = 1.0 / p.m * (p.K-1)
+    scale = 1.0 / p.m * (p.LUTSize-1)
     n = p.n[1]
 
     for k=1:p.M # loop over nonequispaced nodes
@@ -38,7 +38,7 @@ end
 
 function convolve_adjoint!(p::NFFTPlan{1,0}, fHat::AbstractVector{T}, g::StridedVector{T}) where T
     fill!(g, zero(T))
-    scale = 1.0 / p.m * (p.K-1)
+    scale = 1.0 / p.m * (p.LUTSize-1)
     n = p.n[1]
 
     for k=1:p.M # loop over nonequispaced nodes

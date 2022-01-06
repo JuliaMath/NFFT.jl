@@ -8,7 +8,7 @@ y = vec(g * ones(N)')
 nodes = cat(x',y', dims=1)
 
 # approximate the density weights
-p = NFFT.plan_nfft(nodes, (N,N), 5, 2.0); 
+p = NFFT.plan_nfft(nodes, (N,N), m = 5, σ = 2.0); 
 weights = NFFT.sdc(p, iters = 10)
 
 # test if they approximate the true weights (1/(N*N))

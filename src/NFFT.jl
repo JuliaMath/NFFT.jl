@@ -57,28 +57,6 @@ function AbstractNFFTs.plan_nfft(::Type{Array}, x::Matrix{T}, N::NTuple{D,Int}, 
   return p
 end
 
-"""
-        plan_nfft(x::Matrix{T}, dim::Integer, N::NTuple{D,Int}, rest...;  kargs...)
-
-compute a plan for the NFFT of a size-`N` array at the nodes contained in `x`
-and along the direction `dim`.
-"""
-function AbstractNFFTs.plan_nfft(::Type{Array}, x::Matrix{T}, dim::Integer, N::NTuple{D,Int}, rest...; 
-                   timing::Union{Nothing,TimingStats} = nothing, kargs...) where {T,D}
-  t = @elapsed begin
-    if size(x,1) != 1 && size(x,2) != 1
-        throw(DimensionMismatch())
-    end
-    p = NFFTPlan(vec(x), dim, N, rest...; kargs...)
-  end
-  if timing != nothing
-    timing.pre = t
-  end
-  return p
-end
-
-
-
 include("directional.jl")
 include("multidimensional.jl")
 include("samplingDensity.jl")

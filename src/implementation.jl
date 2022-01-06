@@ -27,11 +27,11 @@ mutable struct NFFTPlan{T,D,R} <: AbstractNFFTPlan{T,D,R}
     M::Int64
     x::Matrix{T}
     m::Int64
-    sigma::T
+    σ::T
     n::NTuple{D,Int64}
     dims::UnitRange{Int64}
     dimOut::Int64
-    K::Int64
+    LUTSize::Int64
     windowLUT::Vector{Vector{T}}
     windowHatInvLUT::Vector{Vector{T}}
     forwardFFT::FFTW.cFFTWPlan{Complex{T},-1,true,D,UnitRange{Int64}}
@@ -50,7 +50,7 @@ function Base.copy(p::NFFTPlan{T,D,R}) where {T,D,R}
     FP = plan_fft!(tmpVec, p.dims; flags = p.forwardFFT.flags)
     BP = plan_bfft!(tmpVec, p.dims; flags = p.backwardFFT.flags)
 
-    return NFFTPlan{T,D,R}(p.N, p.NOut, p.M, x, p.m, p.sigma, p.n, p.dims, p.dimOut, p.K, windowLUT,
+    return NFFTPlan{T,D,R}(p.N, p.NOut, p.M, x, p.m, p.σ, p.n, p.dims, p.dimOut, p.LUTSize, windowLUT,
         windowHatInvLUT, FP, BP, tmpVec, B)
 end
 
@@ -62,8 +62,8 @@ doTrafo(p::NFFTPlan{T,D}) where {T,D} = ntuple(d -> p.n[d]>p.N[d], D)
 # constructors
 ################
 
-function NFFTPlan(x::Matrix{T}, N::NTuple{D,Int}, m = 4, sigma = 2.0,
-                window=:kaiser_bessel, K=20000; dims::Union{Integer,UnitRange{Int64}}=1:D,
+function NFFTPlan(x::Matrix{T}, N::NTuple{D,Int}; m = 4, σ = 2.0,
+                window=:kaiser_bessel, LUTSize=20000, dims::Union{Integer,UnitRange{Int64}}=1:D,
                 precompute::PrecomputeFlags=LUT, sortNodes=false, kwargs...) where {D,T,R}
 
     # convert dims to a unit range
@@ -80,10 +80,10 @@ function NFFTPlan(x::Matrix{T}, N::NTuple{D,Int}, m = 4, sigma = 2.0,
     doTrafo = ntuple(d->d ∈ dims_, D)
 
     n = ntuple(d -> doTrafo[d] ? 
-                        (ceil(Int,sigma*N[d])÷2)*2 : # ensure that n is an even integer 
+                        (ceil(Int,σ*N[d])÷2)*2 : # ensure that n is an even integer 
                          N[d], D)
 
-    sigma = n[dims_[1]] / N[dims_[1]]
+    σ = n[dims_[1]] / N[dims_[1]]
 
     tmpVec = Array{Complex{T},D}(undef, n)
 
@@ -110,9 +110,9 @@ function NFFTPlan(x::Matrix{T}, N::NTuple{D,Int}, m = 4, sigma = 2.0,
         x .= sortslices(x, dims=2)
     end
 
-    windowLUT, windowHatInvLUT, B = precomputation(x, N[dims_], n[dims_], m, sigma, window, K, precompute)
+    windowLUT, windowHatInvLUT, B = precomputation(x, N[dims_], n[dims_], m, σ, window, LUTSize, precompute)
 
-    NFFTPlan(N, Tuple(NOut), M, x, m, T(sigma), n, dims_, dimOut, K, windowLUT, windowHatInvLUT, FP, BP, tmpVec, B)
+    NFFTPlan(N, Tuple(NOut), M, x, m, T(σ), n, dims_, dimOut, LUTSize, windowLUT, windowHatInvLUT, FP, BP, tmpVec, B)
 end
 
 function NFFTPlan!(p::AbstractNFFTPlan{T}, x::Matrix{T}, window = :kaiser_bessel; sortNodes=false) where {T}
@@ -128,7 +128,7 @@ function NFFTPlan!(p::AbstractNFFTPlan{T}, x::Matrix{T}, window = :kaiser_bessel
         x .= sortslices(x, dims=2)
     end
 
-    windowLUT, windowHatInvLUT, B = precomputation(x, p.N, p.n, p.m, p.sigma, window, p.K, precompute)
+    windowLUT, windowHatInvLUT, B = precomputation(x, p.N, p.n, p.m, p.σ, window, p.LUTSize, precompute)
 
     p.M = size(x, 2)
     p.windowLUT = windowLUT

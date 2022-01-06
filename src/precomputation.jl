@@ -1,6 +1,6 @@
 ### Precomputation of the B matrix ###
 
-function precomputeB(win, x, N::NTuple{D,Int}, n::NTuple{D,Int}, m, M, sigma, K, T) where D
+function precomputeB(win, x, N::NTuple{D,Int}, n::NTuple{D,Int}, m, M, σ, K, T) where D
   I = Array{Int64,2}(undef, (2*m+1)^D, M)
   β = (2*m+1)^D
   J = [β*k+1 for k=0:M]
@@ -11,7 +11,7 @@ function precomputeB(win, x, N::NTuple{D,Int}, n::NTuple{D,Int}, m, M, sigma, K,
   scale = T(1.0 / m * (K-1))
 
   @cthreads for k in 1:M
-    _precomputeB(win, x, N, n, m, M, sigma, scale, I, J, V, mProd, nProd, L, k)
+    _precomputeB(win, x, N, n, m, M, σ, scale, I, J, V, mProd, nProd, L, k)
   end
 
   S = SparseMatrixCSC(prod(n), M, J, vec(I), vec(V))
@@ -19,10 +19,10 @@ function precomputeB(win, x, N::NTuple{D,Int}, n::NTuple{D,Int}, m, M, sigma, K,
 end
 
 @inline @generated function _precomputeB(win, x::AbstractMatrix{T}, N::NTuple{D,Int}, n::NTuple{D,Int}, m, M, 
-                     sigma, scale, I, J, V, mProd, nProd, L::Val{Z}, k) where {T, D, Z}
+                     σ, scale, I, J, V, mProd, nProd, L::Val{Z}, k) where {T, D, Z}
   quote
 
-    @nexprs $(D) d -> ((tmpIdx_d, tmpWin_d) = _precomputeOneNode(win, x, n, m, sigma, scale, k, d, L) )
+    @nexprs $(D) d -> ((tmpIdx_d, tmpWin_d) = _precomputeOneNode(win, x, n, m, σ, scale, k, d, L) )
 
     @nexprs 1 d -> κ_{$D} = 1 # This is a hack, I actually want to write κ_$D = 1
     @nexprs 1 d -> ζ_{$D} = 1
@@ -44,18 +44,18 @@ end
 ### precomputation of the window and the indices required during convolution ###
 
 @generated function _precomputeOneNode(win::Function, x::AbstractMatrix{T}, n::NTuple{D,Int}, m, 
-  sigma, scale, k, d, L::Val{Z}) where {T,D,Z}
+  σ, scale, k, d, L::Val{Z}) where {T,D,Z}
   quote
     xscale = x[d,k] * n[d]
     off = floor(Int, xscale) - m - 1
     tmpIdx = @ntuple $(Z) l -> ( rem(l + off + n[d], n[d]) + 1)
-    tmpWin = @ntuple $(Z) l -> (win(abs( (xscale - l - off) )  / n[d], n[d], m, sigma) )
+    tmpWin = @ntuple $(Z) l -> (win(abs( (xscale - l - off) )  / n[d], n[d], m, σ) )
     return (tmpIdx, tmpWin)
   end
 end
 
 @generated function _precomputeOneNode(windowLUT::Vector, x::AbstractMatrix{T}, n::NTuple{D,Int}, m, 
-  sigma, scale, k, d, L::Val{Z}) where {T,D,Z}
+  σ, scale, k, d, L::Val{Z}) where {T,D,Z}
   quote
     xscale = x[d,k] * n[d]
     off = floor(Int, xscale) - m - 1
@@ -73,44 +73,44 @@ end
 
 ##################
 
-function precomputeLUT(win, windowLUT, n, m, sigma, K, T)
+function precomputeLUT(win, windowLUT, n, m, σ, K, T)
     Z = round(Int, 3 * K / 2)
     for d = 1:length(windowLUT)
         windowLUT[d] = Vector{T}(undef, Z)
         @cthreads for l = 1:Z
             y = ((l - 1) / (K - 1)) * m / n[d]
-            windowLUT[d][l] = win(y, n[d], m, sigma)
+            windowLUT[d][l] = win(y, n[d], m, σ)
         end
     end
 end
 
-function precomputeWindowHatInvLUT(windowHatInvLUT, win_hat, N, n, m, sigma, T)
+function precomputeWindowHatInvLUT(windowHatInvLUT, win_hat, N, n, m, σ, T)
   for d=1:length(windowHatInvLUT)
       windowHatInvLUT[d] = zeros(T, N[d])
       @cthreads for k=1:N[d]
-          windowHatInvLUT[d][k] = 1. / win_hat(k-1-N[d]÷2, n[d], m, sigma)
+          windowHatInvLUT[d][k] = 1. / win_hat(k-1-N[d]÷2, n[d], m, σ)
       end
   end
 end
 
 
-function precomputation(x::Union{Matrix{T},Vector{T}}, N::NTuple{D,Int}, n, m = 4, sigma = 2.0, window = :kaiser_bessel, K = 2000, precompute::PrecomputeFlags = LUT) where {T,D}
+function precomputation(x::Union{Matrix{T},Vector{T}}, N::NTuple{D,Int}, n, m = 4, σ = 2.0, window = :kaiser_bessel, K = 2000, precompute::PrecomputeFlags = LUT) where {T,D}
 
   win, win_hat = getWindow(window)
   M = size(x, 2)
 
   windowLUT = Vector{Vector{T}}(undef, D)
   windowHatInvLUT = Vector{Vector{T}}(undef, D)
-  precomputeWindowHatInvLUT(windowHatInvLUT, win_hat, N, n, m, sigma, T)
+  precomputeWindowHatInvLUT(windowHatInvLUT, win_hat, N, n, m, σ, T)
 
   if precompute == LUT
-      precomputeLUT(win, windowLUT, n, m, sigma, K, T)
+      precomputeLUT(win, windowLUT, n, m, σ, K, T)
       B = sparse([],[],T[])
   elseif precompute == FULL
-      B = precomputeB(win, x, N, n, m, M, sigma, K, T)
+      B = precomputeB(win, x, N, n, m, M, σ, K, T)
   elseif precompute == FULL_LUT
-      precomputeLUT(win, windowLUT, n, m, sigma, K, T)
-      B = precomputeB(windowLUT, x, N, n, m, M, sigma, K, T)
+      precomputeLUT(win, windowLUT, n, m, σ, K, T)
+      B = precomputeB(windowLUT, x, N, n, m, M, σ, K, T)
   else
       error("precompute = $precompute not supported by NFFT.jl!")
   end
@@ -120,13 +120,13 @@ end
 """
 precompute LUT for the multidimensional interpolation window
 """
-function precomp_windowHatInvLUT(T::Type, win_hat::Function, N::NTuple{D,Int64}, sigma::Real, m::Int64) where D
+function precomp_windowHatInvLUT(T::Type, win_hat::Function, N::NTuple{D,Int64}, σ::Real, m::Int64) where D
     # size of oversampled grid
-    n = ntuple(d->round(Int,sigma*N[d]), D)
+    n = ntuple(d->round(Int,σ*N[d]), D)
     # lookup tables for 1d interpolation kernels
     windowHatInvLUT1d = Vector{Vector{T}}(undef,D)
     for d=1:D
-        windowHatInvLUT1d[d] = [1.0/win_hat(k-1-N[d]/2, n[d], m, sigma) for k=1:N[d]]
+        windowHatInvLUT1d[d] = [1.0/win_hat(k-1-N[d]/2, n[d], m, σ) for k=1:N[d]]
     end
     # lookup table for multi-dimensional kernels
     windowHatInvLUT = zeros(Complex{T},N)

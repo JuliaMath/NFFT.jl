@@ -62,7 +62,7 @@ end
                               fHat::StridedArray{U,D}, d::Val{DIM}) where {T,D,R,U,DIM}
     quote
         fill!(fHat, zero(T))
-        scale = 1.0 / p.m * (p.K-1)
+        scale = 1.0 / p.m * (p.LUTSize-1)
 
         for k in 1:p.M
             xscale = p.x[k] * p.n[$DIM]
@@ -106,7 +106,7 @@ end
                                       g::StridedArray{Complex{T},D}, d::Val{DIM}) where {T,D,R,U,DIM}
     quote
         fill!(g, zero(T))
-        scale = 1.0 / p.m * (p.K-1)
+        scale = 1.0 / p.m * (p.LUTSize-1)
 
         for k in 1:p.M
             xscale = p.x[k] * p.n[$DIM]

@@ -10,7 +10,7 @@ For a detailed introduction into the NFFT and its application please have a look
 The NFFT is a fast implementation of the Non-equidistant Discrete Fourier Transform (NDFT) that is
 basically a DFT with non-equidistant sampling nodes in either Fourier or time/space domain.
 In contrast to the FFT, the NFFT is an approximative algorithm whereas the accuracy can be controlled
-by two parameters: the window width `m` and the oversampling factor `sigma`.
+by two parameters: the window width `m` and the oversampling factor `σ`.
 
 ## Installation
 

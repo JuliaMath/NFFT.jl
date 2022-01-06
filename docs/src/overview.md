@@ -8,7 +8,7 @@ using NFFT
 M, N = 1024, 512
 x = range(-0.4, stop=0.4, length=M)  # nodes at which the NFFT is evaluated
 fHat = randn(ComplexF64,M)           # data to be transformed
-p = plan_nfft(x, N)                  # create plan. m and sigma are optional parameters
+p = plan_nfft(x, N)                  # create plan. m and σ are optional parameters
 f = nfft_adjoint(p, fHat)            # calculate adjoint NFFT
 g = nfft(p, f)                       # calculate forward NFFT
 ```
