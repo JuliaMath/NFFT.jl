@@ -10,7 +10,7 @@ function nfft_accuracy_comparison()
                    ErrorTrafo=Float64[], ErrorAdjoint=Float64[] )  
   N = [256, 64]
 
-  for D = 1:2
+  for D = 1:1
   
       NN = ntuple(d->N[D], D)
       M = prod(NN)
@@ -79,8 +79,8 @@ function plot_accuracy(df, D=1)
   savefig(p, "accuracy_D$(D).png")
 end
 
-#df = nfft_accuracy_comparison()
-#plot_accuracy(df, 1)
+df = nfft_accuracy_comparison()
+plot_accuracy(df, 1)
 #plot_accuracy(df, 2)
 
 

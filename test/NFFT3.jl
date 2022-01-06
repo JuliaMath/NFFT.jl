@@ -27,9 +27,9 @@ function NFFT3Plan(x::Matrix{T}, N::NTuple{D,Int}; m = 4, σ = 2.0,
   f1 = UInt32(
     NFFT3.PRE_PHI_HUT |
     prePsi |
-    NFFT3.MALLOC_X |
-    NFFT3.MALLOC_F_HAT |
-    NFFT3.MALLOC_F |
+    # NFFT3.MALLOC_X |
+    # NFFT3.MALLOC_F_HAT |
+    # NFFT3.MALLOC_F |
     NFFT3.FFTW_INIT |
     NFFT3.FFT_OUT_OF_PLACE |
     sortN |
@@ -62,6 +62,7 @@ function AbstractNFFTs.nfft!(p::NFFT3Plan{D}, f::AbstractArray, fHat::StridedArr
   #consistencyCheck(p, f, fHat)
 
   p.parent.fhat = vec(f)
+  p.parent.f = vec(fHat)
   NFFT3.nfft_trafo(p.parent)
   fHat[:] .= p.parent.f  
 
@@ -73,6 +74,7 @@ function AbstractNFFTs.nfft_adjoint!(p::NFFT3Plan, fHat::AbstractArray, f::Strid
   #consistencyCheck(p, f, fHat)
 
   p.parent.f = vec(fHat)
+  p.parent.fhat = vec(f)
   tadjoint = fApprox = NFFT3.nfft_adjoint(p.parent)
   f[:] .= p.parent.fhat
 
