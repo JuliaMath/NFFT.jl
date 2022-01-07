@@ -54,10 +54,6 @@ function Base.copy(p::NFFTPlan{T,D,R}) where {T,D,R}
         windowHatInvLUT, FP, BP, tmpVec, B)
 end
 
-dims(::NFFTPlan{T,D,R}) where {T,D,R} = p.dims
-dimOut(::NFFTPlan{T,D,R}) where {T,D,R} = p.dimOut
-doTrafo(p::NFFTPlan{T,D}) where {T,D} = ntuple(d -> p.n[d]>p.N[d], D)
-
 ################
 # constructors
 ################
