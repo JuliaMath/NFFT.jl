@@ -72,7 +72,6 @@ end
     @test e < eps
 end
 
-
 @testset "Abstract sampling points" begin
     M, N = rand(100:2:200, 2)
     x = range(-0.4, stop=0.4, length=M)
@@ -86,6 +85,7 @@ end
         N = tuple( 2*rand(4:8,D)... )
         M = prod(N)
         for d in 1:D
+            @info "Testing in $D dimensions directional NFFT along dim=$d"
             x = rand(M) .- 0.5
 
             f = rand(ComplexF64,N)
@@ -116,6 +116,48 @@ end
             @test e < eps
         end
     end
+end
+
+@testset "Directional NFFT $D dim" for D in 3:3 begin
+  # NFFT along  specified dimensions (1:2 or 2:3) should give the same result as
+  # running a 2D NFFT on every slice along that dimensions
+      eps = 1e-4
+      N = tuple( 2*rand(4:8,D)... )
+      M = prod(N)
+      for d in 1:(D-1)
+          dims = d:(d+1)
+          @info "Testing in $D dimensions directional NFFT along dim=$(dims)"
+          x = rand(2,M) .- 0.5
+
+          f = rand(ComplexF64, N)
+          p_dir = plan_nfft(x, N, dims=dims)
+          fHat_dir = nfft(p_dir, f)
+          g_dir = nfft_adjoint(p_dir, fHat_dir)
+
+          p = plan_nfft(x, N[dims])
+          fHat = similar(fHat_dir)
+          g = similar(g_dir)
+
+          Rpre = CartesianIndices( N[1:dims[1]-1] )
+          Rpost = CartesianIndices( N[(dims[end]+1):end] )
+          for Ipost in Rpost, Ipre in Rpre
+              idxf = [Ipre, :, :, Ipost]
+              idxfhat = [Ipre, :, Ipost]
+
+              fview = f[idxf...]
+              fHat[idxfhat...] = nfft(p, (fview))
+
+              fHat_view = fHat_dir[idxfhat...]
+              g[idxf...] = nfft_adjoint(p, (fHat_view))
+          end
+
+          e = norm( fHat_dir[:] - fHat[:] )
+          @test e < eps
+
+          e = norm( g_dir[:] - g[:] ) / norm(g[:])
+          @test e < eps
+      end
+  end
 end
 
 include("NFFT3.jl")

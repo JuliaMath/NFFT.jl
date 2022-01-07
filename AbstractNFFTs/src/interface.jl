@@ -12,7 +12,8 @@ abstract type AbstractNFFTPlan{T,D,R} end
 @enum PrecomputeFlags begin
   LUT = 1
   FULL = 2
-  FULL_LUT = 3
+  TENSOR = 3
+  FULL_LUT = 4
 end
 
 

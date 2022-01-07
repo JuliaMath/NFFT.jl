@@ -21,7 +21,15 @@ function NFFT3Plan(x::Matrix{T}, N::NTuple{D,Int}; m = 4, σ = 2.0,
     error("NFFT3 does not support directional plans!")
   end
 
-  prePsi = (precompute == AbstractNFFTs.LUT) ? NFFT3.PRE_LIN_PSI : NFFT3.PRE_FULL_PSI
+  if precompute == AbstractNFFTs.LUT
+    prePsi =  NFFT3.PRE_LIN_PSI 
+  elseif precompute == AbstractNFFTs.FULL
+    prePsi = NFFT3.PRE_FULL_PSI
+  elseif precompute == AbstractNFFTs.TENSOR
+    prePsi = NFFT3.PRE_PSI
+  else
+    error("Precompute $(precompute) not supported by NFFT3!")
+  end
   sortN = sortNodes ? NFFT3.NFCT_SORT_NODES : UInt32(0)
 
   f1 = UInt32(

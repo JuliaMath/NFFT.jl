@@ -10,7 +10,7 @@ function nfft_accuracy_comparison()
                    ErrorTrafo=Float64[], ErrorAdjoint=Float64[] )  
   N = [256, 64]
 
-  for D = 1:1
+  for D = 1:2
   
       NN = ntuple(d->N[D], D)
       M = prod(NN)
@@ -79,8 +79,8 @@ function plot_accuracy(df, D=1)
   savefig(p, "accuracy_D$(D).png")
 end
 
-df = nfft_accuracy_comparison()
-plot_accuracy(df, 1)
+#df = nfft_accuracy_comparison()
+#plot_accuracy(df, 1)
 #plot_accuracy(df, 2)
 
 
@@ -128,7 +128,7 @@ function nfft_performance_comparison(m = 5, σ = 2.0)
         push!(df, ("NFFT.jl", D, M, N[D][U], false, preString[pre], m, σ,
                    tpre, ttrafo, tadjoint))
 
-        tpre = @elapsed p = NFFT3Plan(x, NN; m, σ, window=:kaiser_bessel, LUTSize, precompute=preNFFTjl[pre], sortNodes=false, flags=FFTW.ESTIMATE)
+        tpre = @elapsed p = NFFT3Plan(x, NN; m, σ, window=:kaiser_bessel, LUTSize, precompute=preNFFTjl[pre], sortNodes=true, flags=FFTW.ESTIMATE)
         tadjoint = @elapsed fApprox = nfft_adjoint!(p, fHat, f)
         ttrafo = @elapsed nfft!(p, fApprox, fHat)
                 
