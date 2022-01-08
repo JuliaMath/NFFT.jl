@@ -55,3 +55,10 @@ Size of the output array for an `nfft!` operation. The returned tuple has `R` en
 Note that this will be the input array for `nfft_adjoint!`.
 """
 @mustimplement size_out(p::AbstractNFFTPlan{T,D,R}) where {T,D,R}
+
+"""
+    nodes!(p, x)
+
+Change nodes `x` in the plan `p` operation and return the plan.
+"""
+@mustimplement nodes!(p::AbstractNFFTPlan{T}, x::Matrix{T}) where {T}

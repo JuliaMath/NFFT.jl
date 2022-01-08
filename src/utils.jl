@@ -33,8 +33,9 @@ function Base.println(t::TimingStats)
 end
 
 
-import Base.Cartesian.inlineanonymous
+# copy of Base.Cartesian macros, which we need to generalize
 
+import Base.Cartesian.inlineanonymous
 
 macro nloops_(N, itersym, rangeexpr, args...)
   _nloops_(N, itersym, rangeexpr, args...)
@@ -70,6 +71,7 @@ function _nloops_(N::Int, itersym, rangeexpr::Expr, args::Expr...)
   ex
 end
 
+### consistancy check
 
 @generated function consistencyCheck(p::AbstractNFFTPlan{T,D,R}, f::AbstractArray{U,D},
                                      fHat::AbstractArray{Y}) where {T,D,R,U,Y}

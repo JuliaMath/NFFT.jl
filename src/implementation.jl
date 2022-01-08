@@ -24,12 +24,6 @@ Base.@kwdef mutable struct NFFTParams{T}
   storeApodizationIdx::Bool = false
 end
 
-#=
-T is the element type (Float32/Float64)
-D is the number of dimensions of the input array.
-R is the number of dimensions of the output array.
-The transformation is done along dims.
-=#
 mutable struct NFFTPlan{T,D,R} <: AbstractNFFTPlan{T,D,R} 
     N::NTuple{D,Int64}
     NOut::NTuple{R,Int64}
@@ -37,7 +31,6 @@ mutable struct NFFTPlan{T,D,R} <: AbstractNFFTPlan{T,D,R}
     x::Matrix{T}
     n::NTuple{D,Int64}
     dims::UnitRange{Int64}
-    dimOut::Int64
     params::NFFTParams{T}
     forwardFFT::FFTW.cFFTWPlan{Complex{T},-1,true,D,UnitRange{Int64}}
     backwardFFT::FFTW.cFFTWPlan{Complex{T},1,true,D,UnitRange{Int64}}
@@ -61,52 +54,18 @@ function Base.copy(p::NFFTPlan{T,D,R}) where {T,D,R}
     FP = plan_fft!(tmpVec, p.dims; flags = p.forwardFFT.flags)
     BP = plan_bfft!(tmpVec, p.dims; flags = p.backwardFFT.flags)
 
-    return NFFTPlan{T,D,R}(p.N, p.NOut, p.M, x, p.n, p.dims, p.dimOut, p.params, FP, BP, tmpVec, 
+    return NFFTPlan{T,D,R}(p.N, p.NOut, p.M, x, p.n, p.dims, p.params, FP, BP, tmpVec, 
                            tmpVecHat, apodizationIdx, windowLUT, windowHatInvLUT, B)
 end
 
 ################
-# constructors
+# constructor
 ################
 
 function NFFTPlan(x::Matrix{T}, N::NTuple{D,Int}; dims::Union{Integer,UnitRange{Int64}}=1:D,
-                 fftflags=nothing, kwargs...) where {D,T,R}
+                 fftflags=nothing, kwargs...) where {T,D}
 
-    # convert dims to a unit range
-    dims_ = (typeof(dims) <: Integer) ? (dims:dims) : dims
-
-    params = NFFTParams{T}(; kwargs...)
-
-    if length(dims_) != size(x,1)
-        throw(ArgumentError("Nodes x have dimension $(size(x,1)) != $(length(dims_))"))
-    end
-
-    if any(isodd.(N[dims]))
-      throw(ArgumentError("N = $N needs to consist of even integers along dims = $(dims)!"))
-    end
-
-    doTrafo = ntuple(d->d ∈ dims_, D)
-
-    n = ntuple(d -> doTrafo[d] ? 
-                        (ceil(Int,params.σ*N[d])÷2)*2 : # ensure that n is an even integer 
-                         N[d], D)
-
-    params.σ = n[dims_[1]] / N[dims_[1]]
-
-    M = size(x, 2)
-
-    # calculate output size
-    NOut = Int[]
-    Mtaken = false
-    for d=1:D
-      if !doTrafo[d]
-        push!(NOut, N[d])
-      elseif !Mtaken
-        push!(NOut, M)
-        Mtaken = true
-      end
-    end
-    dimOut = first(dims_)
+    params, N, NOut, M, n, dims_ = initParams(x, N, dims; kwargs...)
     
     tmpVec = Array{Complex{T},D}(undef, n)
 
@@ -114,24 +73,16 @@ function NFFTPlan(x::Matrix{T}, N::NTuple{D,Int}; dims::Union{Integer,UnitRange{
     FP = plan_fft!(tmpVec, dims_; fftflags_...)
     BP = plan_bfft!(tmpVec, dims_; fftflags_...)
 
-    # Sort nodes in lexicographic way
-    if params.sortNodes
-        x .= sortslices(x, dims=2)
-    end
-
     windowLUT, windowHatInvLUT, apodizationIdx, B = precomputation(x, N[dims_], n[dims_], params)
     
-    if params.storeApodizationIdx
-      tmpVecHat = Array{Complex{T},D}(undef, N)
-    else
-      tmpVecHat = Array{Complex{T},D}(undef, ntuple(d->0,D))
-    end
+    U = params.storeApodizationIdx ? N : ntuple(d->0,D)
+    tmpVecHat = Array{Complex{T},D}(undef, U)
 
-    NFFTPlan(N, Tuple(NOut), M, x, n, dims_, dimOut, params, FP, BP, tmpVec, tmpVecHat, 
+    NFFTPlan(N, NOut, M, x, n, dims_, params, FP, BP, tmpVec, tmpVecHat, 
                        apodizationIdx, windowLUT, windowHatInvLUT, B)
 end
 
-function NFFTPlan!(p::AbstractNFFTPlan{T}, x::Matrix{T}) where {T}
+function nodes!(p::NFFTPlan{T}, x::Matrix{T}) where {T}
     # Sort nodes in lexicographic way
     if p.params.sortNodes
         x .= sortslices(x, dims=2)

@@ -1,19 +1,19 @@
-# CuNNFTPlan2d
-mutable struct CuNFFTPlan{T,D} <: AbstractNFFTPlan{T,D,1}
+mutable struct CuNFFTPlan{T,D} <: AbstractNFFTPlan{T,D,1} 
   N::NTuple{D,Int64}
+  NOut::NTuple{R,Int64}
   M::Int64
-  x::Array{T,2}
-  m::Int64
-  σ::T
+  x::Matrix{T}
   n::NTuple{D,Int64}
-  K::Int64
-  windowHatInvLUT::CuArray{Complex{T},D}
-  forwardFFT::CUDA.CUFFT.cCuFFTPlan{Complex{T},-1,true,D} 
-  backwardFFT::CUDA.CUFFT.cCuFFTPlan{Complex{T},1,true,D}
+  dims::UnitRange{Int64}
+  params::NFFTParams{T}
+  forwardFFT::CUDA.CUFFT.cCuFFTPlan{Complex{T},-1,true,D,UnitRange{Int64}}
+  backwardFFT::CUDA.CUFFT.cCuFFTPlan{Complex{T},1,true,D,UnitRange{Int64}}
   tmpVec::CuArray{Complex{T},D}
-  tmpVec2::CuArray{Complex{T},D}
-  apodIdx::CuArray{Int64,1}
-  B::CuSparseMatrixCSC{Complex{T}}
+  tmpVecHat::CuArray{Complex{T},D}
+  apodizationIdx::CuArray{Int64,1}
+  windowLUT::Vector{Vector{T}}
+  windowHatInvLUT::CuArray{Complex{T},D} # ::Vector{Vector{T}}
+  B::CuSparseMatrixCSC{Complex{T},Int64} # ::SparseMatrixCSC{T,Int64}
 end
 
 function AbstractNFFTs.plan_nfft(::Type{CuArray}, x::Matrix{T}, N::NTuple{D,Int}, rest...;
@@ -27,51 +27,36 @@ function AbstractNFFTs.plan_nfft(::Type{CuArray}, x::Matrix{T}, N::NTuple{D,Int}
   return p
 end
 
-# constructor for CuNFFTPlan2d
-function CuNFFTPlan(x::Matrix{T}, N::NTuple{D,Int}, m=4, σ=2.0,
-  window=:kaiser_bessel, K=2000; kwargs...) where {T,D} 
+function CuNFFTPlan(x::Matrix{T}, N::NTuple{D,Int}; dims::Union{Integer,UnitRange{Int64}}=1:D,
+                 fftflags=nothing, kwargs...) where {T,D}
 
-  if D != size(x,1)
-    throw(ArgumentError("Nodes x have dimension $(size(x,1)) != $D!"))
-  end
+    if dims != 1:D
+      error("CuNFFT does not work along directions right now!")
+    end
 
-  if any(isodd.(N))
-    throw(ArgumentError("N = $N needs to consist of even integers!"))
-  end
+    params, N, NOut, M, n, dims_ = initParams(x, N, dims; kwargs...)
+    params.storeApodizationIdx = true # CuNFFT only works this way
+    
+    tmpVec = CuArray{Complex{T},D}(undef, n)
 
-  n = ntuple(d->(ceil(Int,σ*N[d])÷2)*2, D) # ensure that n is an even integer
-  σ = n[1] / N[1]
+    #fftflags_ = (fftflags != nothing) ? (flags=fftflags,) : NamedTuple()
+    #FP = plan_fft!(tmpVec, dims_; fftflags_...)
+    #BP = plan_bfft!(tmpVec, dims_; fftflags_...)
+    FP = plan_fft!(tmpVec, dims_)
+    BP = plan_bfft!(tmpVec, dims_)
 
-  tmpVec = CuArray(zeros(Complex{T},n))
-  tmpVec2 = CuArray(zeros(Complex{T},N))
-  M = size(x,2)
+    windowLUT, windowHatInvLUT, apodizationIdx, B = precomputation(x, N[dims_], n[dims_], params)
+    
+    U = params.storeApodizationIdx ? N : ntuple(d->0,D)
+    tmpVecHat = CuArray{Complex{T},D}(undef, U)
 
-  # create FFT-plans
-  dims = ntuple(d->d, D)
-  FP = plan_fft!(tmpVec, dims)
-  BP = plan_bfft!(tmpVec, dims)
-
-  # Create lookup table for 1d interpolation kernels
-  win, win_hat = NFFT.getWindow(window)
-  windowHatInvLUT  = precomp_windowHatInvLUT(T, win_hat, N, σ, m)
-  windowHatInvLUT_d = CuArray(windowHatInvLUT)
-
-  # compute (linear) indices for apodization (mapping from regular to oversampled grid)
-  apodIdx = precomp_apodIdx(N,n)
-  apodIdx_d = CuArray(apodIdx)
-
-  # precompute interpolation matrix
-  U1 = ntuple(d-> (d==1) ? 1 : (2*m+1)^(d-1), D)
-  U2 = ntuple(d-> (d==1) ? 1 : prod(n[1:(d-1)]), D)
-  B = precomputeB(win, x, n, m, M, σ, T, U1, U2)
-  B_d = CuSparseMatrixCSC(Complex{T}.(B))
-
-  return CuNFFTPlan{T,D}(N, M, x, m, σ, n, K, windowHatInvLUT_d,
-                  FP, BP, tmpVec, tmpVec2, apodIdx_d, B_d )
+    NFFTPlan(N, NOut, M, x, n, dims_, params, FP, BP, tmpVec, tmpVecHat, 
+               CuArray(apodizationIdx), windowLUT, CuArray(windowHatInvLUT), 
+               CuSparseMatrixCSC(Complex{T}.(B)))
 end
 
 AbstractNFFTs.size_in(p::CuNFFTPlan) = p.N
-AbstractNFFTs.size_out(p::CuNFFTPlan) = (p.M,)
+AbstractNFFTs.size_out(p::CuNFFTPlan) = p.NOut
 
 """  in-place NFFT on the GPU"""
 function AbstractNFFTs.nfft!(p::CuNFFTPlan{T,D}, f::CuArray, fHat::CuArray) where {T,D} 

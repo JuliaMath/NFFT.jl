@@ -4,9 +4,6 @@ mutable struct NFFT3Plan{D} <: AbstractNFFTPlan{Float64,D,1}
   parent::NFFT3.NFFT{D}
 end
 
-dims(p::NFFT3Plan) = Int.(reverse(p.parent.N))
-dimOut(p::NFFT3Plan) = Int(p.parent.M)
-
 ################
 # constructors
 ################

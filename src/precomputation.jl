@@ -1,3 +1,47 @@
+### Init some initial parameters necessary to create the plan ###
+
+function initParams(x::Matrix{T}, N::NTuple{D,Int}, dims::Union{Integer,UnitRange{Int64}}=1:D; kwargs...) where {D,T}
+  # convert dims to a unit range
+  dims_ = (typeof(dims) <: Integer) ? (dims:dims) : dims
+
+  params = NFFTParams{T}(; kwargs...)
+
+  if length(dims_) != size(x,1)
+      throw(ArgumentError("Nodes x have dimension $(size(x,1)) != $(length(dims_))"))
+  end
+
+  if any(isodd.(N[dims]))
+    throw(ArgumentError("N = $N needs to consist of even integers along dims = $(dims)!"))
+  end
+
+  doTrafo = ntuple(d->d ∈ dims_, D)
+
+  n = ntuple(d -> doTrafo[d] ? 
+                      (ceil(Int,params.σ*N[d])÷2)*2 : # ensure that n is an even integer 
+                        N[d], D)
+
+  params.σ = n[dims_[1]] / N[dims_[1]]
+
+  M = size(x, 2)
+
+  # calculate output size
+  NOut = Int[]
+  Mtaken = false
+  for d=1:D
+    if !doTrafo[d]
+      push!(NOut, N[d])
+    elseif !Mtaken
+      push!(NOut, M)
+      Mtaken = true
+    end
+  end
+  # Sort nodes in lexicographic way
+  if params.sortNodes
+      x .= sortslices(x, dims=2)
+  end
+  return params, N, Tuple(NOut), M, n, dims_
+end
+
 ### Precomputation of the B matrix ###
 
 function precomputeB(win, x, N::NTuple{D,Int}, n::NTuple{D,Int}, m, M, σ, K, T) where D

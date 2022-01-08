@@ -4,7 +4,7 @@ using Graphics: @mustimplement
 using LinearAlgebra
 
 # interface
-export AbstractNFFTPlan, plan_nfft, size_in, size_out, nfft!, nfft_adjoint!
+export AbstractNFFTPlan, plan_nfft, size_in, size_out, nfft!, nfft_adjoint!, nodes!
 
 # derived
 export nfft, nfft_adjoint, ndft, ndft_adjoint
