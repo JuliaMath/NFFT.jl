@@ -15,7 +15,7 @@ import AbstractNFFTs.PrecomputeFlags, AbstractNFFTs.LUT, AbstractNFFTs.FULL, Abs
 export PrecomputeFlags, LUT, FULL, FULL_LUT
 
 export TimingStats
-export NDFTPlan, NFFTPlan
+export NDFTPlan, NFFTPlan, NFFTParams
 
 export calculateToeplitzKernel, calculateToeplitzKernel!, convolveToeplitzKernel!
 
