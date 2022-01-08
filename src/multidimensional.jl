@@ -4,7 +4,7 @@ function apodization!(p::NFFTPlan{T,D,1}, f::AbstractArray{U,D}, g::StridedArray
   if !p.params.storeApodizationIdx
     apodization_alloc_free!(p, f, g)
   else
-    p.tmpVecHat .= f .* p.windowHatInvLUT
+    p.tmpVecHat .= f .* p.windowHatInvLUT[1]
     g[p.apodizationIdx] = p.tmpVecHat
   end
   return
@@ -55,7 +55,7 @@ function apodization_adjoint!(p::NFFTPlan{T,D,1}, g::AbstractArray{Complex{T},D}
     apodization_adjoint_alloc_free!(p, g, f)
   else
     p.tmpVecHat[:] = g[p.apodizationIdx]
-    f .= p.tmpVecHat .* p.windowHatInvLUT
+    f .= p.tmpVecHat .* p.windowHatInvLUT[1]
   end
   return
 end

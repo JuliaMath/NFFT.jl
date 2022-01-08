@@ -104,7 +104,8 @@ function precomputation(x::Union{Matrix{T},Vector{T}}, N::NTuple{D,Int}, n, para
 
   windowLUT = Vector{Vector{T}}(undef, D)
   if params.storeApodizationIdx
-    windowHatInvLUT = precomp_windowHatInvLUT(T, win_hat, N, σ, m) # Reuse!
+    windowHatInvLUT = Vector{Vector{T}}(undef, 1)
+    windowHatInvLUT[1] = precomp_windowHatInvLUT(T, win_hat, N, σ, m) # Reuse!
   else
     windowHatInvLUT = Vector{Vector{T}}(undef, D)
     precomputeWindowHatInvLUT(windowHatInvLUT, win_hat, N, n, m, σ, T)

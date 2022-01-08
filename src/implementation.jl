@@ -45,7 +45,7 @@ mutable struct NFFTPlan{T,D,R} <: AbstractNFFTPlan{T,D,R}
     tmpVecHat::Array{Complex{T},D}
     apodizationIdx::Array{Int64,1}
     windowLUT::Vector{Vector{T}}
-    windowHatInvLUT#::Vector{Vector{T}}
+    windowHatInvLUT::Vector{Vector{T}}
     B::SparseMatrixCSC{T,Int64}
 end
 
@@ -126,7 +126,7 @@ function NFFTPlan(x::Matrix{T}, N::NTuple{D,Int}; dims::Union{Integer,UnitRange{
       apodizationIdx = precomp_apodIdx(N,n)
     else
       tmpVecHat = Array{Complex{T},D}(undef, ntuple(d->0,D))
-      apodizationIdx = Array{Int64,1}(undef,0)
+      apodizationIdx = Array{Int64,1}(undef, 0)
     end
 
     NFFTPlan(N, Tuple(NOut), M, x, n, dims_, dimOut, params, FP, BP, tmpVec, tmpVecHat, 
