@@ -14,6 +14,15 @@ More readable versions can be (and have been) written using the CartesianRange a
 but at the time of writing this approach require *a lot* of memory.
 =#
 
+Base.@kwdef mutable struct NFFTParams{T}
+  m::Int = 4
+  σ::T = 2.0
+  window::Symbol = :kaiser_bessel
+  LUTSize::Int64 = 20000
+  precompute::PrecomputeFlags = LUT
+  sortNodes::Bool = false
+  storeApodizationIdx::Bool = false
+end
 
 #=
 T is the element type (Float32/Float64)
@@ -26,22 +35,24 @@ mutable struct NFFTPlan{T,D,R} <: AbstractNFFTPlan{T,D,R}
     NOut::NTuple{R,Int64}
     M::Int64
     x::Matrix{T}
-    m::Int64
-    σ::T
     n::NTuple{D,Int64}
     dims::UnitRange{Int64}
     dimOut::Int64
-    LUTSize::Int64
-    windowLUT::Vector{Vector{T}}
-    windowHatInvLUT::Vector{Vector{T}}
+    params::NFFTParams{T}
     forwardFFT::FFTW.cFFTWPlan{Complex{T},-1,true,D,UnitRange{Int64}}
     backwardFFT::FFTW.cFFTWPlan{Complex{T},1,true,D,UnitRange{Int64}}
     tmpVec::Array{Complex{T},D}
+    tmpVecHat::Array{Complex{T},D}
+    apodizationIdx::Array{Int64,1}
+    windowLUT::Vector{Vector{T}}
+    windowHatInvLUT#::Vector{Vector{T}}
     B::SparseMatrixCSC{T,Int64}
 end
 
 function Base.copy(p::NFFTPlan{T,D,R}) where {T,D,R}
     tmpVec = similar(p.tmpVec)
+    tmpVecHat = similar(p.tmpVecHat)
+    apodizationIdx = copy(p.apodizationIdx)
     windowLUT = copy(p.windowLUT)
     windowHatInvLUT = copy(p.windowHatInvLUT)
     B = copy(p.B)
@@ -50,20 +61,21 @@ function Base.copy(p::NFFTPlan{T,D,R}) where {T,D,R}
     FP = plan_fft!(tmpVec, p.dims; flags = p.forwardFFT.flags)
     BP = plan_bfft!(tmpVec, p.dims; flags = p.backwardFFT.flags)
 
-    return NFFTPlan{T,D,R}(p.N, p.NOut, p.M, x, p.m, p.σ, p.n, p.dims, p.dimOut, p.LUTSize, windowLUT,
-        windowHatInvLUT, FP, BP, tmpVec, B)
+    return NFFTPlan{T,D,R}(p.N, p.NOut, p.M, x, p.n, p.dims, p.dimOut, p.params, FP, BP, tmpVec, 
+                           tmpVecHat, apodizationIdx, windowLUT, windowHatInvLUT, B)
 end
 
 ################
 # constructors
 ################
 
-function NFFTPlan(x::Matrix{T}, N::NTuple{D,Int}; m = 4, σ = 2.0,
-                window=:kaiser_bessel, LUTSize=20000, dims::Union{Integer,UnitRange{Int64}}=1:D,
-                precompute::PrecomputeFlags=LUT, sortNodes=false, kwargs...) where {D,T,R}
+function NFFTPlan(x::Matrix{T}, N::NTuple{D,Int}; dims::Union{Integer,UnitRange{Int64}}=1:D,
+                 fftflags=nothing, kwargs...) where {D,T,R}
 
     # convert dims to a unit range
     dims_ = (typeof(dims) <: Integer) ? (dims:dims) : dims
+
+    params = NFFTParams{T}(; kwargs...)
 
     if length(dims_) != size(x,1)
         throw(ArgumentError("Nodes x have dimension $(size(x,1)) != $(length(dims_))"))
@@ -76,12 +88,10 @@ function NFFTPlan(x::Matrix{T}, N::NTuple{D,Int}; m = 4, σ = 2.0,
     doTrafo = ntuple(d->d ∈ dims_, D)
 
     n = ntuple(d -> doTrafo[d] ? 
-                        (ceil(Int,σ*N[d])÷2)*2 : # ensure that n is an even integer 
+                        (ceil(Int,params.σ*N[d])÷2)*2 : # ensure that n is an even integer 
                          N[d], D)
 
-    σ = n[dims_[1]] / N[dims_[1]]
-
-    tmpVec = Array{Complex{T},D}(undef, n)
+    params.σ = n[dims_[1]] / N[dims_[1]]
 
     M = size(x, 2)
 
@@ -97,34 +107,39 @@ function NFFTPlan(x::Matrix{T}, N::NTuple{D,Int}; m = 4, σ = 2.0,
       end
     end
     dimOut = first(dims_)
+    
+    tmpVec = Array{Complex{T},D}(undef, n)
 
-    FP = plan_fft!(tmpVec, dims_; kwargs...)
-    BP = plan_bfft!(tmpVec, dims_; kwargs...)
+    fftflags_ = (fftflags != nothing) ? (flags=fftflags,) : NamedTuple()
+    FP = plan_fft!(tmpVec, dims_; fftflags_...)
+    BP = plan_bfft!(tmpVec, dims_; fftflags_...)
 
     # Sort nodes in lexicographic way
-    if sortNodes
+    if params.sortNodes
         x .= sortslices(x, dims=2)
     end
 
-    windowLUT, windowHatInvLUT, B = precomputation(x, N[dims_], n[dims_], m, σ, window, LUTSize, precompute)
+    windowLUT, windowHatInvLUT, B = precomputation(x, N[dims_], n[dims_], params)
+    
+    if params.storeApodizationIdx
+      tmpVecHat = Array{Complex{T},D}(undef, N)
+      apodizationIdx = precomp_apodIdx(N,n)
+    else
+      tmpVecHat = Array{Complex{T},D}(undef, ntuple(d->0,D))
+      apodizationIdx = Array{Int64,1}(undef,0)
+    end
 
-    NFFTPlan(N, Tuple(NOut), M, x, m, T(σ), n, dims_, dimOut, LUTSize, windowLUT, windowHatInvLUT, FP, BP, tmpVec, B)
+    NFFTPlan(N, Tuple(NOut), M, x, n, dims_, dimOut, params, FP, BP, tmpVec, tmpVecHat, 
+                       apodizationIdx, windowLUT, windowHatInvLUT, B)
 end
 
-function NFFTPlan!(p::AbstractNFFTPlan{T}, x::Matrix{T}, window = :kaiser_bessel; sortNodes=false) where {T}
-
-    if isempty(p.B)
-        precompute = LUT
-    else
-        precompute = FULL
-    end
-
+function NFFTPlan!(p::AbstractNFFTPlan{T}, x::Matrix{T}) where {T}
     # Sort nodes in lexicographic way
-    if sortNodes
+    if p.params.sortNodes
         x .= sortslices(x, dims=2)
     end
 
-    windowLUT, windowHatInvLUT, B = precomputation(x, p.N, p.n, p.m, p.σ, window, p.LUTSize, precompute)
+    windowLUT, windowHatInvLUT, B = precomputation(x, p.N, p.n, p.params)
 
     p.M = size(x, 2)
     p.windowLUT = windowLUT

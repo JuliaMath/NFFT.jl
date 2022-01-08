@@ -94,23 +94,30 @@ function precomputeWindowHatInvLUT(windowHatInvLUT, win_hat, N, n, m, σ, T)
 end
 
 
-function precomputation(x::Union{Matrix{T},Vector{T}}, N::NTuple{D,Int}, n, m = 4, σ = 2.0, window = :kaiser_bessel, K = 2000, precompute::PrecomputeFlags = LUT) where {T,D}
+function precomputation(x::Union{Matrix{T},Vector{T}}, N::NTuple{D,Int}, n, params) where {T,D}
+
+  m = params.m; σ = params.σ; window=params.window 
+  LUTSize = params.LUTSize; precompute = params.precompute
 
   win, win_hat = getWindow(window)
   M = size(x, 2)
 
   windowLUT = Vector{Vector{T}}(undef, D)
-  windowHatInvLUT = Vector{Vector{T}}(undef, D)
-  precomputeWindowHatInvLUT(windowHatInvLUT, win_hat, N, n, m, σ, T)
+  if params.storeApodizationIdx
+    windowHatInvLUT = precomp_windowHatInvLUT(T, win_hat, N, σ, m) # Reuse!
+  else
+    windowHatInvLUT = Vector{Vector{T}}(undef, D)
+    precomputeWindowHatInvLUT(windowHatInvLUT, win_hat, N, n, m, σ, T)
+  end
 
   if precompute == LUT
-      precomputeLUT(win, windowLUT, n, m, σ, K, T)
+      precomputeLUT(win, windowLUT, n, m, σ, LUTSize, T)
       B = sparse([],[],T[])
   elseif precompute == FULL
-      B = precomputeB(win, x, N, n, m, M, σ, K, T)
+      B = precomputeB(win, x, N, n, m, M, σ, LUTSize, T)
   elseif precompute == FULL_LUT
-      precomputeLUT(win, windowLUT, n, m, σ, K, T)
-      B = precomputeB(windowLUT, x, N, n, m, M, σ, K, T)
+      precomputeLUT(win, windowLUT, n, m, σ, LUTSize, T)
+      B = precomputeB(windowLUT, x, N, n, m, M, σ, LUTSize, T)
   else
       error("precompute = $precompute not supported by NFFT.jl!")
   end

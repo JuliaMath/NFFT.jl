@@ -120,7 +120,7 @@ function nfft_performance_comparison(m = 5, σ = 2.0)
         x = T.(rand(T,D,M) .- 0.5)
         fHat = randn(Complex{T}, M)
 
-        tpre = @elapsed p = plan_nfft(x, NN; m, σ, window=:kaiser_bessel, LUTSize, precompute=preNFFTjl[pre], sortNodes=false, flags=FFTW.ESTIMATE)
+        tpre = @elapsed p = plan_nfft(x, NN; m, σ, window=:kaiser_bessel, LUTSize, precompute=preNFFTjl[pre], sortNodes=false, fftflags=FFTW.ESTIMATE)
         f = similar(fHat, p.N)
         tadjoint = @elapsed fApprox = nfft_adjoint!(p, fHat, f)
         ttrafo = @elapsed nfft!(p, fApprox, fHat)
@@ -128,7 +128,7 @@ function nfft_performance_comparison(m = 5, σ = 2.0)
         push!(df, ("NFFT.jl", D, M, N[D][U], false, preString[pre], m, σ,
                    tpre, ttrafo, tadjoint))
 
-        tpre = @elapsed p = NFFT3Plan(x, NN; m, σ, window=:kaiser_bessel, LUTSize, precompute=preNFFTjl[pre], sortNodes=true, flags=FFTW.ESTIMATE)
+        tpre = @elapsed p = NFFT3Plan(x, NN; m, σ, window=:kaiser_bessel, LUTSize, precompute=preNFFTjl[pre], sortNodes=true, fftflags=FFTW.ESTIMATE)
         tadjoint = @elapsed fApprox = nfft_adjoint!(p, fHat, f)
         ttrafo = @elapsed nfft!(p, fApprox, fHat)
                 

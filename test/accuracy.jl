@@ -9,16 +9,18 @@ LUTSize = 20000
 
 @testset "NFFT in multiple dimensions" begin
     for (u,N) in enumerate([(256,), (30,32), (10,12,14), (6,6,6,6)])
-      for pre in [NFFT.LUT, NFFT.FULL, NFFT.FULL_LUT]
+      for (pre,storeApod) in zip([NFFT.LUT, NFFT.FULL, NFFT.FULL_LUT, NFFT.LUT],
+                                 [false, false, false, true])
+        if !storeApod || length(N) == 1 # right now storApod works only in 1D...
         eps = [1e-7, 1e-3, 1e-6, 1e-4]
         for (l,window) in enumerate([:kaiser_bessel, :gauss, :kaiser_bessel_rev, :spline])
             D = length(N)
-            @info "Testing in $D dimensions using $window window"
+            @info "Testing in $D dimensions using window=$window precompute=$pre storeApod=$storeApod"
 
             M = prod(N)
             x = rand(Float64,D,M) .- 0.5
-            p = plan_nfft(x, N; m, σ, window, LUTSize, precompute = pre,
-                         flags = FFTW.ESTIMATE)
+            p = plan_nfft(x, N; m, σ, window, LUTSize, precompute = pre, storeApodizationIdx = storeApod,
+                         fftflags = FFTW.ESTIMATE)
             pNDFT = NDFTPlan(x, N)
 
             fHat = rand(Float64,M) + rand(Float64,M)*im
@@ -33,6 +35,7 @@ LUTSize = 20000
             e = norm(gHat[:] - gHatApprox[:]) / norm(gHat[:])
             @debug "error nfft "  e
             @test e < eps[l]
+        end
         end
       end
     end
@@ -75,7 +78,7 @@ end
 @testset "Abstract sampling points" begin
     M, N = rand(100:2:200, 2)
     x = range(-0.4, stop=0.4, length=M)
-    p = plan_nfft(x, N, flags = FFTW.ESTIMATE)
+    p = plan_nfft(x, N, fftflags = FFTW.ESTIMATE)
 end
 
 @testset "Directional NFFT $D dim" for D in 2:3 begin
@@ -173,7 +176,7 @@ include("NFFT3.jl")
       M = prod(N)
       x = rand(Float64,D,M) .- 0.5
       p = NFFT3Plan(x, N; m, σ, LUTSize, precompute = pre,
-                    flags = FFTW.ESTIMATE)
+                    fftflags = FFTW.ESTIMATE)
       pNDFT = NDFTPlan(x, N)
 
       fHat = rand(Float64,M) + rand(Float64,M)*im
@@ -205,7 +208,7 @@ end
             M = prod(N)
             x = rand(Float64,D,M) .- 0.5
             p = plan_nfft(Array, x, N, m, σ, window, K, precompute = NFFT.FULL,
-                         flags = FFTW.ESTIMATE, device=NFFT.CPU)
+                         fftflags = FFTW.ESTIMATE, device=NFFT.CPU)
             p_d = plan_nfft(CuArray, x, N, m, σ, window, K)
             pNDFT = NDFTPlan(x, N)
 

@@ -1,4 +1,17 @@
-function apodization!(p::NFFTPlan{T,1,1}, f::AbstractVector{U}, g::StridedVector{Complex{T}}) where {T,U}
+########## apodization ##########
+
+function apodization!(p::NFFTPlan{T,D,1}, f::AbstractArray{U,D}, g::StridedArray{Complex{T},D}) where {D,T,U}
+  if !p.params.storeApodizationIdx
+    apodization_alloc_free!(p, f, g)
+  else
+    p.tmpVecHat .= f .* p.windowHatInvLUT
+    g[p.apodizationIdx] = p.tmpVecHat
+  end
+  return
+end
+
+
+function apodization_alloc_free!(p::NFFTPlan{T,1,1}, f::AbstractVector{U}, g::StridedVector{Complex{T}}) where {T,U}
   n = p.n[1]
   N = p.N[1]
   N2 = N÷2
@@ -9,13 +22,13 @@ function apodization!(p::NFFTPlan{T,1,1}, f::AbstractVector{U}, g::StridedVector
   end
 end
 
-function apodization!(p::NFFTPlan{T,D,1}, f::AbstractArray{U,D}, g::StridedArray{Complex{T},D}) where {D,T,U}
+function apodization_alloc_free!(p::NFFTPlan{T,D,1}, f::AbstractArray{U,D}, g::StridedArray{Complex{T},D}) where {D,T,U}
   @cthreads for o = 1:p.N[end]
-      _apodization!(p, f, g, o)  
+      _apodization_alloc_free!(p, f, g, o)  
   end
 end
 
-@generated function _apodization!(p::NFFTPlan{T,D,1}, f::AbstractArray{U,D}, g::StridedArray{Complex{T},D}, o) where {D,T,U}
+@generated function _apodization_alloc_free!(p::NFFTPlan{T,D,1}, f::AbstractArray{U,D}, g::StridedArray{Complex{T},D}, o) where {D,T,U}
   quote
     oo = rem(o+p.n[$D] - p.N[$D]÷ 2 - 1, p.n[$D]) + 1
     @nloops $(D-2) l d->(1:size(f,d+1)) d->(gidx_d = rem(l_d+p.n[d+1] - p.N[d+1]÷2 - 1, p.n[d+1]) + 1) begin
@@ -35,7 +48,19 @@ end
   end
 end
 
-function apodization_adjoint_1D!(p::NFFTPlan{T,1,1}, g::StridedVector{Complex{T}}, f::AbstractVector{U}) where {T,U}
+########## apodization adjoint ##########
+
+function apodization_adjoint!(p::NFFTPlan{T,D,1}, g::AbstractArray{Complex{T},D}, f::StridedArray{U,D}) where {D,T,U}
+  if !p.params.storeApodizationIdx
+    apodization_adjoint_alloc_free!(p, g, f)
+  else
+    p.tmpVecHat[:] = g[p.apodizationIdx]
+    f .= p.tmpVecHat .* p.windowHatInvLUT
+  end
+  return
+end
+
+function apodization_adjoint_alloc_free_1D!(p::NFFTPlan{T,1,1}, g::StridedVector{Complex{T}}, f::AbstractVector{U}) where {T,U}
   n = p.n[1]
   N = p.N[1]
   N2 = N÷2
@@ -46,17 +71,17 @@ function apodization_adjoint_1D!(p::NFFTPlan{T,1,1}, g::StridedVector{Complex{T}
   end
 end
 
-function apodization_adjoint!(p::NFFTPlan{T,D,1}, g::AbstractArray{Complex{T},D}, f::StridedArray{U,D}) where {D,T,U}
+function apodization_adjoint_alloc_free!(p::NFFTPlan{T,D,1}, g::AbstractArray{Complex{T},D}, f::StridedArray{U,D}) where {D,T,U}
   if D == 1
-    apodization_adjoint_1D!(p, g, f)
+    apodization_adjoint_alloc_free_1D!(p, g, f)
   else
     @cthreads for o = 1:p.N[end]
-      _apodization_adjoint!(p, g, f, o)  
+      _apodization_adjoint_alloc_free!(p, g, f, o)  
     end
   end
 end
 
-@generated function _apodization_adjoint!(p::NFFTPlan{T,D,1}, g::AbstractArray{Complex{T},D}, f::StridedArray{U,D}, o) where {D,T,U}
+@generated function _apodization_adjoint_alloc_free!(p::NFFTPlan{T,D,1}, g::AbstractArray{Complex{T},D}, f::StridedArray{U,D}, o) where {D,T,U}
   quote
     oo = rem(o+p.n[$D] - p.N[$D]÷ 2 - 1, p.n[$D]) + 1
     @nloops $(D-2) l d->(1:size(f,d+1)) d->(gidx_d = rem(l_d+p.n[d+1] - p.N[d+1]÷2 - 1, p.n[d+1]) + 1) begin
@@ -76,6 +101,8 @@ end
   end
 end
 
+########## convolve ##########
+
 function convolve!(p::NFFTPlan{T,D,1}, g::AbstractArray{Complex{T},D}, fHat::StridedVector{U}) where {D,T,U}
   if isempty(p.B)
     convolve_LUT!(p, g, fHat)
@@ -85,8 +112,8 @@ function convolve!(p::NFFTPlan{T,D,1}, g::AbstractArray{Complex{T},D}, fHat::Str
 end
 
 function convolve_LUT!(p::NFFTPlan{T,D,1}, g::AbstractArray{Complex{T},D}, fHat::StridedVector{U}) where {D,T,U}
-  L = Val(2*p.m+1)
-  scale = T(1.0 / p.m * (p.LUTSize-1))
+  L = Val(2*p.params.m+1)
+  scale = T(1.0 / p.params.m * (p.params.LUTSize-1))
 
   @cthreads for k in 1:p.M
       fHat[k] = _convolve_LUT(p, g, L, scale, k)
@@ -94,7 +121,7 @@ function convolve_LUT!(p::NFFTPlan{T,D,1}, g::AbstractArray{Complex{T},D}, fHat:
 end
 
 function _precomputeOneNode(p::NFFTPlan{T,D,1}, scale, k, d, L::Val{Z}) where {T,D,Z}
-    return _precomputeOneNode(p.windowLUT, p.x, p.n, p.m, p.σ, scale, k, d, L) 
+    return _precomputeOneNode(p.windowLUT, p.x, p.n, p.params.m, p.params.σ, scale, k, d, L) 
 end
 
 @generated function _convolve_LUT(p::NFFTPlan{T,D,1}, g::AbstractArray{Complex{T},D}, L::Val{Z}, scale, k) where {D,T,Z}
@@ -120,6 +147,8 @@ function convolve_sparse_matrix!(p::NFFTPlan{T,D,1}, g::AbstractArray{Complex{T}
   threaded_mul!(fHat, transpose(p.B), vec(g))
 end
 
+########## convolve adjoint ##########
+
 function convolve_adjoint!(p::NFFTPlan{T,D,1}, fHat::AbstractVector{U}, g::StridedArray{Complex{T},D}) where {D,T,U}
   if isempty(p.B)
     #if NFFT._use_threads[]
@@ -134,7 +163,7 @@ end
 
 #=function convolve_adjoint_LUT_MT!(p::NFFTPlan{T,D,1}, fHat::AbstractVector{U}, g::StridedArray{Complex{T},D}) where {D,T,U}
   fill!(g, zero(T))
-  scale = T(1.0 / p.m * (p.LUTSize-1))
+  scale = T(1.0 / p.params.m * (p.params.LUTSize-1))
   @time g_tmp = Array{Complex{T}}(undef, size(g)..., Threads.nthreads())
   @time fill!(g_tmp, zero(T))
 
@@ -151,8 +180,8 @@ end=#
 
 function convolve_adjoint_LUT!(p::NFFTPlan{T,D,1}, fHat::AbstractVector{U}, g::StridedArray{Complex{T},D}) where {D,T,U}
   fill!(g, zero(T))
-  L = Val(2*p.m+1)
-  scale = T(1.0 / p.m * (p.LUTSize-1))
+  L = Val(2*p.params.m+1)
+  scale = T(1.0 / p.params.m * (p.params.LUTSize-1))
 
   @inbounds @simd for k in 1:p.M
     _convolve_adjoint_LUT!(p, fHat, g, L, scale, k)
