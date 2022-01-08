@@ -119,14 +119,12 @@ function NFFTPlan(x::Matrix{T}, N::NTuple{D,Int}; dims::Union{Integer,UnitRange{
         x .= sortslices(x, dims=2)
     end
 
-    windowLUT, windowHatInvLUT, B = precomputation(x, N[dims_], n[dims_], params)
+    windowLUT, windowHatInvLUT, apodizationIdx, B = precomputation(x, N[dims_], n[dims_], params)
     
     if params.storeApodizationIdx
       tmpVecHat = Array{Complex{T},D}(undef, N)
-      apodizationIdx = precomp_apodIdx(N,n)
     else
       tmpVecHat = Array{Complex{T},D}(undef, ntuple(d->0,D))
-      apodizationIdx = Array{Int64,1}(undef, 0)
     end
 
     NFFTPlan(N, Tuple(NOut), M, x, n, dims_, dimOut, params, FP, BP, tmpVec, tmpVecHat, 
@@ -139,7 +137,7 @@ function NFFTPlan!(p::AbstractNFFTPlan{T}, x::Matrix{T}) where {T}
         x .= sortslices(x, dims=2)
     end
 
-    windowLUT, windowHatInvLUT, B = precomputation(x, p.N, p.n, p.params)
+    windowLUT, windowHatInvLUT, apodizationIdx, B = precomputation(x, p.N, p.n, p.params)
 
     p.M = size(x, 2)
     p.windowLUT = windowLUT

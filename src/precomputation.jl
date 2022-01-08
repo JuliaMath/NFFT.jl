@@ -103,12 +103,16 @@ function precomputation(x::Union{Matrix{T},Vector{T}}, N::NTuple{D,Int}, n, para
   M = size(x, 2)
 
   windowLUT = Vector{Vector{T}}(undef, D)
+
+  windowHatInvLUT_ = Vector{Vector{T}}(undef, D)
+  precomputeWindowHatInvLUT(windowHatInvLUT_, win_hat, N, n, m, σ, T)
+
   if params.storeApodizationIdx
     windowHatInvLUT = Vector{Vector{T}}(undef, 1)
-    windowHatInvLUT[1] = precomp_windowHatInvLUT(T, win_hat, N, σ, m) # Reuse!
+    windowHatInvLUT[1], apodizationIdx = precompWindowHatInvLUT(params, N, n, windowHatInvLUT_)  
   else
-    windowHatInvLUT = Vector{Vector{T}}(undef, D)
-    precomputeWindowHatInvLUT(windowHatInvLUT, win_hat, N, n, m, σ, T)
+    windowHatInvLUT = windowHatInvLUT_
+    apodizationIdx = Array{Int64,1}(undef, 0)
   end
 
   if precompute == LUT
@@ -122,49 +126,51 @@ function precomputation(x::Union{Matrix{T},Vector{T}}, N::NTuple{D,Int}, n, para
   else
       error("precompute = $precompute not supported by NFFT.jl!")
   end
-  return (windowLUT, windowHatInvLUT, B)
+  return (windowLUT, windowHatInvLUT, apodizationIdx, B)
 end
 
-"""
-precompute LUT for the multidimensional interpolation window
-"""
-function precomp_windowHatInvLUT(T::Type, win_hat::Function, N::NTuple{D,Int64}, σ::Real, m::Int64) where D
-    # size of oversampled grid
-    n = ntuple(d->round(Int,σ*N[d]), D)
-    # lookup tables for 1d interpolation kernels
-    windowHatInvLUT1d = Vector{Vector{T}}(undef,D)
-    for d=1:D
-        windowHatInvLUT1d[d] = [1.0/win_hat(k-1-N[d]/2, n[d], m, σ) for k=1:N[d]]
+####################################
+
+
+function precompWindowHatInvLUT(p::NFFTParams{T}, N, n, windowHatInvLUT_) where {T}
+  
+  windowHatInvLUT = zeros(Complex{T}, N)
+  apodIdx = zeros(Int64, N)
+
+  if length(N) == 1
+    precompWindowHatInvLUT(p, windowHatInvLUT, apodIdx, N, n, windowHatInvLUT_, 1) 
+  else
+    @cthreads for o = 1:N[end]
+      precompWindowHatInvLUT(p, windowHatInvLUT, apodIdx, N, n, windowHatInvLUT_, o)  
     end
-    # lookup table for multi-dimensional kernels
-    windowHatInvLUT = zeros(Complex{T},N)
-    if D==1
-        windowHatInvLUT .= windowHatInvLUT1d[1]
-    elseif D==2
-        windowHatInvLUT .= reshape( kron(windowHatInvLUT1d[1], windowHatInvLUT1d[2]), N )
-    elseif D==3
-        windowHatInvLUT2d = kron(windowHatInvLUT1d[1], windowHatInvLUT1d[2])
-        windowHatInvLUT .= reshape( kron(windowHatInvLUT2d, windowHatInvLUT1d[3]), N )
-    else
-        error("CuNFFT does not yet support $(D) dimensions")
-    end
-    return windowHatInvLUT
+  end
+  return vec(windowHatInvLUT), vec(apodIdx)
 end
 
-"""
-precompute indices of the apodized image in the oversampled grid
-"""
-@generated function precomp_apodIdx(N::NTuple{D,Int64}, n::NTuple{D,Int64}) where D
-    quote
-        # linear indices of the oversampled grid
-        linIdx = LinearIndices(n)
-        # offsets to central NxN-region of the oversampled grid
-        @nexprs $D d -> offset_d = round(Int, n[d] - N[d]/2) - 1
-        # apodization indices
-        apodIdx = zeros(Int64,N)
-        @nloops $D l apodIdx d->(gidx_d = rem(l_d+offset_d, n[d]) + 1) begin
-            (@nref $D apodIdx l) = (@nref $D linIdx gidx)
-        end
-        return vec(apodIdx)
+@generated function precompWindowHatInvLUT(p::NFFTParams{T}, windowHatInvLUT::Array{Complex{T},D}, 
+           apodIdx::Array{Int,D}, N, n, windowHatInvLUT_, o) where {D,T}
+  quote
+    linIdx = LinearIndices(n)
+
+    @nexprs 1 d -> gidx_{$D-1} = rem(o+n[$D] - N[$D]÷2 - 1, n[$D]) + 1
+    @nexprs 1 d -> l_{$D-1} = o
+    @nloops $(D-2) l d->(1:N[d+1]) d-> begin
+        gidx_d = rem(l_d+n[d+1] - N[d+1]÷2 - 1, n[d+1]) + 1
+      end begin
+      N2 = N[1]÷2
+      @inbounds @simd for i = 1:N2
+        apodIdx[i, CartesianIndex(@ntuple $(D-1) l)] = 
+           linIdx[i-N2+n[1], CartesianIndex(@ntuple $(D-1) gidx)]
+        v = windowHatInvLUT_[1][i] 
+        @nexprs $(D-1) d -> v *= windowHatInvLUT_[d+1][l_d]
+        windowHatInvLUT[i, CartesianIndex(@ntuple $(D-1) l)] = v
+
+        apodIdx[i+N2, CartesianIndex(@ntuple $(D-1) l)] = 
+           linIdx[i, CartesianIndex(@ntuple $(D-1) gidx)]
+        v = windowHatInvLUT_[1][i+N2]
+        @nexprs $(D-1) d -> v *= windowHatInvLUT_[d+1][l_d]
+        windowHatInvLUT[i+N2, CartesianIndex(@ntuple $(D-1) l)] = v
+      end
     end
+  end
 end

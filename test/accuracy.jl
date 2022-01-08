@@ -11,7 +11,6 @@ LUTSize = 20000
     for (u,N) in enumerate([(256,), (30,32), (10,12,14), (6,6,6,6)])
       for (pre,storeApod) in zip([NFFT.LUT, NFFT.FULL, NFFT.FULL_LUT, NFFT.LUT],
                                  [false, false, false, true])
-        if !storeApod || length(N) == 1 # right now storApod works only in 1D...
         eps = [1e-7, 1e-3, 1e-6, 1e-4]
         for (l,window) in enumerate([:kaiser_bessel, :gauss, :kaiser_bessel_rev, :spline])
             D = length(N)
@@ -35,7 +34,6 @@ LUTSize = 20000
             e = norm(gHat[:] - gHatApprox[:]) / norm(gHat[:])
             @debug "error nfft "  e
             @test e < eps[l]
-        end
         end
       end
     end

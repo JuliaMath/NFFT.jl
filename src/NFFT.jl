@@ -24,7 +24,6 @@ export calculateToeplitzKernel, calculateToeplitzKernel!, convolveToeplitzKernel
 #########################
 include("utils.jl")
 include("windowFunctions.jl")
-include("precomputation.jl")
 
 #################################
 # currently implemented NFFTPlans
@@ -32,6 +31,8 @@ include("precomputation.jl")
 
 include("implementation.jl")
 include("direct.jl")
+
+include("precomputation.jl")
 
 #################
 # factory methods
