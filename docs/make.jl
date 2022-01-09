@@ -10,7 +10,7 @@ DocMeta.setdocmeta!(NFFT, :DocTestSetup, :(using NFFT); recursive=true)
 
 makedocs(;
     doctest = true,
-    strict = :doctest,
+    #strict = :doctest,
     modules = [NFFT],
     sitename = "NFFT",
     authors = "Tobias Knopp and contributors",
