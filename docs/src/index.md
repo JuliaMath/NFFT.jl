@@ -18,7 +18,8 @@ Start julia and open the package mode by entering `]`. Then enter
 ```julia
 add NFFT
 ```
-This will install the packages `NFFT.jl` and all its dependencies.
+This will install the packages `NFFT.jl` and all its dependencies. 
+If you need support for `CUDA` you also need to install the package `CuNFFT.jl`
 
 ## License / Terms of Usage
 

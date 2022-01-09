@@ -5,11 +5,18 @@ CurrentModule = NFFT
 
 # API
 
-In the following, you find the documentation of some, and hopefully soon all, exported functions of the [NFFT.jl](https://github.com/tknopp/NFFT.jl) package:
+In the following, you find the documentation of some, and hopefully soon all, exported functions of the [NFFT.jl](https://github.com/tknopp/NFFT.jl) package family:
 
+[AbstractNFFTs.jl](https://github.com/tknopp/NFFT/AbstractNFFTs)
 ```@index
+Modules = [AbstractNFFTs]
+```
+
+[NFFT.jl](https://github.com/tknopp/NFFT.jl)
+```@index
+Modules = [NFFT]
 ```
 
 ```@autodocs
-Modules = [NFFT]
+Modules = [AbstractNFFTs,NFFT]
 ```

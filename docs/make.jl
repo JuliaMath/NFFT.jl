@@ -1,9 +1,16 @@
 using Documenter, NFFT
 
+# Updating doctests:
+# 
+# julia> using Documenter, NFFT
+# julia> DocMeta.setdocmeta!(NFFT, :DocTestSetup, :(using NFFT); recursive=true)
+# julia> doctest(NFFT, fix=true)
+
 DocMeta.setdocmeta!(NFFT, :DocTestSetup, :(using NFFT); recursive=true)
 
 makedocs(;
-    doctest = false,
+    doctest = true,
+    strict = :doctest,
     modules = [NFFT],
     sitename = "NFFT",
     authors = "Tobias Knopp and contributors",
@@ -15,11 +22,13 @@ makedocs(;
     ),
     pages = [
         "Home" => "index.md",
+        "Background" => "background.md",
         "Overview" => "overview.md",
         "AbstractNFFTs" => "abstract.md",
-        "GPU" => "gpu.md",
+        "Backends" => "backends.md",
         "Tools" => "tools.md",
         "Performance" => "performance.md",
+        "Implementation" => "implementation.md",
         "API" => "api.md",
     ]
 )
