@@ -29,8 +29,9 @@ by citing the project.
 
 ## Contact
 
-If you have problems using the software, find mistakes, or have general questions please use
-the [issue tracker](https://github.com/tknopp/NFFT.jl/issues) to contact us.
+If you have problems using the software, find bugs or have ideas for improvements please use
+the [issue tracker](https://github.com/tknopp/NFFT.jl/issues). For general questions please use
+the [discussions](https://github.com/tknopp/NFFT.jl/discussions) section on Github.
 
 ## Contributors
 
