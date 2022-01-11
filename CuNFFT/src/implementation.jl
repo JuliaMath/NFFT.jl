@@ -36,7 +36,8 @@ function CuNFFTPlan(x::Matrix{T}, N::NTuple{D,Int}; dims::Union{Integer,UnitRang
 
     params, N, NOut, M, n, dims_ = NFFT.initParams(x, N, dims; kwargs...)
     params.storeApodizationIdx = true # CuNFFT only works this way
-    
+    params.precompute = NFFT.FULL # CuNFFT only works this way
+
     tmpVec = CuArray{Complex{T},D}(undef, n)
 
     #fftflags_ = (fftflags != nothing) ? (flags=fftflags,) : NamedTuple()
