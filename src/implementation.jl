@@ -82,7 +82,7 @@ function NFFTPlan(x::Matrix{T}, N::NTuple{D,Int}; dims::Union{Integer,UnitRange{
                        apodizationIdx, windowLUT, windowHatInvLUT, B)
 end
 
-function nodes!(p::NFFTPlan{T}, x::Matrix{T}) where {T}
+function AbstractNFFTs.nodes!(p::NFFTPlan{T}, x::Matrix{T}) where {T}
     # Sort nodes in lexicographic way
     if p.params.sortNodes
         x .= sortslices(x, dims=2)
