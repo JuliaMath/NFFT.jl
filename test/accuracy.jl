@@ -39,41 +39,75 @@ LUTSize = 20000
     end
 end
 
-@testset "High level NFFT " begin
-    N = (32,32)
-    eps =  1e-3
-    D = length(N)
+@testset "High-level NFFT" begin
+  @info "High-level NFFT"
+  N = (32,32)
+  eps =  1e-3
+  D = length(N)
 
-    M = prod(N)
-    x = rand(Float64,D,M) .- 0.5
+  M = prod(N)
+  x = rand(Float64,D,M) .- 0.5
 
-    fHat = rand(Float64,M) + rand(Float64,M)*im
-    f = ndft_adjoint(x, N, fHat)
-    fApprox = nfft_adjoint(x, N, fHat)
-    e = norm(f[:] - fApprox[:]) / norm(f[:])
-    @debug "error adjoint nfft "  e
-    @test e < eps
+  fHat = rand(Float64,M) + rand(Float64,M)*im
+  f = ndft_adjoint(x, N, fHat)
+  fApprox = nfft_adjoint(x, N, fHat)
+  e = norm(f[:] - fApprox[:]) / norm(f[:])
+  @debug "error adjoint nfft "  e
+  @test e < eps
 
-    gHat = ndft(x, f)
-    gHatApprox = nfft(x, f)
-    e = norm(gHat[:] - gHatApprox[:]) / norm(gHat[:])
-    @debug "error nfft "  e
-    @test e < eps
+  gHat = ndft(x, f)
+  gHatApprox = nfft(x, f)
+  e = norm(gHat[:] - gHatApprox[:]) / norm(gHat[:])
+  @debug "error nfft "  e
+  @test e < eps
 
-    f = ndft_adjoint(x, N, ComplexF32.(fHat))
-    fApprox = nfft_adjoint(x, N, ComplexF32.(fHat))
-    e = norm(f[:] - fApprox[:]) / norm(f[:])
-    @debug "error adjoint nfft "  e
-    @test e < eps
+  f = ndft_adjoint(x, N, ComplexF32.(fHat))
+  fApprox = nfft_adjoint(x, N, ComplexF32.(fHat))
+  e = norm(f[:] - fApprox[:]) / norm(f[:])
+  @debug "error adjoint nfft "  e
+  @test e < eps
 
-    gHat = ndft(x, ComplexF32.(f))
-    gHatApprox = nfft(x, ComplexF32.(f))
-    e = norm(gHat[:] - gHatApprox[:]) / norm(gHat[:])
-    @debug "error nfft "  e
-    @test e < eps
+  gHat = ndft(x, ComplexF32.(f))
+  gHatApprox = nfft(x, ComplexF32.(f))
+  e = norm(gHat[:] - gHatApprox[:]) / norm(gHat[:])
+  @debug "error nfft "  e
+  @test e < eps
+end
+
+
+@testset "Linear Algebra NFFT " begin
+  @info "Linear Algebra NFFT"
+  N = (32,32)
+  eps =  1e-3
+  D = length(N)
+
+  M = prod(N)
+  x = rand(Float64,D,M) .- 0.5
+
+  fHat = rand(Float64,M) + rand(Float64,M)*im
+  f = ndft_adjoint(x, N, fHat)
+  p = plan_nfft(x, N)
+
+  fApprox = mul!(copy(f), adjoint(p), fHat)
+  e = norm(f[:] - fApprox[:]) / norm(f[:])
+  @test e < eps
+
+  fApprox = adjoint(p) * fHat
+  e = norm(f[:] - fApprox[:]) / norm(f[:])
+  @test e < eps
+
+  gHat = ndft(x, f)
+  gHatApprox = mul!(copy(fHat), p, f)
+  e = norm(gHat[:] - gHatApprox[:]) / norm(gHat[:])
+  @test e < eps
+
+  gHatApprox =  p * f
+  e = norm(gHat[:] - gHatApprox[:]) / norm(gHat[:])
+  @test e < eps
 end
 
 @testset "Abstract sampling points" begin
+  @info "Abstract sampling points"
     M, N = rand(100:2:200, 2)
     x = range(-0.4, stop=0.4, length=M)
     p = plan_nfft(x, N, fftflags = FFTW.ESTIMATE)

@@ -1,7 +1,7 @@
 # Overview
 
 
-## Standard
+## Getting Started
 
 Basic usage of NFFT.jl is shown in the following example for 1D:
 
@@ -86,6 +86,15 @@ f = nfft_adjoint(x, N, fHat)
 These forms are more forgiving about the types of the input arguments.
 The versions based on a plan are more optimized for repeated use with the same `x`
 
+## Parameters
+
+The NFFT has the following parameters that can be passed as a keyword argument to the 
+*
+*
+*
+
+## Precomputation
+
 
 ## Directional
 
@@ -145,3 +154,15 @@ fHat = nfft(P2, f)
 ```
 
 Now `size(fHat) = (16,11)`.
+
+### Multi-Threading
+
+The NFFT.jl cpu implementation has basic support for multi-threading. It is enabled by default
+and takes the number of threads the are passed to julia at startup. You can define the number of 
+Julia threads like this
+```
+  julia -t T
+```
+where `T` is the number of desired threads.
+
+TODO: FFTW

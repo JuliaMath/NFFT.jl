@@ -17,8 +17,9 @@ plan_nfft(Q::Type, x::AbstractVector, N::NTuple{D,Int}, rest...; kwargs...) wher
     plan_nfft(Q, collect(reshape(x,1,length(x))), N, rest...; kwargs...)
 
 
-
-
+##########################
+# Allocating nfft functions
+##########################
 
 """
 nfft(x, f::AbstractArray{T,D}, rest...; kwargs...)
@@ -77,3 +78,31 @@ function nfft_adjoint(p::AbstractNFFTPlan{T,D,R}, fHat::AbstractArray{U}, args..
     return f
 end
 
+##########################
+# Linear Algebra wrappers
+##########################
+
+Base.size(p::AbstractNFFTPlan) = (prod(size_out(p)), prod(size_in(p)))
+Base.size(p::Adjoint{Complex{T}, U}) where {T, U<:AbstractNFFTPlan{T}} = 
+  (prod(size_in(p.parent)), prod(size_out(p.parent)))
+
+LinearAlgebra.adjoint(p::AbstractNFFTPlan{T,D,R}) where {T,D,R} = 
+Adjoint{Complex{T}, typeof(p)}(p)
+
+LinearAlgebra.mul!(C::AbstractArray, A::AbstractNFFTPlan, B::AbstractArray; kargs...) =
+   nfft!(A, B, C; kargs...)
+
+LinearAlgebra.mul!(C::AbstractArray, A::Adjoint{Complex{T},U}, B::AbstractArray; kargs...) where {T, U<:AbstractNFFTPlan{T}} =
+   nfft_adjoint!(A.parent, B, C; kargs...)
+
+function Base.:*(A::AbstractNFFTPlan, B::AbstractArray; kargs...)
+   nfft(A, B; kargs...)
+end
+
+function Base.:*(A::Adjoint{Complex{T},<:AbstractNFFTPlan{T}}, B::AbstractVector{Complex{T}}; kargs...) where {T}
+  nfft_adjoint(A.parent, B; kargs...)
+end
+
+function Base.:*(A::Adjoint{Complex{T},<:AbstractNFFTPlan{T}}, B::AbstractArray{Complex{T},D}; kargs...) where {T, D}
+   nfft_adjoint(A.parent, B; kargs...)
+end

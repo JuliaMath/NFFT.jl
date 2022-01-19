@@ -57,7 +57,7 @@ Note that this will be the input array for `nfft_adjoint!`.
 @mustimplement size_out(p::AbstractNFFTPlan{T,D,R}) where {T,D,R}
 
 """
-    nodes!(p, x)
+    nodes!(p, x) -> p
 
 Change nodes `x` in the plan `p` operation and return the plan.
 """

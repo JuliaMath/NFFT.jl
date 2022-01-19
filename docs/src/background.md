@@ -5,11 +5,11 @@
 
 We next define the non-equidistant discrete Fourier transform (NDFT) that corresponds to the ordinary DFT. Let ``\bm{N} \in (2\mathbb{N})^d`` with ``d \in \mathbb{N}`` be the dimension of the ``d``-dimensional Fourier coefficients ``\hat{f}_{\bm{k}}, k \in I_{\bm{N}}``. It is defined on the index set
 ```math
-I_{\bm{N}} \coloneqq \{ \pmb{k} \in \mathbb{Z}^d: -\frac{N_i}{2} \leq \bm{k}_i \leq \frac{N_i}{2}-1, i=1,2,\ldots,d \}
+I_{\bm{N}} := \left\lbrace \pmb{k} \in \mathbb{Z}^d: -\frac{N_i}{2} \leq \bm{k}_i \leq \frac{N_i}{2}-1, i=1,2,\ldots,d \right\rbrace
 ```
 and thus represents the same data the would be considered for an ordinary DFT. The NDFT is now defined as
 ```math
-  	f(\bm{x}_j) \coloneqq \sum_{ \bm{k} \in I_{\bm{N}}^d} \hat{f}_{\bm{k}} \, \mathrm{e}^{-2\pi\mathrm{i}\,\bm{k}\cdot\bm{x}}
+  	f(\bm{x}_j) := \sum_{ \bm{k} \in I_{\bm{N}}} \hat{f}_{\bm{k}} \, \mathrm{e}^{-2\pi\mathrm{i}\,\bm{k}\cdot\bm{x}}
 ```
 where ``\bm{x}_j \in \mathbb{T}^d, j=1,\dots, M`` with ``M \in \mathbb{N}`` are the nonequidistant sampling nodes and ``\mathbb{T} := [1/2,1/2)`` is the torus and ``f`` is the ``d``-dimensional trigonometric polynomial associated with the Fourier coefficients ``\hat{f}_{\bm{k}}``.
 
@@ -70,10 +70,19 @@ The NFFT is based on the convolution theorem. It applies a convolution in the ti
 
 Implementation-wise, the matrix-vector notation illustrates that the NFFT consists of three independent steps that are performed successively. 
 * The multiplication with ``\bm{D}`` is a scalar multiplication with the input-vector plus the shifting of data, which can be done inplace.
-* The FFT is done with a high-performance FFT library such as the FFTW
+* The FFT is done with a high-performance FFT library such as the FFTW.
 * The multiplication with ``\bm{B}`` needs to run only over a subset of the indices and is the most challenging step.
-Since in practice tha multiplication with ``\bm{B}`` is also the most expansive step, an NFFT library needs to pay special attention to optimizing it appropriately.
+Since in practice the multiplication with ``\bm{B}`` is also the most expansive step, an NFFT library needs to pay special attention to optimizing it appropriately.
 
 ## Directional NFFT
 
-In many cases one not just needs to apply a single NFFT but needs to apply many on different data. This leads us to the directional NFFT. 
+In many cases one not just needs to apply a single NFFT but needs to apply many on different data. This leads us to the directional NFFT. The directional NFFT is defined as
+
+```math
+  	f_{\bm{l},j,\bm{r}} := \sum_{ \bm{k} \in I_{\bm{N}_\text{sub}}} \hat{f}_{\bm{l},\bm{k},\bm{r}} \, \mathrm{e}^{-2\pi\mathrm{i}\,\bm{k}\cdot\bm{x}}
+```
+
+where now ``(\bm{l}, \bm{k}, \bm{r}) \in I_\mathbf{N}`` and ``\bm{N}_\text{sub}`` is a subset of ``\bm{N}``. The transform thus maps a ``D``-dimensional tensor ``\hat{f}_{\bm{l},\bm{k},\bm{r}}`` to an ``R``-dimensional tensor ``f_{\bm{l},j,\bm{r}}``. ``\bm{N}_\text{sub}`` is thus a vector of length ``D-R+1`` The indices ``\bm{l}`` and ``\bm{r}`` can also have length zero. Thus, for ``R=1``, the conventional NFFT arises as a special case of the directional.
+
+!!! note
+    The directional NFFT can also be considered to be a slicing of a tensor with subsequent application of a regular NFFT. But the aforementioned formulation can be used to implement a much more efficient algorithm than can be achieved with slicing.
