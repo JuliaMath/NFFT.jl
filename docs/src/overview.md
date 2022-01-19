@@ -88,13 +88,52 @@ The versions based on a plan are more optimized for repeated use with the same `
 
 ## Parameters
 
-The NFFT has the following parameters that can be passed as a keyword argument to the 
-*
-*
-*
+The NFFT has the following parameters that can be passed as a keyword argument to the constructor 
+
+| Parameter                          | Description      | Example Values        |
+| :--------------------------------- | :--------------- | :------------------ |
+| `m`      | Kernel size. The convolution matrix has `2m+1` non-zero entries around each sampling node in each dimension.  |  `m` $\in \{2,\dots,8\}$      |
+| `σ`     | Oversampling factor. The inner FFT is of size `σN` | `σ` $\in [1.25, 2.0]$      |
+| `window`   | Convolution window: Available are `:gauss`,  `:spline`, `:kaiser_bessel_rev`, `:kaiser_bessel`.    | `:kaiser_bessel` |
+| `precompute`        | Flag indicating the precomputation strategy for the convolution matrix         | `LUT`      |
+| `sortNodes`        | Flag if the nodes should be sorted in a lexicographic way         | `false`      |
+| `storeApodizationIdx`        | Flag if the apodization indices should be stored. Currently this option is necessary on the GPU       | `false`      |
+| `LUTSize`        | Size of the look up table when using `precompute == NFFT.LUT`     | `20000`      |
+| `fftflags`        | flags passed to the inner `AbstractFFT` as `flags`. This can for instance be `FFTW.MEASURE` in order to optimize the inner FFT    | `FFTW.ESTIMATE`      |
+
+In practice you can use for most of the values the default values. If you want to maximize speed you can set `σ=1.25, m=3`. If you need machine precision accuracy use  `σ=2.0, m=8`. 
 
 ## Precomputation
 
+There are different pre-computation strategies available. Again you don't need to change this if you satisfied with the default speed. The reason to have some sort of precomputation is that the NFFT is much slower if the window function is evaluated on demand.
+
+| Value                          | Description      | 
+| :--------------------------------- | :--------------- | 
+| `NFFT.LUT`      | This option uses a look-up table to first sample the window function and later use linear interpolation during the actual convolution. `LUTSize` controls the size of the look-up table. We don't have error estimates but a value of 20,000 is in practice large enough.  |  
+| `NFFT.FULL`      | This option precomputes the entire convolution matrix and stores it as a `SparseMatrixCSC`. This option requires more memory an requires the most precomputation time. However, the transformation itself has maximum performance. In addition it is easy to perform the NFFT on the GPU with this option, see CuNFFT.  | 
+| `NFFT.TENSOR`      | This option calculates the window on demand but exploits the tensor structure for multi-dimensional plans. Hence, this option makes no approximation but reaches a similar performance as `NFFT.LUT`. This option is right now only available in the NFFT3 backend.  | 
+
+## Multi-Threading
+
+Most parts of NFFT are multi-threaded when running on the CPU. To this end, start Julia with the option
+```
+julia -t T
+```
+where `T` it the number of desired threads. NFFT.jl will use all threads that are specified. You can dynamically switch off multi-threading by calling the internal function
+```
+  NFFT._use_threads[] = false
+```
+Currently, the number of threads used for the FFTW is not changed, i.e. you likely want to set
+```
+  FFTW.set_num_threads(Threads.nthreads())
+```
+The following operations are currently multi-threaded:
+ * precomputation
+ * apodization and its adjoint
+ * FFT (using FFTW)
+ * convolution
+
+ What is currently missing is a multi-threaded version of the adjoint convolution, which is challenging to implement efficiently (needs blocking techniques). When using the `precompute = FULL` operation one could potentially exploit a sparse matrix library that supports blocking.
 
 ## Directional
 
@@ -154,15 +193,3 @@ fHat = nfft(P2, f)
 ```
 
 Now `size(fHat) = (16,11)`.
-
-### Multi-Threading
-
-The NFFT.jl cpu implementation has basic support for multi-threading. It is enabled by default
-and takes the number of threads the are passed to julia at startup. You can define the number of 
-Julia threads like this
-```
-  julia -t T
-```
-where `T` is the number of desired threads.
-
-TODO: FFTW

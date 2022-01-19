@@ -25,7 +25,6 @@ makedocs(;
         "Background" => "background.md",
         "Overview" => "overview.md",
         "AbstractNFFTs" => "abstract.md",
-        "Backends" => "backends.md",
         "Tools" => "tools.md",
         "Performance" => "performance.md",
         "Implementation" => "implementation.md",
