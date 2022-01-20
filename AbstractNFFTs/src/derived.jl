@@ -82,6 +82,7 @@ end
 # Linear Algebra wrappers
 ##########################
 
+Base.eltype(p::AbstractNFFTPlan{T}) where T = Complex{T}
 Base.size(p::AbstractNFFTPlan) = (prod(size_out(p)), prod(size_in(p)))
 Base.size(p::Adjoint{Complex{T}, U}) where {T, U<:AbstractNFFTPlan{T}} = 
   (prod(size_in(p.parent)), prod(size_out(p.parent)))
