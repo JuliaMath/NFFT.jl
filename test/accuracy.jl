@@ -195,7 +195,7 @@ end
   end
 end
 
-include("NFFT3.jl")
+include("../NFFT3/NFFT3.jl")
 
 @testset "NFFT3 Wrapper in multiple dimensions" begin
   for (u,N) in enumerate([(256,), (30,32), (10,12,14), (6,6,6,6)])

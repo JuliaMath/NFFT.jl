@@ -85,7 +85,7 @@ end
 
 ### Threaded sparse matrix vector multiplications ###
 
-
+# not yet threaded ...
 function threaded_mul!(y::AbstractVector, A::SparseMatrixCSC{Tv}, x::AbstractVector) where {Tv}
   nzv = nonzeros(A)
   rv = rowvals(A)
@@ -106,22 +106,23 @@ end
   return
 end
 
-function threaded_mul!(y::AbstractVector, B::Transpose{Tv,S}, x::AbstractVector) where {Tv,S<:SparseMatrixCSC}
-  A = B.parent
-  nzv = nonzeros(A)
-  rv = rowvals(A)
+# threaded
+for (T, t) in ((Adjoint, adjoint), (Transpose, transpose))
+  @eval function threaded_mul!(C, xA::$T{<:Any,<:SparseMatrixCSC}, B)
+      A = xA.parent
+      size(A, 2) == size(C, 1) || throw(DimensionMismatch())
+      size(A, 1) == size(B, 1) || throw(DimensionMismatch())
+      size(B, 2) == size(C, 2) || throw(DimensionMismatch())
+      nzv = nonzeros(A)
+      rv = rowvals(A)
 
-  @cthreads for col in 1:size(A, 2)
-       _threaded_tmul!(y, A, x, nzv, rv, col)
+      @cthreads for col in 1:size(A, 2)
+          tmp = zero(eltype(C))
+          for j in nzrange(A, col)
+              tmp += $t(nzv[j])*B[rv[j]]
+          end
+          C[col] = tmp 
+      end
+      C
   end
-   y
-end
-
-@inline function _threaded_tmul!(y, A::SparseMatrixCSC{Tv}, x, nzv, rv, col) where {Tv}
-  tmp = zero(Tv)
-  @inbounds @simd for j in nzrange(A, col)
-      tmp += nzv[j]*x[rv[j]] 
-  end
-  y[col] = tmp
-  return
 end

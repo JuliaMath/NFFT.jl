@@ -11,7 +11,7 @@ end
 function NFFT3Plan(x::Matrix{T}, N::NTuple{D,Int}; m = 4, σ = 2.0,
               dims::Union{Integer,UnitRange{Int64}}=1:D,
               precompute::PrecomputeFlags=LUT, sortNodes=false, 
-              flags=UInt32(NFFT3.FFTW_ESTIMATE | NFFT3.FFTW_DESTROY_INPUT), 
+              fftflags=UInt32(NFFT3.FFTW_ESTIMATE), 
               kwargs...) where {D,T}
 
   if dims != 1:D
@@ -41,7 +41,7 @@ function NFFT3Plan(x::Matrix{T}, N::NTuple{D,Int}; m = 4, σ = 2.0,
     NFFT3.NFCT_OMP_BLOCKWISE_ADJOINT
      )
 
-  f2 = UInt32(flags)
+  f2 = UInt32(fftflags | NFFT3.FFTW_DESTROY_INPUT)
 
   n = ntuple(d -> (ceil(Int,σ*N[d])÷2)*2, D) # ensure that n is an even integer 
   σ = n[1] / N[1]
