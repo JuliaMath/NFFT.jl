@@ -1,10 +1,10 @@
 using NFFT, DataFrames, LinearAlgebra, LaTeXStrings, DelimitedFiles
 using BenchmarkTools
-using Plots, StatsPlots 
+using Plots, StatsPlots, CategoricalArrays
 pgfplotsx()
 #gr()
 
-BenchmarkTools.DEFAULT_PARAMETERS.seconds = 2
+BenchmarkTools.DEFAULT_PARAMETERS.seconds = 5
 
 include("../NFFT3/NFFT3.jl")
 
@@ -42,6 +42,8 @@ function nfft_performance_comparison(m = 6, σ = 2.0)
         T = Float64
 
         x = T.(rand(T,D,M) .- 0.5)
+        x .= sortslices(x, dims=2) # sort nodes to gain cache locality
+        
         fHat = randn(Complex{T}, M)
         fApprox = randn(Complex{T}, NN)
 
@@ -70,7 +72,7 @@ end
 
 
 
-function plot_performance_2(df; pre = "FULL")
+function plot_performance(df; pre = "FULL")
 
   Plots.scalefontsizes()
   Plots.scalefontsizes(1.5)
@@ -85,20 +87,26 @@ function plot_performance_2(df; pre = "FULL")
       tadjoint[j,i] = df[df.Threads .== th .&& df.Package.==p .&& df.Pre.==pre,:TimeAdjoint][1]
     end
   end
-  labels = ["Pre", "NFFT", L"\textrm{NFFT}^H"]
-
-  nam = repeat( "t = " .* string.(threads) , outer = 2)
   
-  p1 = groupedbar(nam, tpre, ylabel = "time / s",  #group = ctg,
+  labelsA = ["NFFT.jl", "NFFT3"]
+  labelsB = "t = " .* string.(threads) 
+
+  
+  ctg = CategoricalArray(repeat(labelsA, inner = length(threads)))
+  levels!(ctg, labelsA)
+  name = CategoricalArray(repeat(labelsB, outer = 2))
+  levels!(name, labelsB)
+  
+  p1 = groupedbar(name, tpre, ylabel = "time / s",  group = ctg,
           bar_width = 0.67,
           lw = 0, framestyle = :box, size=(800,600), title = L"\textrm{Precompute}")
 
-  p2 = groupedbar(nam, ttrafo, ylabel = "time / s",  #group = ctg,
-          bar_width = 0.67,
+  p2 = groupedbar(name, ttrafo, ylabel = "time / s",  group = ctg,
+          bar_width = 0.67, legend = :none,
           lw = 0, framestyle = :box, size=(800,600), title = L"\textrm{NFFT}")
 
-  p3 = groupedbar(nam, tadjoint, ylabel = "time / s",  #group = ctg,
-          bar_width = 0.67,
+  p3 = groupedbar(name, tadjoint, ylabel = "time / s",  group = ctg,
+          bar_width = 0.67, legend = :none,
           lw = 0, framestyle = :box, size=(800,600), title = L"\textrm{NFFT}^H")
   
   p = plot(p1, p2, p3, layout=(3,1), size=(800,600), dpi=200)
@@ -133,6 +141,6 @@ else
   df = DataFrame(data, vec(header))
   delete!(ENV, "NFFT_PERF_THREADING")
 
-  plot_performance_2(df, "LUT")
-  plot_performance_2(df, "FULL")  
+  plot_performance(df, pre="LUT")
+  plot_performance(df, pre="FULL")  
 end
