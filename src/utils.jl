@@ -72,7 +72,7 @@ function _nloops_(N::Int, itersym, rangeexpr::Expr, args::Expr...)
   ex
 end
 
-### consistancy check
+### consistency check
 
 @generated function consistencyCheck(p::AbstractNFFTPlan{T,D,R}, f::AbstractArray{U,D},
                                      fHat::AbstractArray{Y}) where {T,D,R,U,Y}
