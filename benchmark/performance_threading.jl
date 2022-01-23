@@ -4,24 +4,22 @@ using Plots, StatsPlots
 pgfplotsx()
 #gr()
 
-BenchmarkTools.DEFAULT_PARAMETERS.seconds = 1
+BenchmarkTools.DEFAULT_PARAMETERS.seconds = 2
 
 include("../NFFT3/NFFT3.jl")
 
 
 const LUTSize = 20000
 
-threads = [1,2,4]
+threads = [1,2,4,8,16]
 
 NFFT.FFTW.set_num_threads(Threads.nthreads())
 ccall(("omp_set_num_threads",NFFT3.lib_path_nfft),Nothing,(Int64,),convert(Int64,Threads.nthreads()))
 @info ccall(("nfft_get_num_threads",NFFT3.lib_path_nfft),Int64,())
-if Threads.nthreads() == 1
-  NFFT._use_threads[] = false
-end
+NFFT._use_threads[] = (Threads.nthreads() > 1)
 
 function nfft_performance_comparison(m = 6, σ = 2.0)
-  println("\n\n ##### nfft_performance_comparison ##### \n\n")
+  println("\n\n ##### nfft_performance_threading ##### \n\n")
 
   df = DataFrame(Package=String[], Threads=Int[], D=Int[], M=Int[], N=Int[], 
                    Undersampled=Bool[], Pre=String[], m = Int[], σ=Float64[],
@@ -35,7 +33,7 @@ function nfft_performance_comparison(m = 6, σ = 2.0)
   for D = 2:2
     for U = 4:4
       NN = ntuple(d->N[D][U], D)
-      M = prod(NN) ÷ 10 #*2 #÷ 10
+      M = prod(NN)  #*2 #÷ 10
 
       for pre = 2:2
 

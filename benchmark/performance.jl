@@ -68,8 +68,8 @@ function nfft_performance_comparison(m = 6, σ = 2.0)
   return df
 end
 
-df = nfft_performance_comparison(4, 2.0)
-writedlm("performance.csv", Iterators.flatten(([names(df)], eachrow(df))), ',')
+#df = nfft_performance_comparison(4, 2.0)
+#writedlm("performance.csv", Iterators.flatten(([names(df)], eachrow(df))), ',')
 
 data, header = readdlm("performance.csv", ',', header=true);
 df = DataFrame(data, vec(header))

@@ -191,8 +191,8 @@ function precompWindowHatInvLUT(p::NFFTParams{T}, N, n, windowHatInvLUT_) where 
   return vec(windowHatInvLUT), vec(apodIdx)
 end
 
-@generated function precompWindowHatInvLUT(p::NFFTParams{T}, windowHatInvLUT::Array{Complex{T},D}, 
-           apodIdx::Array{Int,D}, N, n, windowHatInvLUT_, o) where {D,T}
+@generated function precompWindowHatInvLUT(p::NFFTParams{T}, windowHatInvLUT::AbstractArray{Complex{T},D}, 
+           apodIdx::AbstractArray{Int,D}, N, n, windowHatInvLUT_, o) where {D,T}
   quote
     linIdx = LinearIndices(n)
 

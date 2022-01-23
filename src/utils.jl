@@ -3,7 +3,8 @@ const _use_threads = Ref(false)
 macro cthreads(loop::Expr) 
   return esc(quote
       if NFFT._use_threads[]
-          @batch per=thread $loop
+          Threads.@threads $loop 
+          # @batch per=thread $loop
       else
           @inbounds $loop
       end
@@ -107,8 +108,7 @@ end
 end
 
 # threaded
-for (T, t) in ((Adjoint, adjoint), (Transpose, transpose))
-  @eval function threaded_mul!(C, xA::$T{<:Any,<:SparseMatrixCSC}, B)
+function threaded_mul!(C, xA::Transpose{<:Any,<:SparseMatrixCSC}, B)
       A = xA.parent
       size(A, 2) == size(C, 1) || throw(DimensionMismatch())
       size(A, 1) == size(B, 1) || throw(DimensionMismatch())
@@ -117,12 +117,19 @@ for (T, t) in ((Adjoint, adjoint), (Transpose, transpose))
       rv = rowvals(A)
 
       @cthreads for col in 1:size(A, 2)
-          tmp = zero(eltype(C))
-          for j in nzrange(A, col)
-              tmp += $t(nzv[j])*B[rv[j]]
-          end
-          C[col] = tmp 
+          _threaded_tmul!(C, A, B, nzv, rv, col)
       end
       C
-  end
 end
+
+
+function _threaded_tmul!(C, A, B, nzv, rv, col)
+  tmp = zero(eltype(C))
+  @inbounds for j in nzrange(A, col)
+      tmp += transpose(nzv[j])*B[rv[j]]
+  end
+  C[col] = tmp 
+  return
+end
+
+

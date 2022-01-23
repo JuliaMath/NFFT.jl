@@ -18,6 +18,7 @@ function apodization_alloc_free!(p::NFFTPlan{T,D,1}, f::AbstractArray{U,D}, g::S
         _apodization_alloc_free!(p, f, g, o)  
     end
   end
+  return
 end
 
 @generated function _apodization_alloc_free!(p::NFFTPlan{T,D,1}, f::AbstractArray{U,D}, g::StridedArray{Complex{T},D}, o) where {D,T,U}
@@ -40,6 +41,7 @@ end
         g[i, CartesianIndex(@ntuple $(D-1) gidx)] = v
       end
     end
+    return
   end
 end
 
@@ -63,6 +65,7 @@ function apodization_adjoint_alloc_free!(p::NFFTPlan{T,D,1}, g::AbstractArray{Co
       _apodization_adjoint_alloc_free!(p, g, f, o)  
     end
   end
+  return
 end
 
 @generated function _apodization_adjoint_alloc_free!(p::NFFTPlan{T,D,1}, g::AbstractArray{Complex{T},D}, f::StridedArray{U,D}, o) where {D,T,U}
@@ -85,6 +88,7 @@ end
         f[i+N2, CartesianIndex(@ntuple $(D-1) l)] = v
       end
     end
+    return
   end
 end
 
