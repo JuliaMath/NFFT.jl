@@ -32,4 +32,4 @@ makedocs(;
     ]
 )
 
-deploydocs(repo   = "github.com/tknopp/NFFT.jl.git")
+deploydocs(repo   = "github.com/JuliaMath/NFFT.jl.git")
