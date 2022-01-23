@@ -4,7 +4,7 @@ macro cthreads(loop::Expr)
   return esc(quote
       if NFFT._use_threads[]
           Threads.@threads $loop 
-          # @batch per=thread $loop
+          #@batch per=thread $loop
       else
           @inbounds $loop
       end
