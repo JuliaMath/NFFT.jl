@@ -1,6 +1,6 @@
 using NFFT, DataFrames, LinearAlgebra, LaTeXStrings, DelimitedFiles
 using BenchmarkTools
-using Plots, StatsPlots 
+using Plots, StatsPlots, CategoricalArrays
 pgfplotsx()
 #gr()
 
@@ -33,7 +33,7 @@ function nfft_performance_comparison(m = 6, σ = 2.0)
   for D = 2:2
     for U = 4:4
       NN = ntuple(d->N[D][U], D)
-      M = prod(NN) ÷ 10 #*2 #
+      M = prod(NN) ÷ 8
 
       for pre = 1:2
 
@@ -68,8 +68,8 @@ function nfft_performance_comparison(m = 6, σ = 2.0)
   return df
 end
 
-#df = nfft_performance_comparison(4, 2.0)
-#writedlm("performance.csv", Iterators.flatten(([names(df)], eachrow(df))), ',')
+df = nfft_performance_comparison(4, 2.0)
+writedlm("performance.csv", Iterators.flatten(([names(df)], eachrow(df))), ',')
 
 data, header = readdlm("performance.csv", ',', header=true);
 df = DataFrame(data, vec(header))
@@ -79,25 +79,42 @@ function plot_performance_1(df)
   Plots.scalefontsizes()
   Plots.scalefontsizes(1.5)
 
-  t = zeros(4,3)
-  for (i,p) in enumerate(["NFFT.jl", "NFFT3"])
-    for (j,pre) in enumerate(["LUT", "FULL"])
-      t[2*(j-1)+i,1] = df[df.Package.==p .&& df.Pre.==pre,:TimePre][1]
-      t[2*(j-1)+i,2] = df[df.Package.==p .&& df.Pre.==pre,:TimeTrafo][1]
-      t[2*(j-1)+i,3] = df[df.Package.==p .&& df.Pre.==pre,:TimeAdjoint][1]
-    end
+  tNFFTjl = zeros(2,3)
+  tNFFT3 = zeros(2,3)
+
+  for (j,pre) in enumerate(["LUT", "FULL"])
+    tNFFTjl[j,1] = df[df.Package.=="NFFT.jl" .&& df.Pre.==pre,:TimePre][1]
+    tNFFTjl[j,2] = df[df.Package.=="NFFT.jl" .&& df.Pre.==pre,:TimeTrafo][1]
+    tNFFTjl[j,3] = df[df.Package.=="NFFT.jl" .&& df.Pre.==pre,:TimeAdjoint][1]
+    
+    tNFFT3[j,1] = df[df.Package.=="NFFT3" .&& df.Pre.==pre,:TimePre][1]
+    tNFFT3[j,2] = df[df.Package.=="NFFT3" .&& df.Pre.==pre,:TimeTrafo][1]
+    tNFFT3[j,3] = df[df.Package.=="NFFT3" .&& df.Pre.==pre,:TimeAdjoint][1]
   end
-  labels = ["Pre", "NFFT", L"\textrm{NFFT}^H"]
+   
+  labelsA = ["Precompute", "NFFT", "adjoint NFFT"]
+  labelsB = [L"\textrm{LUT}", L"\textrm{FULL}"]
 
-  ctg = repeat(["Pre", "NFFT", L"\textrm{NFFT}^H"], inner = 4)
-  nam = repeat( [L"\textrm{NFFT.jl / LUT}", L"\textrm{NFFT3 / LUT}", 
-                 L"\textrm{NFFT.jl / FULL}", L"\textrm{NFFT3 / FULL}"] , outer = 3)
   
-  groupedbar(nam, t, ylabel = "time / s",  #group = ctg,
-          bar_width = 0.67,
-          lw = 0, framestyle = :box, size=(800,600))
+  ctg = CategoricalArray(repeat(labelsA, inner = 2))
+  levels!(ctg, labelsA)
+  name = CategoricalArray(repeat(labelsB, outer = 3))
+  levels!(name, labelsB)
   
-
+  tmax = max(maximum(tNFFTjl),maximum(tNFFT3))
+  
+  p1 = groupedbar(name, tNFFTjl, ylabel = "time / s",  group = ctg,
+          bar_width = 0.67, title = "NFFT.jl", legend = :none,
+          lw = 0,  size=(800,600), framestyle = :box, ylim=(0,tmax))
+          
+  p2 = groupedbar(name, tNFFT3, ylabel = "time / s",  group = ctg,
+          bar_width = 0.67, title = "NFFT3",
+          lw = 0,  size=(800,600), framestyle = :box, ylim=(0,tmax))
+  
+  p = plot(p1, p2, layout=(1,2), size=(800,600), dpi=200)
+  
+  savefig(p, "../docs/src/assets/performance_serial.svg")
+  return p
 end
 
 plot_performance_1(df)

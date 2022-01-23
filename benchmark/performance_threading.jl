@@ -33,9 +33,9 @@ function nfft_performance_comparison(m = 6, σ = 2.0)
   for D = 2:2
     for U = 4:4
       NN = ntuple(d->N[D][U], D)
-      M = prod(NN)  #*2 #÷ 10
+      M = prod(NN) ÷ 8
 
-      for pre = 2:2
+      for pre = 1:2
 
         @info D, NN, M, pre
         
@@ -91,7 +91,7 @@ function plot_performance_2(df; pre = "FULL")
   
   p1 = groupedbar(nam, tpre, ylabel = "time / s",  #group = ctg,
           bar_width = 0.67,
-          lw = 0, framestyle = :box, size=(800,600), title = L"\textrm{Pre}")
+          lw = 0, framestyle = :box, size=(800,600), title = L"\textrm{Precompute}")
 
   p2 = groupedbar(nam, ttrafo, ylabel = "time / s",  #group = ctg,
           bar_width = 0.67,
@@ -103,8 +103,8 @@ function plot_performance_2(df; pre = "FULL")
   
   p = plot(p1, p2, p3, layout=(3,1), size=(800,600), dpi=200)
 
-  # savefig(p, "../docs/src/assets/accuracy_D$(D).svg")
-
+  savefig(p, "../docs/src/assets/performance_mt_$(pre).svg")
+  return p
 end
 
 ### run the code ###
@@ -133,5 +133,6 @@ else
   df = DataFrame(data, vec(header))
   delete!(ENV, "NFFT_PERF_THREADING")
 
-  plot_performance_2(df)
+  plot_performance_2(df, "LUT")
+  plot_performance_2(df, "FULL")  
 end

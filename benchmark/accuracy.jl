@@ -80,6 +80,7 @@ function plot_accuracy(df, D=1)
   p = plot(p1, p2, layout=(1,2), size=(800,300), dpi=200)
 
   savefig(p, "../docs/src/assets/accuracy_D$(D).svg")
+  return p
 end
 
 
