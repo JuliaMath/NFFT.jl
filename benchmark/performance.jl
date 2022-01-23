@@ -4,7 +4,7 @@ using Plots, StatsPlots, CategoricalArrays
 pgfplotsx()
 #gr()
 
-BenchmarkTools.DEFAULT_PARAMETERS.seconds = 5
+BenchmarkTools.DEFAULT_PARAMETERS.seconds = 10
 
 include("../NFFT3/NFFT3.jl")
 
@@ -33,7 +33,7 @@ function nfft_performance_comparison(m = 6, σ = 2.0)
   for D = 2:2
     for U = 4:4
       NN = ntuple(d->N[D][U], D)
-      M = prod(NN) ÷ 8
+      M = prod(NN) #÷ 8
 
       for pre = 1:2
 
@@ -42,6 +42,7 @@ function nfft_performance_comparison(m = 6, σ = 2.0)
         T = Float64
 
         x = T.(rand(T,D,M) .- 0.5)
+        x .= sortslices(x, dims=2) # sort nodes to gain cache locality
         fHat = randn(Complex{T}, M)
         fApprox = randn(Complex{T}, NN)
 
