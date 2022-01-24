@@ -1,6 +1,6 @@
 ########## apodization ##########
 
-function apodization!(p::NFFTPlan{T,D,1}, f::AbstractArray{U,D}, g::StridedArray{Complex{T},D}) where {D,T,U}
+function AbstractNFFTs.apodization!(p::NFFTPlan{T,D,1}, f::AbstractArray{U,D}, g::StridedArray{Complex{T},D}) where {D,T,U}
   if !p.params.storeApodizationIdx
     apodization_alloc_free!(p, f, g)
   else
@@ -18,7 +18,6 @@ function apodization_alloc_free!(p::NFFTPlan{T,D,1}, f::AbstractArray{U,D}, g::S
         _apodization_alloc_free!(p, f, g, o)  
     end
   end
-  return
 end
 
 @generated function _apodization_alloc_free!(p::NFFTPlan{T,D,1}, f::AbstractArray{U,D}, g::StridedArray{Complex{T},D}, o) where {D,T,U}
@@ -41,13 +40,12 @@ end
         g[i, CartesianIndex(@ntuple $(D-1) gidx)] = v
       end
     end
-    return
   end
 end
 
 ########## apodization adjoint ##########
 
-function apodization_adjoint!(p::NFFTPlan{T,D,1}, g::AbstractArray{Complex{T},D}, f::StridedArray{U,D}) where {D,T,U}
+function AbstractNFFTs.apodization_adjoint!(p::NFFTPlan{T,D,1}, g::AbstractArray{Complex{T},D}, f::StridedArray{U,D}) where {D,T,U}
   if !p.params.storeApodizationIdx
     apodization_adjoint_alloc_free!(p, g, f)
   else
@@ -65,7 +63,6 @@ function apodization_adjoint_alloc_free!(p::NFFTPlan{T,D,1}, g::AbstractArray{Co
       _apodization_adjoint_alloc_free!(p, g, f, o)  
     end
   end
-  return
 end
 
 @generated function _apodization_adjoint_alloc_free!(p::NFFTPlan{T,D,1}, g::AbstractArray{Complex{T},D}, f::StridedArray{U,D}, o) where {D,T,U}
@@ -88,13 +85,12 @@ end
         f[i+N2, CartesianIndex(@ntuple $(D-1) l)] = v
       end
     end
-    return
   end
 end
 
 ########## convolve ##########
 
-function convolve!(p::NFFTPlan{T,D,1}, g::AbstractArray{Complex{T},D}, fHat::StridedVector{U}) where {D,T,U}
+function AbstractNFFTs.convolve!(p::NFFTPlan{T,D,1}, g::AbstractArray{Complex{T},D}, fHat::StridedVector{U}) where {D,T,U}
   if isempty(p.B)
     convolve_LUT!(p, g, fHat)
   else
@@ -141,7 +137,7 @@ end
 
 ########## convolve adjoint ##########
 
-function convolve_adjoint!(p::NFFTPlan{T,D,1}, fHat::AbstractVector{U}, g::StridedArray{Complex{T},D}) where {D,T,U}
+function AbstractNFFTs.convolve_adjoint!(p::NFFTPlan{T,D,1}, fHat::AbstractVector{U}, g::StridedArray{Complex{T},D}) where {D,T,U}
   if isempty(p.B)
     #if NFFT._use_threads[]
     #  convolve_adjoint_LUT_MT!(p, fHat, g)

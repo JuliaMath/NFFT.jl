@@ -9,8 +9,8 @@ Nx = 32
 ## calculateToeplitzKernel vs calculateToeplitzKernel_explicit (2D, Float64)
 for Nx ∈ [32, 33, 64]
     trj = rand(2, 1000) .- 0.5
-    Kx = NFFT.calculateToeplitzKernel_explicit((Nx, Nx), trj)
-    Ka = NFFT.calculateToeplitzKernel((Nx, Nx), trj, m=4, σ=2)
+    Kx = NFFTTools.calculateToeplitzKernel_explicit((Nx, Nx), trj)
+    Ka = calculateToeplitzKernel((Nx, Nx), trj, m=4, σ=2)
 
     @test typeof(Kx) === Matrix{ComplexF64}
     @test typeof(Ka) === Matrix{ComplexF64}
@@ -20,12 +20,12 @@ end
 ## calculateToeplitzKernel with less-allocating constructor vs calculateToeplitzKernel_explicit (2D, Float64)
 for Nx ∈ [32, 33, 64]
     trj = rand(2, 1000) .- 0.5
-    Kx = NFFT.calculateToeplitzKernel_explicit((Nx, Nx), trj)
+    Kx = NFFTTools.calculateToeplitzKernel_explicit((Nx, Nx), trj)
 
-    p = NFFT.NFFTPlan(trj, (2Nx, 2Nx))
+    p = NFFTPlan(trj, (2Nx, 2Nx))
     Ka = similar(Kx)
     fftplan = plan_fft(Ka; flags = FFTW.ESTIMATE)
-    NFFT.calculateToeplitzKernel!(Ka, p, trj, fftplan)
+    calculateToeplitzKernel!(Ka, p, trj, fftplan)
 
     @test typeof(Kx) === Matrix{ComplexF64}
     @test typeof(Ka) === Matrix{ComplexF64}
@@ -35,8 +35,8 @@ end
 ## calculateToeplitzKernel vs calculateToeplitzKernel_explicit (2D, Float32)
 Nx = 32
 trj = Float32.(rand(2, 10000) .- 0.5)
-Kx = NFFT.calculateToeplitzKernel_explicit((Nx, Nx), trj)
-Ka = NFFT.calculateToeplitzKernel((Nx, Nx), trj, m=4, σ=2)
+Kx = NFFTTools.calculateToeplitzKernel_explicit((Nx, Nx), trj)
+Ka = calculateToeplitzKernel((Nx, Nx), trj, m=4, σ=2)
 
 @test typeof(Kx) === Matrix{ComplexF32}
 @test typeof(Ka) === Matrix{ComplexF32}
@@ -53,19 +53,19 @@ xOS2 = similar(Ka)
 FFTW.set_num_threads(1)
 fftplan = plan_fft(xOS1; flags = FFTW.MEASURE)
 ifftplan = plan_ifft(xOS1; flags = FFTW.MEASURE)
-NFFT.convolveToeplitzKernel!(x, Ka, fftplan, ifftplan, xOS1, xOS2)
+convolveToeplitzKernel!(x, Ka, fftplan, ifftplan, xOS1, xOS2)
 @test x ≈ xN rtol = 1e-5
 
 ## test that convolveToeplitzKernel! with all arguments is non-allocating (only true with FFTW.set_num_threads(1))
-bm = @benchmark NFFT.convolveToeplitzKernel!($x, $Ka, $fftplan, $ifftplan, $xOS1, $xOS2)
+bm = @benchmark convolveToeplitzKernel!($x, $Ka, $fftplan, $ifftplan, $xOS1, $xOS2)
 @test bm.allocs == 0
 
 ## calculateToeplitzKernel vs calculateToeplitzKernel_explicit  (2D-rectangular, Float32)
 Nx = 32
 Ny = 33
 trj = Float32.(rand(2, 1000) .- 0.5)
-Kx = NFFT.calculateToeplitzKernel_explicit((Nx, Ny), trj)
-Ka = NFFT.calculateToeplitzKernel((Nx, Ny), trj, m=4, σ=2)
+Kx = NFFTTools.calculateToeplitzKernel_explicit((Nx, Ny), trj)
+Ka = calculateToeplitzKernel((Nx, Ny), trj, m=4, σ=2)
 
 @test typeof(Kx) === Matrix{ComplexF32}
 @test typeof(Ka) === Matrix{ComplexF32}
@@ -75,8 +75,8 @@ Ka = NFFT.calculateToeplitzKernel((Nx, Ny), trj, m=4, σ=2)
 ## calculateToeplitzKernel vs calculateToeplitzKernel_explicit 3D, Float32
 Nx = 32
 trj = Float32.(rand(3, 1000) .- 0.5)
-Kx = NFFT.calculateToeplitzKernel_explicit((Nx, Nx, Nx), trj)
-Ka = NFFT.calculateToeplitzKernel((Nx, Nx, Nx), trj, m=4, σ=2)
+Kx = NFFTTools.calculateToeplitzKernel_explicit((Nx, Nx, Nx), trj)
+Ka = calculateToeplitzKernel((Nx, Nx, Nx), trj, m=4, σ=2)
 
 @test typeof(Kx) === Array{ComplexF32,3}
 @test typeof(Ka) === Array{ComplexF32,3}

@@ -11,13 +11,11 @@ import Base.size
 using Reexport
 
 @reexport using AbstractNFFTs
-import AbstractNFFTs.PrecomputeFlags, AbstractNFFTs.LUT, AbstractNFFTs.FULL, AbstractNFFTs.FULL_LUT
-export PrecomputeFlags, LUT, FULL, FULL_LUT
+#import AbstractNFFTs.PrecomputeFlags, AbstractNFFTs.LUT, AbstractNFFTs.FULL
+#export PrecomputeFlags, LUT, FULL
 
-export TimingStats
 export NDFTPlan, NFFTPlan, NFFTParams
 
-export calculateToeplitzKernel, calculateToeplitzKernel!, convolveToeplitzKernel!
 
 #########################
 # utility functions
@@ -26,12 +24,11 @@ include("utils.jl")
 include("windowFunctions.jl")
 
 #################################
-# currently implemented NFFTPlans
+# implementations
 #################################
 
 include("implementation.jl")
 include("direct.jl")
-
 include("precomputation.jl")
 
 #################
@@ -43,7 +40,7 @@ include("precomputation.jl")
 
 compute a plan for the NFFT of a size-`N` array at the nodes contained in `x`.
 """
-function AbstractNFFTs.plan_nfft(::Type{Array}, x::Matrix{T}, N::NTuple{D,Int}, rest...;
+function AbstractNFFTs.plan_nfft(::Type{<:Array}, x::Matrix{T}, N::NTuple{D,Int}, rest...;
                    timing::Union{Nothing,TimingStats} = nothing, kargs...) where {T,D}
   t = @elapsed begin
     p = NFFTPlan(x, N, rest...; kargs...)
@@ -56,8 +53,6 @@ end
 
 include("directional.jl")
 include("multidimensional.jl")
-include("samplingDensity.jl")
-include("Toeplitz.jl")
 
 
 function __init__()

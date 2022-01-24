@@ -77,11 +77,11 @@ julia> convolveToeplitzKernel!(x, λ)
 
 ```
 """
-function calculateToeplitzKernel(shape, tr::Matrix{T}; m = 4, σ = 2.0, window = :kaiser_bessel, LUTSize = 2000, fftplan = plan_fft(zeros(Complex{T}, 2 .* shape); flags=FFTW.ESTIMATE), kwargs...) where {T}
+function calculateToeplitzKernel(shape, tr::AbstractMatrix{T}; m = 4, σ = 2.0, window = :kaiser_bessel, LUTSize = 2000, fftplan = plan_fft(zeros(Complex{T}, 2 .* shape); flags=FFTW.ESTIMATE), kwargs...) where {T}
 
     shape_os = 2 .* shape
 
-    p = NFFTPlan(tr, shape_os; m, σ, window, LUTSize, kwargs...)
+    p = plan_nfft(typeof(tr), tr, shape_os; m, σ, window, LUTSize, kwargs...)
     eigMat = nfft_adjoint(p, OnesVector(Complex{T}, size(tr,2)))
     return fftplan * fftshift(eigMat)
 end
@@ -120,7 +120,7 @@ julia> convolveToeplitzKernel!(x, λ);
 
 ```
 """
-function calculateToeplitzKernel!(f::Array{Complex{T}}, p::AbstractNFFTPlan, tr::Matrix{T}, fftplan) where T
+function calculateToeplitzKernel!(f::Array{Complex{T}}, p::AbstractNFFTPlan{T}, tr::Matrix{T}, fftplan) where T
     nodes!(p, tr)
     f = nfft_adjoint!(p, OnesVector(Complex{T}, size(tr,2)), f)
     f2 = fftshift(f)

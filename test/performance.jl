@@ -62,7 +62,7 @@ function nfft_performance_2(N = 64, M = N*N*N)
 
   let x = Float32.(rand(3,M) .- 0.5), fHat = ComplexF32.(rand(M)*1im)
 
-    for pre in [NFFT.LUT, NFFT.FULL, NFFT.FULL_LUT] 
+    for pre in [NFFT.LUT, NFFT.FULL] 
       for threading in [true, false]
         NFFT._use_threads[] = threading
 

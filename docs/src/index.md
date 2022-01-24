@@ -42,8 +42,8 @@ by citing the project.
 ## Contact
 
 If you have problems using the software, find bugs or have ideas for improvements please use
-the [issue tracker](https://github.com/tknopp/NFFT.jl/issues). For general questions please use
-the [discussions](https://github.com/tknopp/NFFT.jl/discussions) section on Github.
+the [issue tracker](https://github.com/JuliaMath/NFFT.jl/issues). For general questions please use
+the [discussions](https://github.com/JuliaMath/NFFT.jl/discussions) section on Github.
 
 ## Contributors
 
@@ -53,4 +53,4 @@ the [discussions](https://github.com/tknopp/NFFT.jl/discussions) section on Gith
 * [Jakob Assländer](https://med.nyu.edu/faculty/jakob-asslaender)
 * [Mosè Giordano](https://github.com/giordano)
 
-A complete list of contributors can be found on the [Github page](https://github.com/tknopp/NFFT.jl/graphs/contributors).
+A complete list of contributors can be found on the [Github page](https://github.com/JuliaMath/NFFT.jl/graphs/contributors).
