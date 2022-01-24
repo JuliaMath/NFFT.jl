@@ -4,7 +4,7 @@ using Plots, StatsPlots, CategoricalArrays
 pgfplotsx()
 #gr()
 
-BenchmarkTools.DEFAULT_PARAMETERS.seconds = 40
+BenchmarkTools.DEFAULT_PARAMETERS.seconds = 30
 
 include("../NFFT3/NFFT3.jl")
 
@@ -29,6 +29,8 @@ function nfft_performance_comparison(m = 6, σ = 2.0)
   preNFFTjl = [NFFT.LUT, NFFT.FULL, NFFT.FULL_LUT]
   N = [collect(4096* (4 .^(0:3))),collect(128* (2 .^ (0:3))),[32,48,64,72]]
   fftflags = NFFT.FFTW.MEASURE
+  packagesCtor = [NFFTPlan, NFFT3Plan]
+  packagesStr = ["NFFT.jl", "NFFT3"]
 
   for D = 2:2
     for U = 4:4
@@ -45,25 +47,24 @@ function nfft_performance_comparison(m = 6, σ = 2.0)
         x .= sortslices(x, dims=2) # sort nodes to gain cache locality
         
         fHat = randn(Complex{T}, M)
-        fApprox = randn(Complex{T}, NN)
-
-        tpre = @belapsed plan_nfft($x, $NN; m=$m, σ=$σ, window=:kaiser_bessel, LUTSize=$LUTSize, precompute=$(preNFFTjl[pre]), sortNodes=false, fftflags=$fftflags)
-        p = plan_nfft(x, NN; m=m, σ=σ, window=:kaiser_bessel, LUTSize=LUTSize, precompute=(preNFFTjl[pre]), sortNodes=false, fftflags=fftflags)
-        f = similar(fHat, p.N)
-        tadjoint = @belapsed nfft_adjoint!($p, $fHat, $f)
-        ttrafo = @belapsed nfft!($p, $fApprox, $fHat)
+        f = randn(Complex{T}, NN)
         
-        push!(df, ("NFFT.jl", Threads.nthreads(), D, M, N[D][U], false, preString[pre], m, σ,
-                   tpre, ttrafo, tadjoint))
+        for pl = 1:length(packagesStr)
 
-        tpre = @belapsed NFFT3Plan($x, $NN; m=$m, σ=$σ, window=:kaiser_bessel, LUTSize=$LUTSize, precompute=$(preNFFTjl[pre]), sortNodes=true, fftflags=$fftflags)
-        p = NFFT3Plan(x, NN; m, σ, window=:kaiser_bessel, LUTSize, precompute=preNFFTjl[pre], sortNodes=true, fftflags=fftflags)
-        tadjoint = @belapsed nfft_adjoint!($p, $fHat, $f)
-        ttrafo = @belapsed nfft!($p, $fApprox, $fHat)
-                
-        push!(df, ("NFFT3", Threads.nthreads(), D, M, N[D][U], false, preString[pre], m, σ,
-                    tpre, ttrafo, tadjoint))
-          
+          planner = packagesCtor[pl]
+          b = @benchmark $planner($x, $NN; m=$m, σ=$σ, window=:kaiser_bessel, LUTSize=$LUTSize, 
+                                 precompute=$(preNFFTjl[pre]), sortNodes=false, fftflags=$fftflags)
+          tpre = median(b).time / 1e9
+          p = planner(x, NN; m=m, σ=σ, window=:kaiser_bessel, LUTSize=LUTSize, 
+                      precompute=(preNFFTjl[pre]), sortNodes=false, fftflags=fftflags)
+          b = @benchmark nfft_adjoint!($p, $fHat, $f)
+          tadjoint = median(b).time / 1e9
+          b = @benchmark nfft!($p, $f, $fHat)
+          ttrafo = median(b).time / 1e9
+        
+          push!(df, (packagesStr[pl], Threads.nthreads(), D, M, N[D][U], false, preString[pre], m, σ,
+                   tpre, ttrafo, tadjoint))
+        end  
       end
     end
   end
@@ -115,6 +116,54 @@ function plot_performance(df; pre = "FULL")
   return p
 end
 
+
+
+function plot_performance_serial(df)
+
+  Plots.scalefontsizes()
+  Plots.scalefontsizes(1.5)
+
+  tNFFTjl = zeros(2,3)
+  tNFFT3 = zeros(2,3)
+
+  for (j,pre) in enumerate(["LUT", "FULL"])
+    tNFFTjl[j,1] = df[df.Package.=="NFFT.jl" .&& df.Pre.==pre .&& df.Threads.==1,:TimePre][1]
+    tNFFTjl[j,2] = df[df.Package.=="NFFT.jl" .&& df.Pre.==pre .&& df.Threads.==1,:TimeTrafo][1]
+    tNFFTjl[j,3] = df[df.Package.=="NFFT.jl" .&& df.Pre.==pre .&& df.Threads.==1,:TimeAdjoint][1]
+    
+    tNFFT3[j,1] = df[df.Package.=="NFFT3" .&& df.Pre.==pre .&& df.Threads.==1,:TimePre ][1]
+    tNFFT3[j,2] = df[df.Package.=="NFFT3" .&& df.Pre.==pre .&& df.Threads.==1,:TimeTrafo][1]
+    tNFFT3[j,3] = df[df.Package.=="NFFT3" .&& df.Pre.==pre .&& df.Threads.==1,:TimeAdjoint][1]
+  end
+   
+  labelsA = ["Precompute", "NFFT", "adjoint NFFT"]
+  labelsB = [L"\textrm{LUT}", L"\textrm{FULL}"]
+
+  
+  ctg = CategoricalArray(repeat(labelsA, inner = 2))
+  levels!(ctg, labelsA)
+  name = CategoricalArray(repeat(labelsB, outer = 3))
+  levels!(name, labelsB)
+  
+  tmax = max(maximum(tNFFTjl),maximum(tNFFT3))
+  
+  p1 = groupedbar(name, tNFFTjl, ylabel = "time / s",  group = ctg,
+          bar_width = 0.67, title = "NFFT.jl", legend = :none,
+          lw = 0,  size=(800,600), framestyle = :box, ylim=(0,tmax))
+          
+  p2 = groupedbar(name, tNFFT3, ylabel = "time / s",  group = ctg,
+          bar_width = 0.67, title = "NFFT3",
+          lw = 0,  size=(800,600), framestyle = :box, ylim=(0,tmax))
+  
+  p = plot(p1, p2, layout=(1,2), size=(800,600), dpi=200)
+  
+  savefig(p, "../docs/src/assets/performance_serial.svg")
+  return p
+end
+
+
+
+
 ### run the code ###
 
 if haskey(ENV, "NFFT_PERF_THREADING")
@@ -142,5 +191,6 @@ else
   delete!(ENV, "NFFT_PERF_THREADING")
 
   plot_performance(df, pre="LUT")
-  plot_performance(df, pre="FULL")  
+  plot_performance(df, pre="FULL") 
+  plot_performance_serial(df)
 end
