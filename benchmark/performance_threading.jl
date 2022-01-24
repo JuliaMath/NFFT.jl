@@ -4,7 +4,7 @@ using Plots, StatsPlots, CategoricalArrays
 pgfplotsx()
 #gr()
 
-BenchmarkTools.DEFAULT_PARAMETERS.seconds = 30
+BenchmarkTools.DEFAULT_PARAMETERS.seconds = 50
 
 include("../NFFT3/NFFT3.jl")
 
@@ -54,13 +54,13 @@ function nfft_performance_comparison(m = 6, σ = 2.0)
           planner = packagesCtor[pl]
           b = @benchmark $planner($x, $NN; m=$m, σ=$σ, window=:kaiser_bessel, LUTSize=$LUTSize, 
                                  precompute=$(preNFFTjl[pre]), sortNodes=false, fftflags=$fftflags)
-          tpre = median(b).time / 1e9
+          tpre = minimum(b).time / 1e9
           p = planner(x, NN; m=m, σ=σ, window=:kaiser_bessel, LUTSize=LUTSize, 
                       precompute=(preNFFTjl[pre]), sortNodes=false, fftflags=fftflags)
           b = @benchmark nfft_adjoint!($p, $fHat, $f)
-          tadjoint = median(b).time / 1e9
+          tadjoint = minimum(b).time / 1e9
           b = @benchmark nfft!($p, $f, $fHat)
-          ttrafo = median(b).time / 1e9
+          ttrafo = minimum(b).time / 1e9
         
           push!(df, (packagesStr[pl], Threads.nthreads(), D, M, N[D][U], false, preString[pre], m, σ,
                    tpre, ttrafo, tadjoint))
