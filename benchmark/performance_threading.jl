@@ -4,7 +4,7 @@ using Plots, StatsPlots, CategoricalArrays
 pgfplotsx()
 #gr()
 
-BenchmarkTools.DEFAULT_PARAMETERS.seconds = 10
+BenchmarkTools.DEFAULT_PARAMETERS.seconds = 40
 
 include("../NFFT3/NFFT3.jl")
 
