@@ -1,7 +1,7 @@
 using Test
 using NFFT
 using Random
-using CuNFFT
+#using CuNFFT
 #using NFFTTools
 
 Random.seed!(123)

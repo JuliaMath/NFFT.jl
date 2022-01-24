@@ -28,11 +28,11 @@ julia = "1.6"
 
 [extras]
 BenchmarkTools = "6e4b80f9-dd63-53aa-95a3-0cdb28fa8baf"
-CuNFFT = "a9291f20-7f4c-4d50-b30d-4e07b13252e1"
+# CuNFFT = "a9291f20-7f4c-4d50-b30d-4e07b13252e1"
 DataFrames = "a93c6f00-e57d-5684-b7b6-d8193f3e46c0"
 NFFT3 = "53104703-03e8-40a5-ab01-812303a44cae"
 # NFFTTools = "7424e34d-94f7-41d6-98a0-85abaf1b6c91" comment out until registered
 Test = "8dfed614-e22c-5e08-85e1-65c5234f0b40"
 
 [targets]
-test = ["Test", "BenchmarkTools", "CuNFFT", "NFFT3", "DataFrames"]  # "NFFTTools"
+test = ["Test", "BenchmarkTools", "NFFT3", "DataFrames"]  # "NFFTTools"  "CuNFFT"
