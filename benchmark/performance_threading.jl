@@ -25,8 +25,8 @@ function nfft_performance_comparison(m = 6, σ = 2.0)
                    Undersampled=Bool[], Pre=String[], m = Int[], σ=Float64[],
                    TimePre=Float64[], TimeTrafo=Float64[], TimeAdjoint=Float64[] )  
 
-  preString = ["LUT", "FULL", "FULL_LUT"]
-  preNFFTjl = [NFFT.LUT, NFFT.FULL, NFFT.FULL_LUT]
+  preString = ["LUT", "FULL"]
+  preNFFTjl = [NFFT.LUT, NFFT.FULL]
   N = [collect(4096* (4 .^(0:3))),collect(128* (2 .^ (0:3))),[32,48,64,72]]
   fftflags = NFFT.FFTW.MEASURE
   packagesCtor = [NFFTPlan, NFFT3Plan]

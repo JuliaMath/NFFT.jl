@@ -9,15 +9,6 @@ Abstract type for an NFFT plan.
 abstract type AbstractNFFTPlan{T,D,R} end
 
 
-@enum PrecomputeFlags begin
-  LUT = 1
-  FULL = 2
-  TENSOR = 3
-  FULL_LUT = 4
-end
-
-
-
 #####################
 # define interface
 #####################
@@ -62,3 +53,18 @@ Note that this will be the input array for `nfft_adjoint!`.
 Change nodes `x` in the plan `p` operation and return the plan.
 """
 @mustimplement nodes!(p::AbstractNFFTPlan{T}, x::Matrix{T}) where {T}
+
+
+## Optional Interface ##
+# The following methods can but don't need to be implemented 
+
+@mustimplement apodization!(p::AbstractNFFTPlan, f::AbstractArray, g::AbstractArray)
+
+@mustimplement apodization_adjoint!(p::AbstractNFFTPlan, g::AbstractArray, f::AbstractArray)
+
+@mustimplement convolve!(p::AbstractNFFTPlan, g::AbstractArray, fHat::AbstractArray)
+
+@mustimplement convolve_adjoint!(p::AbstractNFFTPlan, fHat::AbstractArray, g::AbstractArray)
+
+
+

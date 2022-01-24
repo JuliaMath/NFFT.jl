@@ -1,20 +1,16 @@
-name = "CuNFFT"
-uuid = "a9291f20-7f4c-4d50-b30d-4e07b13252e1"
+name = "NFFTTools"
+uuid = "7424e34d-94f7-41d6-98a0-85abaf1b6c91"
 author = ["Tobias Knopp <tobias@knoppweb.de>"]
-version = "0.2.0"
+version = "0.1.0"
 
 [deps]
 AbstractFFTs = "621f4979-c628-5d54-868e-fcf4e3e8185c" 
 AbstractNFFTs = "7f219486-4aa7-41d6-80a7-e08ef20ceed7"
-CUDA = "052768ef-5323-5732-b1bb-66c8b64840ba"
 LinearAlgebra = "37e2e46d-f89d-539d-b4ee-838fcccc9c8e"
-NFFT = "efe261a4-0d2b-5849-be55-fc731d526b0d"
-Reexport = "189a3867-3050-52da-a836-e630ba90ab69"
+FFTW = "7a1cc6ca-52ef-59f5-83cd-3a7055c09341"
 
 [compat]
 julia = "1.6"
 AbstractFFTs = "1.0"
 AbstractNFFTs = "0.3.0"
-CUDA = "1.3.3, 2.3, 3.1"
-NFFT = "0.8"
-Reexport = "1.0"
+FFTW = "1"

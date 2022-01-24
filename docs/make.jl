@@ -14,7 +14,7 @@ makedocs(;
     modules = [NFFT],
     sitename = "NFFT",
     authors = "Tobias Knopp and contributors",
-    repo="https://github.com/tknopp/NFFT.jl/blob/{commit}{path}#{line}",
+    repo="https://github.com/JuliaMath/NFFT.jl/blob/{commit}{path}#{line}",
     format=Documenter.HTML(;
         prettyurls=get(ENV, "CI", "false") == "true",
         canonical="https://tknopp.github.io/NFFT.jl",

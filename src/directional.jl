@@ -1,5 +1,5 @@
 
-function apodization!(p::NFFTPlan{T,D,R}, f::AbstractArray{U,D},
+function AbstractNFFTs.apodization!(p::NFFTPlan{T,D,R}, f::AbstractArray{U,D},
                       g::StridedArray{Complex{T},D}) where {T,D,R,U}
   dstart = Val(p.dims[1])
   dend = Val(p.dims[end])
@@ -27,7 +27,7 @@ end
     end
 end
 
-function apodization_adjoint!(p::NFFTPlan{T,D,R},
+function AbstractNFFTs.apodization_adjoint!(p::NFFTPlan{T,D,R},
                  g::AbstractArray{Complex{T},D}, f::StridedArray{U,D}) where {T,D,R,U}
   dstart = Val(p.dims[1])
   dend = Val(p.dims[end])
@@ -55,7 +55,7 @@ end
     end
 end
 
-function convolve!(p::NFFTPlan{T,D,R}, g::AbstractArray{Complex{T},D},
+function AbstractNFFTs.convolve!(p::NFFTPlan{T,D,R}, g::AbstractArray{Complex{T},D},
       fHat::StridedArray{U,R}) where {T,D,R,U}
   l1 = Val(p.dims[1]-1)
   l2 = Val(length(p.dims))
@@ -105,7 +105,7 @@ end
   end
 end
 
-function convolve_adjoint!(p::NFFTPlan{T,D,R}, fHat::AbstractArray{U,R},
+function AbstractNFFTs.convolve_adjoint!(p::NFFTPlan{T,D,R}, fHat::AbstractArray{U,R},
         g::StridedArray{Complex{T},D}) where {T,D,R,U}
   l1 = Val(p.dims[1]-1)
   l2 = Val(length(p.dims))

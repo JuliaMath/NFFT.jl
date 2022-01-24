@@ -164,9 +164,6 @@ function precomputation(x::Union{Matrix{T},Vector{T}}, N::NTuple{D,Int}, n, para
       B = sparse([],[],T[])
   elseif precompute == FULL
       B = precomputeB(win, x, N, n, m, M, σ, LUTSize, T)
-  elseif precompute == FULL_LUT
-      precomputeLUT(win, windowLUT, n, m, σ, LUTSize, T)
-      B = precomputeB(windowLUT, x, N, n, m, M, σ, LUTSize, T)
   else
       error("precompute = $precompute not supported by NFFT.jl!")
   end
