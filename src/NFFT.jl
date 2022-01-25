@@ -6,7 +6,7 @@ using FFTW
 using Distributed
 using SparseArrays
 using LinearAlgebra
-using Polyester
+using FLoops
 import Base.size
 using Reexport
 

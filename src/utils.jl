@@ -3,7 +3,8 @@ const _use_threads = Ref(false)
 macro cthreads(loop::Expr) 
   return esc(quote
       if NFFT._use_threads[]
-          Threads.@threads $loop 
+          @floop $loop
+          #Threads.@threads $loop 
           #@batch per=thread $loop
       else
           @inbounds $loop
