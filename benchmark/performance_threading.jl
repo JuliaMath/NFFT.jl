@@ -6,7 +6,7 @@ pgfplotsx()
 
 BenchmarkTools.DEFAULT_PARAMETERS.seconds = 30
 
-include("../NFFT3/NFFT3.jl")
+include("../Wrappers/NFFT3.jl")
 
 
 const LUTSize = 20000

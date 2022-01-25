@@ -1,7 +1,7 @@
 using NFFT, DataFrames, LinearAlgebra, LaTeXStrings, DelimitedFiles
 using Plots; pgfplotsx()
 
-include("../NFFT3/NFFT3.jl")
+include("../Wrappers/NFFT3.jl")
 
 function nfft_accuracy_comparison()
   println("\n\n ##### nfft_accuracy_comparison ##### \n\n")
