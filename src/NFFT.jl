@@ -9,10 +9,9 @@ using LinearAlgebra
 using FLoops
 import Base.size
 using Reexport
+using SpecialFunctions: besseli
 
 @reexport using AbstractNFFTs
-#import AbstractNFFTs.PrecomputeFlags, AbstractNFFTs.LUT, AbstractNFFTs.FULL
-#export PrecomputeFlags, LUT, FULL
 
 export NDFTPlan, NFFTPlan, NFFTParams
 
