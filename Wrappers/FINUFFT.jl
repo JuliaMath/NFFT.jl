@@ -27,6 +27,8 @@ function FINUFFTPlan(x::Matrix{T}, N::NTuple{D,Int};
 
   m, σ, reltol = accuracyParams(; kargs...)
 
+  reltol = max(reltol, 1.0e-15)
+
   return FINUFFTPlan(N, M, x * 2π, m, T(σ), reltol, fftflags)
 end
 
