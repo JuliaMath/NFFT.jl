@@ -30,11 +30,14 @@ function Base.println(t::TimingStats)
 end
 
 function reltolToParams(reltol) 
-  return ceil(Int, log(10,1/reltol)) + 1, 2.0
+  w = ceil(Int, log(10,1/reltol)) + 1
+  m = (w-1)÷2
+  return m, 2.0
 end
 
 function paramsToReltol(m::Int, σ)
-  return 10.0^(-(m-1))
+  w = 2*m + 1
+  return 10.0^(-(w-1))
 end
 
 
