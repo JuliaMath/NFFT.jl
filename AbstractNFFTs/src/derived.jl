@@ -8,6 +8,9 @@
 plan_nfft(x::AbstractArray, N::Union{Integer,NTuple{D,Int}}, args...; kargs...) where {D} =
     plan_nfft(Array, x, N, args...; kargs...)
 
+plan_nfft(x::AbstractArray, y::AbstractArray, args...; kargs...) where {D} =
+    plan_nfft(Array, x, y, args...; kargs...)
+
 # The follow convert 1D parameters into the format required by the NFFT plan
 
 plan_nfft(Q::Type, x::AbstractVector, N::Integer, rest...; kwargs...) where {D}  =
@@ -15,6 +18,9 @@ plan_nfft(Q::Type, x::AbstractVector, N::Integer, rest...; kwargs...) where {D} 
 
 plan_nfft(Q::Type, x::AbstractVector, N::NTuple{D,Int}, rest...; kwargs...) where {D}  =
     plan_nfft(Q, collect(reshape(x,1,length(x))), N, rest...; kwargs...)
+
+plan_nfft(Q::Type, x::AbstractVector, y::AbstractVector, rest...; kwargs...) where {D}  =
+    plan_nfft(Q, collect(reshape(x,1,length(x))), collect(reshape(y,1,length(x))), rest...; kwargs...)
 
 
 ##########################

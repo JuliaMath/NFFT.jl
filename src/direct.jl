@@ -5,7 +5,14 @@ mutable struct NDFTPlan{T,D} <: AbstractNFFTPlan{T,D,1}
   x::Matrix{T}
 end
 
+mutable struct NNDFTPlan{T,D} <: AbstractNNFFTPlan{T,D,1}
+  N::Int64
+  M::Int64
+  x::Matrix{T}
+  y::Matrix{T}
+end
 
+### constructors ###
 
 function NDFTPlan(x::Matrix{T}, N::NTuple{D,Int}; kwargs...) where {T,D}
 
@@ -18,6 +25,17 @@ function NDFTPlan(x::Matrix{T}, N::NTuple{D,Int}; kwargs...) where {T,D}
   return NDFTPlan{T,D}(N, M, x)
 end
 
+function NNDFTPlan(x::Matrix{T}, y::Matrix{T}; kwargs...) where {T,D}
+
+  if D != size(x,1)
+    throw(ArgumentError("Nodes x have dimension $(size(x,1)) != $D"))
+  end
+
+  M = size(x, 2)
+  N = size(y, 2)
+
+  return NNDFTPlan{T,D}(N, M, x, y)
+end
 
 ### ndft functions ###
 
@@ -89,4 +107,43 @@ function AbstractNFFTs.nfft_adjoint!(plan::NDFTPlan{Tp,D}, g::AbstractArray{Tg,D
 
     return g
 end
+
+
+
+
+function AbstractNFFTs.nfft!(plan::NNDFTPlan{Tp,D}, g::AbstractArray{Tg}, f::AbstractArray{T}) where {D,Tp,T,Tg}
+
+  g .= zero(Tg)
+
+  for l=1:plan.N
+      for k=1:plan.M
+          arg = zero(T)
+          for d=1:D
+              arg += plan.x[d,k] * plan.y[d,l]
+          end
+          g[k] += f[l] * cis(-2*pi*arg)
+      end
+  end
+
+  return g
+end
+
+
+function AbstractNFFTs.nfft_adjoint!(plan::NNDFTPlan{Tp,D}, g::AbstractArray{Tg}, fHat::AbstractVector{T}) where {D,Tp,T,Tg}
+
+  g .= zero(Tg)
+
+  for l=1:plan.N
+      for k=1:plan.M
+          arg = zero(T)
+          for d=1:D
+            arg += plan.x[d,k] * plan.y[d,l]
+          end
+          g[l] += fHat[k] * cis(2*pi*arg)
+      end
+  end
+
+  return g
+end
+
 

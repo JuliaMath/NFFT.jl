@@ -5,7 +5,7 @@ using LinearAlgebra
 using Printf
 
 # interface
-export AbstractNFFTPlan, plan_nfft, size_in, size_out, nfft!, nfft_adjoint!, nodes!
+export AbstractNFFTPlan, AbstractNNFFTPlan, plan_nfft, size_in, size_out, nfft!, nfft_adjoint!, nodes!
 
 # optional
 export apodization!, apodization_adjoint!, convolve!, convolve_adjoint!
