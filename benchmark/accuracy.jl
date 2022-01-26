@@ -31,11 +31,11 @@ function nfft_accuracy_comparison()
 
             p = planner(x, NN; m, σ, precompute=NFFT.FULL)
             pNDFT = NDFTPlan(x, NN)
-            f = ndft_adjoint(pNDFT, fHat)
+            f = nfft_adjoint(pNDFT, fHat)
             fApprox = nfft_adjoint(p, fHat)
             eadjoint = norm(f[:] - fApprox[:]) / norm(f[:])
 
-            gHat = ndft(pNDFT, f)
+            gHat = nfft(pNDFT, f)
             gHatApprox = nfft(p, f)
             etrafo = norm(gHat[:] - gHatApprox[:]) / norm(gHat[:])
             

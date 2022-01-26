@@ -41,23 +41,11 @@ end
 
 ### ndft functions ###
 
-ndft!(plan::NDFTPlan{Tp,D}, g::AbstractArray{Tg}, f::AbstractArray{T,D}) where {D,Tp,T,Tg} =
-   nfft!(plan, g, f) where {D,T,Tg}
-
-ndft_adjoint!(plan::NDFTPlan{Tp,D}, g::AbstractArray{Tg,D}, fHat::AbstractVector{T}) where {D,Tp,T,Tg} =
-   nfft_adjoint!(plan, g, fHat) where {D,T,Tg}
-
-ndft(plan::NDFTPlan{Tp,D}, f::AbstractArray{T,D}) where {Tp,T,D} =
-   nfft!(plan, f, similar(f,plan.M))
-
 ndft(x::AbstractArray, f::AbstractArray, rest...; kwargs...) =
-   ndft(NDFTPlan(x, size(f), rest...; kwargs...), f)
-
-ndft_adjoint(plan::NDFTPlan, fHat::AbstractVector) =
-   nfft_adjoint!(plan, fHat, similar(fHat, plan.N))
+   nfft(NDFTPlan(x, size(f), rest...; kwargs...), f)
 
 ndft_adjoint(x, N, fHat::AbstractVector, rest...; kwargs...) =
-   ndft_adjoint(NDFTPlan(x, N, rest...; kwargs...), fHat)
+   nfft_adjoint(NDFTPlan(x, N, rest...; kwargs...), fHat)
 
 
 

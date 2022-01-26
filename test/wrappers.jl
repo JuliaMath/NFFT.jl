@@ -16,14 +16,14 @@ include("../Wrappers/FINUFFT.jl")
     pNDFT = NDFTPlan(x, N)
 
     fHat = rand(Float64,M) + rand(Float64,M)*im
-    f = ndft_adjoint(pNDFT, fHat)
+    f = nfft_adjoint(pNDFT, fHat)
     fApprox = nfft_adjoint(p, fHat)
 
     e = norm(f[:] - fApprox[:]) / norm(f[:])
     @debug "error adjoint nfft "  e
     @test e < eps
 
-    gHat = ndft(pNDFT, f)
+    gHat = nfft(pNDFT, f)
     gHatApprox = nfft(p, f)
     e = norm(gHat[:] - gHatApprox[:]) / norm(gHat[:])
     @debug "error nfft "  e
@@ -93,13 +93,13 @@ include("../Wrappers/NFFT3.jl")
       pNDFT = NDFTPlan(x, N)
 
       fHat = rand(Float64,M) + rand(Float64,M)*im
-      f = ndft_adjoint(pNDFT, fHat)
+      f = nfft_adjoint(pNDFT, fHat)
       fApprox = nfft_adjoint(p, fHat)
       e = norm(f[:] - fApprox[:]) / norm(f[:])
       @debug "error adjoint nfft "  e
       @test e < eps
 
-      gHat = ndft(pNDFT, f)
+      gHat = nfft(pNDFT, f)
       gHatApprox = nfft(p, f)
       e = norm(gHat[:] - gHatApprox[:]) / norm(gHat[:])
       @debug "error nfft "  e

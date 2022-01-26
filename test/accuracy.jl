@@ -20,13 +20,13 @@ LUTSize = 20000
             pNDFT = NDFTPlan(x, N)
 
             fHat = rand(Float64,M) + rand(Float64,M)*im
-            f = ndft_adjoint(pNDFT, fHat)
+            f = nfft_adjoint(pNDFT, fHat)
             fApprox = nfft_adjoint(p, fHat)
             e = norm(f[:] - fApprox[:]) / norm(f[:])
             @debug "error adjoint nfft "  e
             @test e < eps[l]
 
-            gHat = ndft(pNDFT, f)
+            gHat = nfft(pNDFT, f)
             gHatApprox = nfft(p, f)
             e = norm(gHat[:] - gHatApprox[:]) / norm(gHat[:])
             @debug "error nfft "  e
@@ -210,7 +210,7 @@ end
             pNDFT = NDFTPlan(x, N)
 
             fHat = rand(Float64,M) + rand(Float64,M)*im
-            f = ndft_adjoint(pNDFT, fHat)
+            f = nfft_adjoint(pNDFT, fHat)
             fHat_d = CuArray(fHat)
             fApprox_d = nfft_adjoint(p_d, fHat_d)
             fApprox = Array(fApprox_d)
@@ -218,7 +218,7 @@ end
             @debug "error adjoint nfft "  e
             @test e < eps[l]
 
-            gHat = ndft(pNDFT, f)
+            gHat = nfft(pNDFT, f)
             gHatApprox = Array( nfft(p_d, CuArray(f)) )
             e = norm(gHat[:] - gHatApprox[:]) / norm(gHat[:])
             @debug "error nfft "  e
