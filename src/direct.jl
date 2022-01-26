@@ -5,12 +5,18 @@ mutable struct NDFTPlan{T,D} <: AbstractNFFTPlan{T,D,1}
   x::Matrix{T}
 end
 
-mutable struct NNDFTPlan{T,D} <: AbstractNNFFTPlan{T,D,1}
+AbstractNFFTs.size_in(p::NDFTPlan) = p.N
+AbstractNFFTs.size_out(p::NDFTPlan) = (p.M,)
+
+mutable struct NNDFTPlan{T} <: AbstractNNFFTPlan{T,1,1}
   N::Int64
   M::Int64
   x::Matrix{T}
   y::Matrix{T}
 end
+
+AbstractNFFTs.size_in(p::NNDFTPlan) = (p.N,)
+AbstractNFFTs.size_out(p::NNDFTPlan) = (p.M,)
 
 ### constructors ###
 
@@ -25,16 +31,12 @@ function NDFTPlan(x::Matrix{T}, N::NTuple{D,Int}; kwargs...) where {T,D}
   return NDFTPlan{T,D}(N, M, x)
 end
 
-function NNDFTPlan(x::Matrix{T}, y::Matrix{T}; kwargs...) where {T,D}
-
-  if D != size(x,1)
-    throw(ArgumentError("Nodes x have dimension $(size(x,1)) != $D"))
-  end
+function NNDFTPlan(x::Matrix{T}, y::Matrix{T}; kwargs...) where {T}
 
   M = size(x, 2)
   N = size(y, 2)
 
-  return NNDFTPlan{T,D}(N, M, x, y)
+  return NNDFTPlan{T}(N, M, x, y)
 end
 
 ### ndft functions ###
@@ -46,20 +48,20 @@ ndft_adjoint!(plan::NDFTPlan{Tp,D}, g::AbstractArray{Tg,D}, fHat::AbstractVector
    nfft_adjoint!(plan, g, fHat) where {D,T,Tg}
 
 ndft(plan::NDFTPlan{Tp,D}, f::AbstractArray{T,D}) where {Tp,T,D} =
-   nfft!(plan, similar(f,plan.M), f)
+   nfft!(plan, f, similar(f,plan.M))
 
 ndft(x::AbstractArray, f::AbstractArray, rest...; kwargs...) =
    ndft(NDFTPlan(x, size(f), rest...; kwargs...), f)
 
 ndft_adjoint(plan::NDFTPlan, fHat::AbstractVector) =
-   nfft_adjoint!(plan, similar(fHat, plan.N), fHat)
+   nfft_adjoint!(plan, fHat, similar(fHat, plan.N))
 
 ndft_adjoint(x, N, fHat::AbstractVector, rest...; kwargs...) =
    ndft_adjoint(NDFTPlan(x, N, rest...; kwargs...), fHat)
 
 
 
-function AbstractNFFTs.nfft!(plan::NDFTPlan{Tp,D}, g::AbstractArray{Tg}, f::AbstractArray{T,D}) where {D,Tp,T,Tg}
+function AbstractNFFTs.nfft!(plan::NDFTPlan{Tp,D}, f::AbstractArray{T,D}, g::AbstractArray{Tg}) where {D,Tp,T,Tg}
 
     plan.N == size(f) ||
         throw(DimensionMismatch("Data f is not consistent with NDFTPlan"))
@@ -84,7 +86,7 @@ function AbstractNFFTs.nfft!(plan::NDFTPlan{Tp,D}, g::AbstractArray{Tg}, f::Abst
 end
 
 
-function AbstractNFFTs.nfft_adjoint!(plan::NDFTPlan{Tp,D}, g::AbstractArray{Tg,D}, fHat::AbstractVector{T}) where {D,Tp,T,Tg}
+function AbstractNFFTs.nfft_adjoint!(plan::NDFTPlan{Tp,D}, fHat::AbstractVector{T}, g::AbstractArray{Tg,D}) where {D,Tp,T,Tg}
 
     plan.M == length(fHat) ||
         throw(DimensionMismatch("Data f inconsistent with NDFTPlan"))
@@ -111,14 +113,14 @@ end
 
 
 
-function AbstractNFFTs.nfft!(plan::NNDFTPlan{Tp,D}, g::AbstractArray{Tg}, f::AbstractArray{T}) where {D,Tp,T,Tg}
+function AbstractNFFTs.nfft!(plan::NNDFTPlan{Tp}, f::AbstractArray{T}, g::AbstractArray{Tg}) where {Tp,T,Tg}
 
   g .= zero(Tg)
 
   for l=1:plan.N
       for k=1:plan.M
           arg = zero(T)
-          for d=1:D
+          for d=1:size(plan.x,1)
               arg += plan.x[d,k] * plan.y[d,l]
           end
           g[k] += f[l] * cis(-2*pi*arg)
@@ -129,14 +131,14 @@ function AbstractNFFTs.nfft!(plan::NNDFTPlan{Tp,D}, g::AbstractArray{Tg}, f::Abs
 end
 
 
-function AbstractNFFTs.nfft_adjoint!(plan::NNDFTPlan{Tp,D}, g::AbstractArray{Tg}, fHat::AbstractVector{T}) where {D,Tp,T,Tg}
+function AbstractNFFTs.nfft_adjoint!(plan::NNDFTPlan{Tp}, fHat::AbstractVector{T}, g::AbstractArray{Tg}) where {Tp,T,Tg}
 
   g .= zero(Tg)
 
   for l=1:plan.N
       for k=1:plan.M
           arg = zero(T)
-          for d=1:D
+          for d=1:size(plan.x,1)
             arg += plan.x[d,k] * plan.y[d,l]
           end
           g[l] += fHat[k] * cis(2*pi*arg)

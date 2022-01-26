@@ -13,7 +13,7 @@ using SpecialFunctions: besseli
 
 @reexport using AbstractNFFTs
 
-export NDFTPlan, NFFTPlan, NFFTParams
+export NDFTPlan, NNDFTPlan, NFFTPlan, NFFTParams
 
 
 #########################

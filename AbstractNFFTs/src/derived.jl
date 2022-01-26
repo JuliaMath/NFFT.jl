@@ -67,6 +67,12 @@ function nfft(p::AbstractNFFTPlan{T,D,R}, f::AbstractArray{U,D}, args...; kargs.
     return fHat
 end
 
+function nfft(p::AbstractNNFFTPlan{T,D,R}, f::AbstractArray{U,D}, args...; kargs...) where {T,D,R,U}
+  fHat = similar(f, Complex{T}, size_out(p))
+  nfft!(p, f, fHat, args...; kargs...)
+  return fHat
+end
+
 """
         nfft_adjoint(p, fHat) -> f
 
@@ -82,6 +88,12 @@ function nfft_adjoint(p::AbstractNFFTPlan{T,D,R}, fHat::AbstractArray{U}, args..
     f = similar(fHat, Complex{T}, size_in(p))
     nfft_adjoint!(p, fHat, f, args...; kargs...)
     return f
+end
+
+function nfft_adjoint(p::AbstractNNFFTPlan{T}, fHat::AbstractArray, args...; kargs...) where {T}
+  f = similar(fHat, Complex{T}, size_in(p))
+  nfft_adjoint!(p, fHat, f, args...; kargs...)
+  return f
 end
 
 ##########################

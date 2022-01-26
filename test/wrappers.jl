@@ -33,6 +33,40 @@ include("../Wrappers/FINUFFT.jl")
 end
 
 
+
+@testset "FINNUFFT Wrapper in multiple dimensions" begin
+  for (u,N) in enumerate([(40,1), (40,2), (40,3)])
+    
+    eps = 1e-7
+    D = N[2]
+
+    M = N[1]
+    x = rand(Float64,D,M) .- 0.5
+    y = (rand(Float64,D,N[1]) .- 0.5) .* 10
+
+    p = FINNUFFTPlan(x, y) 
+    pNNDFT = NNDFTPlan(x, y)
+
+    fHat = rand(Float64,M) + rand(Float64,M)*im
+    f = nfft_adjoint(pNNDFT, fHat)
+    fApprox = nfft_adjoint(p, fHat)
+
+    e = norm(f[:] - fApprox[:]) / norm(f[:])
+    @debug "error adjoint nnfft "  e
+    @test e < eps
+
+    gHat = nfft(pNNDFT, f)
+    gHatApprox = nfft(p, f)
+
+    e = norm(gHat[:] - gHatApprox[:]) / norm(gHat[:])
+    @debug "error nnfft "  e
+    @test e < eps
+
+  end
+end
+
+
+
 end
 
 
