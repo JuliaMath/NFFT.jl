@@ -1,5 +1,8 @@
 # Accuracy and Performance
 
+!!! note
+    This page is still under construction. Please do not take the accuracy and benchmarks of NFFT3 and FINUFFT seriously.
+
 Next, the accuracy and the performance of NFFT.jl is investigated. For comparison we use
 the well-tested and well-tuned C library NFFT3. The shown data are useful for understanding
 the performance characteristics of the NFFT and help choosing the parameters accordingly.
@@ -43,11 +46,7 @@ Some observations:
 
 ### Multi-Threaded Performance
 
-We next look at the multi-threading performance for 1,2,4,8, and 16 threads. First we look at the LUT precomputation:
+We next look at the multi-threading performance for 1,2,4, and 8 threads. 
 
 ![Performance Multi-threaded](./assets/performance_mt_LUT.svg)
 
-Some observations:
-* ...
-
-![Performance Multi-threaded](./assets/performance_mt_FULL.svg)
