@@ -1,10 +1,14 @@
 ### Init some initial parameters necessary to create the plan ###
 
-function initParams(x::Matrix{T}, N::NTuple{D,Int}, dims::Union{Integer,UnitRange{Int64}}=1:D; kwargs...) where {D,T}
+function initParams(x::Matrix{T}, N::NTuple{D,Int}, dims::Union{Integer,UnitRange{Int64}}=1:D; kargs...) where {D,T}
   # convert dims to a unit range
   dims_ = (typeof(dims) <: Integer) ? (dims:dims) : dims
 
-  params = NFFTParams{T}(; kwargs...)
+  params = NFFTParams{T}(; kargs...)
+  m, σ, reltol = accuracyParams(; kargs...)
+  params.m = m
+  params.σ = σ
+  params.reltol = reltol
 
   if length(dims_) != size(x,1)
       throw(ArgumentError("Nodes x have dimension $(size(x,1)) != $(length(dims_))"))

@@ -16,8 +16,8 @@ end
 
 function FINUFFTPlan(x::Matrix{T}, N::NTuple{D,Int}; 
               dims::Union{Integer,UnitRange{Int64}}=1:D,
-              fftflags=UInt32(NFFT3.FFTW_ESTIMATE), 
-              kwargs...) where {D,T}
+              fftflags=UInt32(NFFT.FFTW.ESTIMATE), 
+              kargs...) where {D,T}
 
   if dims != 1:D
     error("FINUFFT directional plans not yet implemented!")
@@ -25,7 +25,7 @@ function FINUFFTPlan(x::Matrix{T}, N::NTuple{D,Int};
 
   M = size(x,2)
 
-  m, σ, reltol = accuracyParams(kwargs...)
+  m, σ, reltol = accuracyParams(; kargs...)
 
   return FINUFFTPlan(N, M, x * 2π, m, T(σ), reltol, fftflags)
 end

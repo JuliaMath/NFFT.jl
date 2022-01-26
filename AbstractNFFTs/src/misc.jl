@@ -5,7 +5,6 @@
   TENSOR = 3
 end
 
-
 # Timing functions that allow for timing parts of an NFFT
 
 mutable struct TimingStats
@@ -28,4 +27,40 @@ function Base.println(t::TimingStats)
   totalAdj = t.apod_adjoint + t.fft_adjoint + t.conv_adjoint
   @printf "                       apod = %.4f / %.4f %% fft = %.4f / %.4f %% conv = %.4f / %.4f %%\n" 100*t.apod/total 100*t.apod_adjoint/totalAdj 100*t.fft/total 100*t.fft_adjoint/totalAdj 100*t.conv/total 100*t.conv_adjoint/totalAdj
   
+end
+
+function reltolToParams(reltol) 
+  return ceil(Int, log(10,1/reltol)) + 1, 2.0
+end
+
+function paramsToReltol(m::Int, σ)
+  return 10.0^(-(m-1))
+end
+
+
+"""
+  accuracyParams(; [m, σ, reltol]) -> m, σ, reltol
+
+Calculate accuracy parameters m, σ, reltol based on either
+* reltol
+or
+* m, σ
+
+TODO: Right now, the oversampling parameter is not taken into account, i.e. σ=2.0 is assumed
+"""
+function accuracyParams(; kargs...)
+
+  if haskey(kargs, :reltol)
+    reltol = kargs[:reltol]
+    m, σ = reltolToParams(reltol)
+  elseif haskey(kargs, :m) && haskey(kargs, :σ)
+    m = kargs[:m]
+    σ = kargs[:σ]
+    reltol = paramsToReltol(m, σ)
+  else
+    reltol = 1e-9
+    m, σ = reltolToParams(reltol)
+  end
+
+  return m, σ, reltol
 end

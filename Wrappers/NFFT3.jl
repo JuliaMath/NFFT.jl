@@ -8,7 +8,7 @@ end
 # constructors
 ################
 
-function NFFT3Plan(x::Matrix{T}, N::NTuple{D,Int}; m = 4, σ = 2.0,
+function NFFT3Plan(x::Matrix{T}, N::NTuple{D,Int}; 
               dims::Union{Integer,UnitRange{Int64}}=1:D,
               precompute::PrecomputeFlags=LUT, sortNodes=false, 
               fftflags=UInt32(NFFT3.FFTW_ESTIMATE), 
@@ -17,6 +17,8 @@ function NFFT3Plan(x::Matrix{T}, N::NTuple{D,Int}; m = 4, σ = 2.0,
   if dims != 1:D
     error("NFFT3 does not support directional plans!")
   end
+
+  m, σ, reltol = accuracyParams(; kwargs...)
 
   if precompute == AbstractNFFTs.LUT
     prePsi =  NFFT3.PRE_LIN_PSI 

@@ -2,6 +2,10 @@ using NFFT, DataFrames, LinearAlgebra, LaTeXStrings, DelimitedFiles
 using Plots; pgfplotsx()
 
 include("../Wrappers/NFFT3.jl")
+include("../Wrappers/FINUFFT.jl")
+
+const packagesCtor = [NFFTPlan, FINUFFTPlan, NFFT3Plan]
+const packagesStr = ["NFFT.jl","FINUFFT", "NFFT3"]
 
 function nfft_accuracy_comparison()
   println("\n\n ##### nfft_accuracy_comparison ##### \n\n")
@@ -21,26 +25,23 @@ function nfft_accuracy_comparison()
           x = rand(D,M) .- 0.5
           fHat = randn(ComplexF64, M)
 
-          p = plan_nfft(x, NN; m, σ, precompute=NFFT.FULL)
-          pNDFT = NDFTPlan(x, NN)
-          f = ndft_adjoint(pNDFT, fHat)
-          fApprox = nfft_adjoint(p, fHat)
-          eadjoint = norm(f[:] - fApprox[:]) / norm(f[:])
+          for pl = 1:length(packagesStr)
 
-          gHat = ndft(pNDFT, f)
-          gHatApprox = nfft(p, f)
-          etrafo = norm(gHat[:] - gHatApprox[:]) / norm(gHat[:])
-          
-          push!(df, ("NFFT.jl", D, M, N[D], m, σ, etrafo, eadjoint))
+            planner = packagesCtor[pl]
 
-          p = NFFT3Plan(reshape(x,D,:), NN; m, σ, precompute=NFFT.FULL)
-          fApprox = nfft_adjoint(p, fHat)
-          eadjoint = norm(f[:] - fApprox[:]) / norm(f[:])
+            p = planner(x, NN; m, σ, precompute=NFFT.FULL)
+            pNDFT = NDFTPlan(x, NN)
+            f = ndft_adjoint(pNDFT, fHat)
+            fApprox = nfft_adjoint(p, fHat)
+            eadjoint = norm(f[:] - fApprox[:]) / norm(f[:])
 
-          gHatApprox = nfft(p, f)
-          etrafo = norm(gHat[:] - gHatApprox[:]) / norm(gHat[:])
-          
-          push!(df, ("NFFT3", D, M, N[D], m, σ, etrafo, eadjoint))
+            gHat = ndft(pNDFT, f)
+            gHatApprox = nfft(p, f)
+            etrafo = norm(gHat[:] - gHatApprox[:]) / norm(gHat[:])
+            
+            push!(df, (packagesStr[pl], D, M, N[D], m, σ, etrafo, eadjoint))
+
+        end
       end
     end
   end
@@ -69,6 +70,10 @@ function plot_accuracy(df, D=1)
         yscale = :log10, label="NFFT3", lw=2, shape=:xcross, ls=:solid, 
         c=:gray, msc=:gray, mc=:gray, ms=6, msw=3)
 
+  plot!(p1, m, df1_[df1_.Package.=="FINUFFT",:ErrorTrafo], 
+        yscale = :log10, label="FINUFFT", lw=2, shape=:xcross, ls=:solid, 
+        c=:blue, msc=:blue, mc=:blue, ms=6, msw=3)
+
   p2 = plot(σs, df2_[df2_.Package.=="NFFT.jl",:ErrorTrafo], 
         yscale = :log10, label="NFFT.jl", lw=2, xlabel = L"\sigma",  ylabel="Relative Error",
         legend = :none, title=L"m = 8",shape=:circle, c=:black)
@@ -86,8 +91,8 @@ end
 
 
 
-#df = nfft_accuracy_comparison()
-#writedlm("accuracy.csv", Iterators.flatten(([names(df)], eachrow(df))), ',')
+df = nfft_accuracy_comparison()
+writedlm("accuracy.csv", Iterators.flatten(([names(df)], eachrow(df))), ',')
 
 data, header = readdlm("accuracy.csv", ',', header=true);
 df = DataFrame(data, vec(header))

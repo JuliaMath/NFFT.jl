@@ -14,7 +14,7 @@ export apodization!, apodization_adjoint!, convolve!, convolve_adjoint!
 export nfft, nfft_adjoint, ndft, ndft_adjoint
 
 # misc
-export TimingStats, PrecomputeFlags, LUT, FULL, FULL
+export TimingStats, accuracyParams, reltolToParams, paramsToReltol, PrecomputeFlags, LUT, FULL, FULL
    
 
 include("misc.jl")

@@ -17,6 +17,7 @@ but at the time of writing this approach require *a lot* of memory.
 Base.@kwdef mutable struct NFFTParams{T}
   m::Int = 4
   σ::T = 2.0
+  reltol::T = 1e-9
   window::Symbol = :kaiser_bessel
   LUTSize::Int64 = 20000
   precompute::PrecomputeFlags = LUT

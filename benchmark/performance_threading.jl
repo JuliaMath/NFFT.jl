@@ -15,8 +15,8 @@ const LUTSize = 20000
 const threads = [1,2,4,8] #,16]
 const preString = ["LUT"]#, "FULL"]
 const preNFFTjl = [NFFT.LUT, NFFT.FULL]
-const packagesCtor = [FINUFFTPlan, NFFTPlan, NFFT3Plan]
-const packagesStr = ["FINUFFT","NFFT.jl", "NFFT3"]
+const packagesCtor = [NFFTPlan, FINUFFTPlan, NFFT3Plan]
+const packagesStr = ["NFFT.jl","FINUFFT", "NFFT3"]
 
 NFFT.FFTW.set_num_threads(Threads.nthreads())
 ccall(("omp_set_num_threads",NFFT3.lib_path_nfft),Nothing,(Int64,),convert(Int64,Threads.nthreads()))
