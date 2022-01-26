@@ -8,6 +8,8 @@ mutable struct FINUFFTPlan{T,D} <: AbstractNFFTPlan{T,D,1}
   σ::T
   reltol::T
   fftflags::UInt32
+  #forwardPlan::FINUFFT.finufft_plan{T}
+  #adjointPlan::FINUFFT.finufft_plan{T}
 end
 
 ################
@@ -29,69 +31,73 @@ function FINUFFTPlan(x::Matrix{T}, N::NTuple{D,Int};
 
   reltol = max(reltol, 1.0e-15)
 
-  return FINUFFTPlan(N, M, x * 2π, m, T(σ), reltol, fftflags)
+  #forwardPlan = FINUFFT.finufft_makeplan(2,collect(N),-1,1,reltol; 
+  #                              nthreads = Threads.nthreads(), 
+  #                              fftw = fftflags)
+
+  #adjointPlan = FINUFFT.finufft_makeplan(1,collect(N),1,1,reltol;
+  #                              nthreads = Threads.nthreads(), 
+  #                              fftw = fftflags)
+
+  x_ = 2π * x 
+  #nodes = ntuple(d->vec(x_[d,:]), D)
+  #x__ = 2π * x 
+  #nodes_ = ntuple(d->vec(x__[d,:]), D)
+  #FINUFFT.finufft_setpts!(forwardPlan, nodes...)
+  #FINUFFT.finufft_setpts!(adjointPlan, nodes_...)
+
+  p = FINUFFTPlan(N, M, x_, m, T(σ), reltol, fftflags) #, forwardPlan, adjointPlan)
+
+
+
+  #finalizer(p -> begin
+  #  FINUFFT.finufft_destroy!(p.forwardPlan)
+  #  FINUFFT.finufft_destroy!(p.adjointPlan)
+  #end, p)
+
+  return p
 end
 
 
-function Base.show(io::IO, p::FINUFFTPlan{D}) where {D}
+function Base.show(io::IO, p::FINUFFTPlan)
   print(io, "FINUFFTPlan")
 end
 
 AbstractNFFTs.size_in(p::FINUFFTPlan) = Int.(p.N)
 AbstractNFFTs.size_out(p::FINUFFTPlan) = (Int(p.M),)
 
-function AbstractNFFTs.nfft!(p::FINUFFTPlan{T,1}, f::AbstractArray, fHat::StridedArray;
-             verbose=false, timing::Union{Nothing,TimingStats} = nothing) where {T}
+function AbstractNFFTs.nfft!(p::FINUFFTPlan{T,D}, f::AbstractArray, fHat::StridedArray;
+             verbose=false, timing::Union{Nothing,TimingStats} = nothing) where {T,D}
 
-  FINUFFT.nufft1d2!(p.x, fHat, -1, p.reltol, f, 
-                    nthreads = Threads.nthreads(), fftw = p.fftflags)
+  forwardPlan = FINUFFT.finufft_makeplan(2,collect(p.N),-1,1,p.reltol;
+                                        nthreads = Threads.nthreads(), 
+                                        fftw = p.fftflags)
 
-  return fHat
-end
+  nodes = ntuple(d->vec(p.x[d,:]), D)
+  FINUFFT.finufft_setpts!(forwardPlan, nodes...)
+  
+  FINUFFT.finufft_exec!(forwardPlan, f, fHat)
 
-function AbstractNFFTs.nfft_adjoint!(p::FINUFFTPlan{T,1}, fHat::AbstractArray, f::StridedArray;
-                     verbose=false, timing::Union{Nothing,TimingStats} = nothing) where {T}
-
-  FINUFFT.nufft1d1!(p.x, fHat, 1, p.reltol, f,
-                    nthreads = Threads.nthreads(), fftw = p.fftflags)
-
-  return f
-end
-
-function AbstractNFFTs.nfft!(p::FINUFFTPlan{T,2}, f::AbstractArray, fHat::StridedArray;
-  verbose=false, timing::Union{Nothing,TimingStats} = nothing) where {T}
-
-
-  FINUFFT.nufft2d2!(p.x[1,:], p.x[2,:], fHat, -1, p.reltol, f, 
-                    nthreads = Threads.nthreads(), fftw = p.fftflags)
+  FINUFFT.finufft_destroy!(forwardPlan)
 
   return fHat
 end
 
-function AbstractNFFTs.nfft_adjoint!(p::FINUFFTPlan{T,2}, fHat::AbstractArray, f::StridedArray;
-          verbose=false, timing::Union{Nothing,TimingStats} = nothing) where {T}
+function AbstractNFFTs.nfft_adjoint!(p::FINUFFTPlan{T,D}, fHat::AbstractArray, f::StridedArray;
+                     verbose=false, timing::Union{Nothing,TimingStats} = nothing) where {T,D}
 
-  FINUFFT.nufft2d1!(p.x[1,:], p.x[2,:], fHat, 1, p.reltol, f, 
-                    nthreads = Threads.nthreads(), fftw = p.fftflags)
+  adjointPlan = FINUFFT.finufft_makeplan(1,collect(p.N), 1, 1, p.reltol; 
+                                nthreads = Threads.nthreads(), 
+                                fftw = p.fftflags)
 
-  return f
-end
+  nodes = ntuple(d->vec(p.x[d,:]), D)
+  FINUFFT.finufft_setpts!(adjointPlan, nodes...)
+  
+  FINUFFT.finufft_exec!(adjointPlan, fHat, f)
 
-function AbstractNFFTs.nfft!(p::FINUFFTPlan{T,3}, f::AbstractArray, fHat::StridedArray;
-  verbose=false, timing::Union{Nothing,TimingStats} = nothing) where {T}
-
-  FINUFFT.nufft3d2!(p.x[1,:], p.x[2,:], p.x[3,:], fHat, -1, p.reltol, f, 
-                    nthreads = Threads.nthreads(), fftw = p.fftflags)
-
-  return fHat
-end
-
-function AbstractNFFTs.nfft_adjoint!(p::FINUFFTPlan{T,3}, fHat::AbstractArray, f::StridedArray;
-          verbose=false, timing::Union{Nothing,TimingStats} = nothing) where {T}
-
-  FINUFFT.nufft3d1!(p.x[1,:], p.x[2,:], p.x[3,:], fHat, 1, p.reltol, f, 
-                    nthreads = Threads.nthreads(), fftw = p.fftflags)
+  FINUFFT.finufft_destroy!(adjointPlan)
 
   return f
 end
+
 
