@@ -81,12 +81,12 @@ function plot_performance(df; pre = "LUT")
   Plots.scalefontsizes()
   Plots.scalefontsizes(1.5)
 
-  labelsA = packageStr
+  labelsA = packagesStr
 
   tpre = zeros(length(threads),length(labelsA))
   ttrafo = zeros(length(threads), length(labelsA))
   tadjoint = zeros(length(threads), length(labelsA))
-  for (i,p) in enumerate(packageStr)
+  for (i,p) in enumerate(packagesStr)
     for (j,th) in enumerate(threads)
       tpre[j,i] = df[df.Threads .== th .&& df.Package.==p .&& df.Pre.==pre,:TimePre][1]
       ttrafo[j,i] = df[df.Threads .== th .&& df.Package.==p .&& df.Pre.==pre,:TimeTrafo][1]
