@@ -68,7 +68,7 @@ AbstractNFFTs.size_in(p::FINUFFTPlan) = Int.(p.N)
 AbstractNFFTs.size_out(p::FINUFFTPlan) = (Int(p.M),)
 
 
-function AbstractNFFTs.nfft!(p::FINUFFTPlan{T,D}, f::AbstractArray, fHat::StridedArray;
+function LinearAlgebra.mul!(fHat::StridedArray, p::FINUFFTPlan{T,D}, f::AbstractArray;
              verbose=false, timing::Union{Nothing,TimingStats} = nothing) where {T,D}
 
   forwardPlan = FINUFFT.finufft_makeplan(2,collect(p.N),-1,1,p.reltol;
@@ -85,8 +85,9 @@ function AbstractNFFTs.nfft!(p::FINUFFTPlan{T,D}, f::AbstractArray, fHat::Stride
   return fHat
 end
 
-function AbstractNFFTs.nfft_adjoint!(p::FINUFFTPlan{T,D}, fHat::AbstractArray, f::StridedArray;
+function LinearAlgebra.mul!(f::StridedArray, pl::Adjoint{Complex{T},<:FINUFFTPlan{T,D}}, fHat::AbstractArray;
                      verbose=false, timing::Union{Nothing,TimingStats} = nothing) where {T,D}
+  p = pl.parent
 
   adjointPlan = FINUFFT.finufft_makeplan(1,collect(p.N), 1, 1, p.reltol; 
                                 nthreads = Threads.nthreads(), 
@@ -145,7 +146,7 @@ end
 AbstractNFFTs.size_in(p::FINNUFFTPlan) = (Int.(p.N),)
 AbstractNFFTs.size_out(p::FINNUFFTPlan) = (Int(p.M),)
 
-function AbstractNFFTs.nfft!(p::FINNUFFTPlan{T}, f::AbstractArray, fHat::StridedArray;
+function LinearAlgebra.mul!(fHat::StridedArray, p::FINNUFFTPlan{T}, f::AbstractArray;
  verbose=false, timing::Union{Nothing,TimingStats} = nothing) where {T}
 
   D = size(p.x,1)
@@ -172,8 +173,9 @@ function AbstractNFFTs.nfft!(p::FINNUFFTPlan{T}, f::AbstractArray, fHat::Strided
   return fHat
 end
 
-function AbstractNFFTs.nfft_adjoint!(p::FINNUFFTPlan{T}, fHat::AbstractArray, f::StridedArray;
+function LinearAlgebra.mul!(f::StridedArray, pl::Adjoint{Complex{T},<:FINNUFFTPlan{T}}, fHat::AbstractArray;
          verbose=false, timing::Union{Nothing,TimingStats} = nothing) where {T}
+  p = pl.parent
 
   D = size(p.x,1)       
 

@@ -12,8 +12,8 @@ M, N = 8, 16
 x = range(-0.4, stop=0.4, length=M)  # nodes at which the NFFT is evaluated
 fHat = randn(ComplexF64,M)           # data to be transformed
 p = plan_nfft(x, N)                  # create plan. m and σ are optional parameters
-f = nfft_adjoint(p, fHat)            # calculate adjoint NFFT
-g = nfft(p, f)                       # calculate forward NFFT
+f = adjoint(p) * fHat                # calculate adjoint NFFT
+g = p * f                            # calculate forward NFFT
 
 # output
 
@@ -35,8 +35,8 @@ M, N = 16, 32
 x = rand(2, M) .- 0.5
 fHat = randn(ComplexF64,M)
 p = plan_nfft(x, (N,N))
-f = nfft_adjoint(p, fHat)
-g = nfft(p, f)
+f = adjoint(p) * fHat
+g = p * f
 
 # output
 
@@ -92,6 +92,7 @@ The NFFT has the following parameters that can be passed as a keyword argument t
 
 | Parameter                          | Description      | Example Values        |
 | :--------------------------------- | :--------------- | :------------------ |
+| `reltol`      | TODO.  |  `reltol` $=1e-9$      |
 | `m`      | Kernel size. The convolution matrix has `2m+1` non-zero entries around each sampling node in each dimension.  |  `m` $\in \{2,\dots,8\}$      |
 | `σ`     | Oversampling factor. The inner FFT is of size `σN` | `σ` $\in [1.25, 2.0]$      |
 | `window`   | Convolution window: Available are `:gauss`,  `:spline`, `:kaiser_bessel_rev`, `:kaiser_bessel`.    | `:kaiser_bessel` |
@@ -146,7 +147,7 @@ y = rand(M) .- 0.5
 N = (16,20)
 P1 = plan_nfft(y, N, dims=1)
 f = randn(ComplexF64,N)
-fHat = nfft(P1, f)
+fHat = P1 * f
 
 # output
 
@@ -169,7 +170,7 @@ To compute the NFFT along the second dimension
 
 ```jldoctest dirtest; output = false
 P2 = plan_nfft(y, N, dims=2)
-fHat = nfft(P2, f)
+fHat = P2 * f
 
 # output
 

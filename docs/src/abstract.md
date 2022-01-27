@@ -29,8 +29,8 @@ In addition to the plan, the following functions need to be implemented:
 ```julia
 size_out(p)
 size_out(p)
-nfft!(p, f, fHat) -> fHat
-nfft_adjoint!(p, fHat, f) -> f
+mul!(fHat, p, f) -> fHat
+mul!(f, p::Adjoint{Complex{T},<:AbstractNFFTPlan{T}}, fHat) -> f
 nodes!(p, x) -> p
 ```
 All these functions are exported from `AbstractNFFTs` and we recommend to implement them by using the explicit `AbstractNFFTs.` prefix:
@@ -46,17 +46,17 @@ We next outline all of the aforementioned functions and describe their behavior:
 ```julia
     size_in(p)
 ```
-Size of the input array for an `nfft!` operation. The returned tuple has `D` entries. 
-Note that this will be the output array for `nfft_adjoint!`.
+Size of the input array for an NFFT operation. The returned tuple has `D` entries. 
+Note that this will be the output array for an adjoint NFFT.
 
 ```julia
     size_out(p)
 ```
-Size of the output array for an `nfft!` operation. The returned tuple has `R` entries. 
-Note that this will be the input array for `nfft_adjoint!`.
+Size of the output array for an NFFT operation. The returned tuple has `R` entries. 
+Note that this will be the input array for an adjoint NFFT.
 
 ```julia
-    nfft!(p, f, fHat) -> fHat
+    mul!(fHat, p, f) -> fHat
 ```
 
 Inplace NFFT transforming the `D` dimensional array `f` to the `R` dimensional array `fHat`.
@@ -64,7 +64,7 @@ The transformation is applied along `D-R+1` dimensions specified in the plan `p`
 Both `f` and `fHat` must be complex arrays of element type `Complex{T}`.
 
 ```julia
-    nfft_adjoint!(p, fHat, f) -> f
+    mul!(f, p::Adjoint{Complex{T},<:AbstractNFFTPlan{T}}, fHat) -> f
 ```
 Inplace adjoint NFFT transforming the `R` dimensional array `fHat` to the `D` dimensional array `f`.
 The transformation is applied along `D-R+1` dimensions specified in the plan `p`.
@@ -109,26 +109,27 @@ The following derived functions are provided for all plans that inherit from `Ab
 
 The following two functions allocate a fresh output vector an operate out of place
 ```julia
-nfft!(p, f) -> fHat
-nfft_adjoint!(p, fHat) -> f
+*(p, f) -> fHat
+*(adjoint(p), fHat) -> f
 ```
 
-#### Non-preallocated Plan
 
-The following two functions perform an NFFT without a preallocated plan:
-```julia
-nfft!(x, f) -> fHat
-nfft_adjoint!(x, N, fHat) -> f
-```
-Note that `N` needs only be specified for the adjoint. The direct NFFT can derive it from `f`.
-
-#### Linear Algebra Notation
-
-The NFFT can also be considered as a matrix vector multiplication. Julia provides the interface
+...The NFFT can also be considered as a matrix vector multiplication. Julia provides the interface
 ```julia
   *(A, x) -> b
   mul!(b, A, x) -> b
 ```
 for this. Both operations are implemented for any `AbstractNFFTPlan`. To obtain the adjoint on
 needs to apply `adjoint(p)` to the plan `p` before multiplication.
+
+
+#### Non-preallocated Plan
+
+The following two functions perform an NFFT without a preallocated plan:
+```julia
+nfft(x, f) -> fHat
+nfft_adjoint(x, N, fHat) -> f
+```
+Note that `N` needs only be specified for the adjoint. The direct NFFT can derive it from `f`.
+
 

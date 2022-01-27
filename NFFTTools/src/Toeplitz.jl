@@ -122,7 +122,7 @@ julia> convolveToeplitzKernel!(x, λ);
 """
 function calculateToeplitzKernel!(f::Array{Complex{T}}, p::AbstractNFFTPlan{T}, tr::Matrix{T}, fftplan) where T
     nodes!(p, tr)
-    f = nfft_adjoint!(p, OnesVector(Complex{T}, size(tr,2)), f)
+    f = mul!(f, adjoint(p), OnesVector(Complex{T}, size(tr,2)))
     f2 = fftshift(f)
     mul!(f, fftplan, f2)
     return f

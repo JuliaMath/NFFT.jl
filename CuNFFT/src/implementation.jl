@@ -63,7 +63,7 @@ AbstractNFFTs.size_in(p::CuNFFTPlan) = p.N
 AbstractNFFTs.size_out(p::CuNFFTPlan) = p.NOut
 
 """  in-place NFFT on the GPU"""
-function AbstractNFFTs.nfft!(p::CuNFFTPlan{T,D}, f::CuArray, fHat::CuArray) where {T,D} 
+function LinearAlgebra.mul!(fHat::CuArray, p::CuNFFTPlan{T,D}, f::CuArray) where {T,D} 
   NFFT.consistencyCheck(p, f, fHat)
 
   # apodization
@@ -81,7 +81,9 @@ function AbstractNFFTs.nfft!(p::CuNFFTPlan{T,D}, f::CuArray, fHat::CuArray) wher
 end
 
 """  in-place adjoint NFFT on the GPU"""
-function AbstractNFFTs.nfft_adjoint!(p::CuNFFTPlan{T,D}, fHat::CuArray, f::CuArray) where {T,D}
+function LinearAlgebra.mul!(f::CuArray, pl::Adjoint{Complex{T},<:CuNFFTPlan{T,D}}, fHat::CuArray) where {T,D}
+  p = pl.parent
+  
   NFFT.consistencyCheck(p, f, fHat)
 
   # adjoint convolution

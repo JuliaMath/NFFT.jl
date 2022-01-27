@@ -60,9 +60,9 @@ function nfft_performance_comparison(m = 6, σ = 2.0)
           tpre = minimum(b).time / 1e9
           p = planner(x, NN; m=m, σ=σ, window=:kaiser_bessel, LUTSize=LUTSize, 
                       precompute=(preNFFTjl[pre]), sortNodes=false, fftflags=fftflags)
-          b = @benchmark nfft_adjoint!($p, $fHat, $f)
+          b = @benchmark mul!($f, $(adjoint(p)), $fHat)
           tadjoint = minimum(b).time / 1e9
-          b = @benchmark nfft!($p, $f, $fHat)
+          b = @benchmark mul!fft!($fHat, $p, $f)
           ttrafo = minimum(b).time / 1e9
         
           push!(df, (packagesStr[pl], Threads.nthreads(), D, M, N[D][U], false, preString[pre], m, σ,

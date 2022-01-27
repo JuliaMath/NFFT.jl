@@ -1,6 +1,6 @@
 import NFFT3
 
-mutable struct NFFT3Plan{D} <: AbstractNFFTPlan{Float64,D,1} 
+mutable struct NFFT3Plan{T,D} <: AbstractNFFTPlan{T,D,1} 
   parent::NFFT3.NFFT{D}
 end
 
@@ -53,7 +53,7 @@ function NFFT3Plan(x::Matrix{T}, N::NTuple{D,Int};
   xx = Float64.(reverse(x, dims=1))
   parent.x = D == 1 ? vec(xx) : xx
 
-  return NFFT3Plan(parent)
+  return NFFT3Plan{T,D}(parent)
 end
 
 
@@ -64,7 +64,7 @@ end
 AbstractNFFTs.size_in(p::NFFT3Plan) = reverse(Int.(p.parent.N))
 AbstractNFFTs.size_out(p::NFFT3Plan) = (Int(p.parent.M),)
 
-function AbstractNFFTs.nfft!(p::NFFT3Plan{D}, f::AbstractArray, fHat::StridedArray;
+function LinearAlgebra.mul!(fHat::StridedArray, p::NFFT3Plan{D}, f::AbstractArray;
              verbose=false, timing::Union{Nothing,TimingStats} = nothing) where {D}
   #consistencyCheck(p, f, fHat)
 
@@ -76,9 +76,10 @@ function AbstractNFFTs.nfft!(p::NFFT3Plan{D}, f::AbstractArray, fHat::StridedArr
   return fHat
 end
 
-function AbstractNFFTs.nfft_adjoint!(p::NFFT3Plan, fHat::AbstractArray, f::StridedArray;
-                     verbose=false, timing::Union{Nothing,TimingStats} = nothing)
+function LinearAlgebra.mul!(f::StridedArray, pl::Adjoint{Complex{T},<:NFFT3Plan{T}}, fHat::AbstractArray;
+                     verbose=false, timing::Union{Nothing,TimingStats} = nothing) where T
   #consistencyCheck(p, f, fHat)
+  p = pl.parent
 
   p.parent.f = vec(fHat)
   p.parent.fhat = vec(f)

@@ -20,14 +20,14 @@ LUTSize = 20000
             pNDFT = NDFTPlan(x, N)
 
             fHat = rand(Float64,M) + rand(Float64,M)*im
-            f = nfft_adjoint(pNDFT, fHat)
-            fApprox = nfft_adjoint(p, fHat)
+            f = adjoint(pNDFT) * fHat
+            fApprox = adjoint(p) * fHat
             e = norm(f[:] - fApprox[:]) / norm(f[:])
             @debug "error adjoint nfft "  e
             @test e < eps[l]
 
-            gHat = nfft(pNDFT, f)
-            gHatApprox = nfft(p, f)
+            gHat = pNDFT * f
+            gHatApprox = p * f
             e = norm(gHat[:] - gHatApprox[:]) / norm(gHat[:])
             @debug "error nfft "  e
             @test e < eps[l]
@@ -72,37 +72,6 @@ end
 end
 
 
-@testset "Linear Algebra NFFT " begin
-  @info "Linear Algebra NFFT"
-  N = (32,32)
-  eps =  1e-3
-  D = length(N)
-
-  M = prod(N)
-  x = rand(Float64,D,M) .- 0.5
-
-  fHat = rand(Float64,M) + rand(Float64,M)*im
-  f = ndft_adjoint(x, N, fHat)
-  p = plan_nfft(x, N)
-
-  fApprox = mul!(copy(f), adjoint(p), fHat)
-  e = norm(f[:] - fApprox[:]) / norm(f[:])
-  @test e < eps
-
-  fApprox = adjoint(p) * fHat
-  e = norm(f[:] - fApprox[:]) / norm(f[:])
-  @test e < eps
-
-  gHat = ndft(x, f)
-  gHatApprox = mul!(copy(fHat), p, f)
-  e = norm(gHat[:] - gHatApprox[:]) / norm(gHat[:])
-  @test e < eps
-
-  gHatApprox =  p * f
-  e = norm(gHat[:] - gHatApprox[:]) / norm(gHat[:])
-  @test e < eps
-end
-
 @testset "Abstract sampling points" begin
   @info "Abstract sampling points"
     M, N = rand(100:2:200, 2)
@@ -122,8 +91,8 @@ end
 
             f = rand(ComplexF64,N)
             p_dir = plan_nfft(x, N, dims=d)
-            fHat_dir = nfft(p_dir, f)
-            g_dir = nfft_adjoint(p_dir, fHat_dir)
+            fHat_dir = p_dir * f
+            g_dir = adjoint(p_dir) * fHat_dir
 
             p = plan_nfft(x, N[d])
             fHat = similar(fHat_dir)
@@ -135,10 +104,10 @@ end
             for Ipost in Rpost, Ipre in Rpre
                 idx = [Ipre, :, Ipost]
                 fview = f[idx...]
-                fHat[idx...] = nfft(p, vec(fview))
+                fHat[idx...] = p * vec(fview)
 
                 fHat_view = fHat_dir[idx...]
-                g[idx...] = nfft_adjoint(p, vec(fHat_view))
+                g[idx...] = adjoint(p) * vec(fHat_view)
             end
 
             e = norm( fHat_dir[:] - fHat[:] )
@@ -163,8 +132,8 @@ end
 
           f = rand(ComplexF64, N)
           p_dir = plan_nfft(x, N, dims=dims)
-          fHat_dir = nfft(p_dir, f)
-          g_dir = nfft_adjoint(p_dir, fHat_dir)
+          fHat_dir = p_dir * f
+          g_dir = adjoint(p_dir) * fHat_dir
 
           p = plan_nfft(x, N[dims])
           fHat = similar(fHat_dir)
@@ -177,10 +146,10 @@ end
               idxfhat = [Ipre, :, Ipost]
 
               fview = f[idxf...]
-              fHat[idxfhat...] = nfft(p, (fview))
+              fHat[idxfhat...] = p * fview
 
               fHat_view = fHat_dir[idxfhat...]
-              g[idxf...] = nfft_adjoint(p, (fHat_view))
+              g[idxf...] = adjoint(p) * fHat_view
           end
 
           e = norm( fHat_dir[:] - fHat[:] )
@@ -210,16 +179,16 @@ end
             pNDFT = NDFTPlan(x, N)
 
             fHat = rand(Float64,M) + rand(Float64,M)*im
-            f = nfft_adjoint(pNDFT, fHat)
+            f = adjoint(pNDFT) * fHat
             fHat_d = CuArray(fHat)
-            fApprox_d = nfft_adjoint(p_d, fHat_d)
+            fApprox_d = adjoint(p_d) * fHat_d
             fApprox = Array(fApprox_d)
             e = norm(f[:] - fApprox[:]) / norm(f[:])
             @debug "error adjoint nfft "  e
             @test e < eps[l]
 
-            gHat = nfft(pNDFT, f)
-            gHatApprox = Array( nfft(p_d, CuArray(f)) )
+            gHat = pNDFT * f
+            gHatApprox = Array( p_d * CuArray(f) )
             e = norm(gHat[:] - gHatApprox[:]) / norm(gHat[:])
             @debug "error nfft "  e
             @test e < eps[l]

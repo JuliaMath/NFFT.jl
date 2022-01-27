@@ -41,15 +41,15 @@ end
 
 ### ndft functions ###
 
-ndft(x::AbstractArray, f::AbstractArray, rest...; kwargs...) =
-   nfft(NDFTPlan(x, size(f), rest...; kwargs...), f)
+ndft(x::AbstractArray, f::AbstractArray; kargs...) =
+    NDFTPlan(x, size(f); kargs...) * f
 
-ndft_adjoint(x, N, fHat::AbstractVector, rest...; kwargs...) =
-   nfft_adjoint(NDFTPlan(x, N, rest...; kwargs...), fHat)
+ndft_adjoint(x, N, fHat::AbstractVector; kargs...) =
+    adjoint(NDFTPlan(x, N; kargs...)) * fHat
 
 
 
-function AbstractNFFTs.nfft!(plan::NDFTPlan{Tp,D}, f::AbstractArray{T,D}, g::AbstractArray{Tg}) where {D,Tp,T,Tg}
+function LinearAlgebra.mul!(g::AbstractArray{Tg}, plan::NDFTPlan{Tp,D}, f::AbstractArray{T,D}) where {D,Tp,T,Tg}
 
     plan.N == size(f) ||
         throw(DimensionMismatch("Data f is not consistent with NDFTPlan"))
@@ -74,34 +74,35 @@ function AbstractNFFTs.nfft!(plan::NDFTPlan{Tp,D}, f::AbstractArray{T,D}, g::Abs
 end
 
 
-function AbstractNFFTs.nfft_adjoint!(plan::NDFTPlan{Tp,D}, fHat::AbstractVector{T}, g::AbstractArray{Tg,D}) where {D,Tp,T,Tg}
+function LinearAlgebra.mul!(g::AbstractArray{Tg,D}, pl::Adjoint{Complex{Tp},<:NDFTPlan{Tp,D}}, fHat::AbstractVector{T}) where {D,Tp,T,Tg}
+  p = pl.parent
 
-    plan.M == length(fHat) ||
-        throw(DimensionMismatch("Data f inconsistent with NDFTPlan"))
-    plan.N == size(g) ||
-        throw(DimensionMismatch("Output g inconsistent with NDFTPlan"))
+  p.M == length(fHat) ||
+      throw(DimensionMismatch("Data f inconsistent with NDFTPlan"))
+  p.N == size(g) ||
+      throw(DimensionMismatch("Output g inconsistent with NDFTPlan"))
 
-    g .= zero(Tg)
+  g .= zero(Tg)
 
-    for l=1:prod(plan.N)
-        idx = CartesianIndices(plan.N)[l]
+  for l=1:prod(p.N)
+      idx = CartesianIndices(p.N)[l]
 
-        for k=1:plan.M
-            arg = zero(T)
-            for d=1:D
-                arg += plan.x[d,k] * ( idx[d] - 1 - plan.N[d] / 2 )
-            end
-            g[l] += fHat[k] * cis(2*pi*arg)
-        end
-    end
+      for k=1:p.M
+          arg = zero(T)
+          for d=1:D
+              arg += p.x[d,k] * ( idx[d] - 1 - p.N[d] / 2 )
+          end
+          g[l] += fHat[k] * cis(2*pi*arg)
+      end
+  end
 
-    return g
+  return g
 end
 
 
 
 
-function AbstractNFFTs.nfft!(plan::NNDFTPlan{Tp}, f::AbstractArray{T}, g::AbstractArray{Tg}) where {Tp,T,Tg}
+function LinearAlgebra.mul!(g::AbstractArray{Tg}, plan::NNDFTPlan{Tp}, f::AbstractArray{T}) where {Tp,T,Tg}
 
   g .= zero(Tg)
 
@@ -118,16 +119,15 @@ function AbstractNFFTs.nfft!(plan::NNDFTPlan{Tp}, f::AbstractArray{T}, g::Abstra
   return g
 end
 
-
-function AbstractNFFTs.nfft_adjoint!(plan::NNDFTPlan{Tp}, fHat::AbstractVector{T}, g::AbstractArray{Tg}) where {Tp,T,Tg}
-
+function LinearAlgebra.mul!(g::AbstractArray{Tg}, pl::Adjoint{Complex{Tp},<:NNDFTPlan{Tp}}, fHat::AbstractVector{T}) where {Tp,T,Tg}
+  p = pl.parent
   g .= zero(Tg)
 
-  for l=1:plan.N
-      for k=1:plan.M
+  for l=1:p.N
+      for k=1:p.M
           arg = zero(T)
-          for d=1:size(plan.x,1)
-            arg += plan.x[d,k] * plan.y[d,l]
+          for d=1:size(p.x,1)
+            arg += p.x[d,k] * p.y[d,l]
           end
           g[l] += fHat[k] * cis(2*pi*arg)
       end

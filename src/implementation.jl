@@ -112,7 +112,7 @@ AbstractNFFTs.size_out(p::NFFTPlan) = p.NOut
 # nfft functions
 ################
 
-function AbstractNFFTs.nfft!(p::NFFTPlan{T,D,R}, f::AbstractArray, fHat::StridedArray;
+function LinearAlgebra.mul!(fHat::StridedArray, p::NFFTPlan{T,D,R}, f::AbstractArray;
                verbose=false, timing::Union{Nothing,TimingStats} = nothing) where {T,D,R}
     consistencyCheck(p, f, fHat)
 
@@ -135,9 +135,12 @@ function AbstractNFFTs.nfft!(p::NFFTPlan{T,D,R}, f::AbstractArray, fHat::Strided
     return fHat
 end
 
-function AbstractNFFTs.nfft_adjoint!(p::NFFTPlan, fHat::AbstractArray, f::StridedArray;
-                       verbose=false, timing::Union{Nothing,TimingStats} = nothing)
-    consistencyCheck(p, f, fHat)
+
+
+function LinearAlgebra.mul!(f::StridedArray, pl::Adjoint{Complex{T},<:NFFTPlan{T}}, fHat::AbstractArray;
+                       verbose=false, timing::Union{Nothing,TimingStats} = nothing) where {T}
+    p = pl.parent
+    consistencyCheck(p, f, fHat)    
 
     t1 = @elapsed @inbounds convolve_adjoint!(p, fHat, p.tmpVec)
     #if nprocs() == 1

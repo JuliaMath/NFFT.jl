@@ -17,8 +17,8 @@ function nfft_performance_1()
       for pre in [NFFT.LUT, NFFT.FULL]
         @info "* precomputation = $pre"
         p = plan_nfft(x, N; m, σ, precompute=pre, timing)
-        fApprox = nfft_adjoint(p, fHat; timing)
-        nfft(p, fApprox; timing)
+        fApprox = *(adjoint(p), fHat; timing)
+        *(p, fApprox; timing)
 
         println(timing)
       end
@@ -29,8 +29,8 @@ function nfft_performance_1()
       for pre in [NFFT.LUT, NFFT.FULL]
         @info "* precomputation = $pre"
         p = plan_nfft(x2, (N,N); m, σ, precompute=pre, timing)
-        fApprox = nfft_adjoint(p, fHat; timing)
-        nfft(p, fApprox; timing)
+        fApprox = *(adjoint(p), fHat; timing)
+        *(p, fApprox; timing)
 
         println(timing)
       end
@@ -41,8 +41,8 @@ function nfft_performance_1()
       for pre in [NFFT.LUT, NFFT.FULL]
         @info "* precomputation = $pre"
         p = plan_nfft(x3, (N,N,N); m, σ, precompute=pre, timing)
-        fApprox = nfft_adjoint(p, fHat; timing)
-        nfft(p, fApprox; timing)
+        fApprox = *(adjoint(p), fHat; timing)
+        *(p, fApprox; timing)
 
         println(timing)
       end
@@ -68,8 +68,8 @@ function nfft_performance_2(N = 64, M = N*N*N)
 
         @info "* precomputation = $pre threading = $threading"
         p = plan_nfft(x, (N,N,N); m, σ, precompute=pre, timing, fftflags=FFTW.MEASURE)
-        fApprox = nfft_adjoint(p, fHat; timing)
-        nfft(p, fApprox; timing)
+        fApprox = *(adjoint(p), fHat; timing)
+        *(p, fApprox; timing)
 
         println(timing)
       end
@@ -95,8 +95,8 @@ function nfft_performance_simple(;N = 64, M = N*N, m = 5, LUTSize=100000,
   
   tpre = @elapsed p = plan_nfft(x, (N,N); m, σ, window=:kaiser_bessel, LUTSize, precompute=pre, timing, fftflags, storeApodizationIdx)
   f = similar(fHat, p.N)
-  tadjoint = @elapsed fApprox = nfft_adjoint!(p, fHat, f; timing)
-  ttrafo = @elapsed nfft!(p, fApprox, fHat; timing)
+  tadjoint = @elapsed fApprox = mul!(f, adjoint(p), fHat; timing)
+  ttrafo = @elapsed mul!(fHat, p, fApprox; timing)
 
   @info tpre, ttrafo, tadjoint
 
