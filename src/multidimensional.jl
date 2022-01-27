@@ -232,37 +232,38 @@ function addPatch!(p{T,D,1}, g, patch, off) where {T,D}
   end
 end
 
-function fillPatch!(p::NFFTPlan{T,D,1}, fHat::AbstractVector, patch, nodesInBlock, L, scale)  where {D,T,U}
+function fillPatch!(p::NFFTPlan{T,D,1}, fHat::AbstractVector, patch, nodesInBlock, off, L, scale)  where {D,T,U}
   for k in nodesInBlock
-    fillOneNode!(p, fHat, patch, L, scale, k)
+    fillOneNode!(p, fHat, patch, off, L, scale, k)
   end
 end
 
 
 
-@generated function fillOneNode!(p::NFFTPlan{T,D,1}, fHat::AbstractVector{U}, g::StridedArray{Complex{T},D}, L::Val{Z}, scale, k) where {D,T,U,Z}
+@generated function fillOneNode!(p::NFFTPlan{T,D,1}, fHat::AbstractVector{U}, patch::StridedArray{Complex{T},D},
+                          off, L::Val{Z}, scale, k) where {D,T,U,Z}
   quote
-    @nexprs $(D) d -> ((tmpIdx_d, tmpWin_d) = _precomputeOneNode(p, scale, k, d, L) )
+    @nexprs $(D) d -> ((tmpIdx_d, tmpWin_d) = _precomputeOneNodeShifted(p, scale, k, d, L, off) )
 
     @nexprs 1 d -> prodWin_{$D} = one(T)
     @nloops_ $D l d -> 1:$Z d->begin
       # preexpr
       prodWin_{d-1} = prodWin_d * tmpWin_d[l_d]
-      gidx_d = tmpIdx_d[l_d] 
+      patch_idx_d = tmpIdx_d[l_d] 
     end begin
       # bodyexpr
-      (@nref $D g gidx) += prodWin_0 * fHat[k] 
+      (@nref $D patch patch_idx) += prodWin_0 * fHat[k] 
     end
   end
 end
 
 
-@generated function _precomputeOneNode(windowLUT::Vector, x::AbstractMatrix{T}, n::NTuple{D,Int}, m, 
-  σ, scale, k, d, L::Val{Z}) where {T,D,Z}
+@generated function _precomputeOneNodeShifted(windowLUT::Vector, x::AbstractMatrix{T}, n::NTuple{D,Int}, m, 
+  σ, scale, k, d, L::Val{Z}, off_) where {T,D,Z}
   quote
-    xscale = x[d,k] * n[d]
-    off = floor(Int, xscale) - m - 1
-    tmpIdx = @ntuple $(Z) l -> ( rem(l + off + n[d], n[d]) + 1)
+    xscale = rem(x[d,k]+1.0, 1.0) * n[d]
+    off = floor(Int, xscale) # - m - 1
+    tmpIdx = @ntuple $(Z) l -> ( l + off + 1)
     tmpWin = @ntuple $(Z) l -> begin
       idx = abs( (xscale - l - off)*scale ) + 1
       idxL = floor(idx)
