@@ -139,31 +139,15 @@ end
 
 function AbstractNFFTs.convolve_adjoint!(p::NFFTPlan{T,D,1}, fHat::AbstractVector{U}, g::StridedArray{Complex{T},D}) where {D,T,U}
   if isempty(p.B)
-    #if NFFT._use_threads[]
-    #  convolve_adjoint_LUT_MT!(p, fHat, g)
-    #else
+    if NFFT._use_threads[]
+      convolve_adjoint_LUT_MT!(p, fHat, g)
+    else
       convolve_adjoint_LUT!(p, fHat, g)
-    #end
+    end
   else
     convolve_adjoint_sparse_matrix!(p, fHat, g)
   end
 end
-
-#=function convolve_adjoint_LUT_MT!(p::NFFTPlan{T,D,1}, fHat::AbstractVector{U}, g::StridedArray{Complex{T},D}) where {D,T,U}
-  fill!(g, zero(T))
-  scale = T(1.0 / p.params.m * (p.params.LUTSize-1))
-  @time g_tmp = Array{Complex{T}}(undef, size(g)..., Threads.nthreads())
-  @time fill!(g_tmp, zero(T))
-
-  @time @cthreads for k in 1:p.M
-    _convolve_adjoint_LUT_MT!(p, fHat, view(g_tmp, :,:,:,Threads.threadid()), scale, k)
-  end   
-
-  @time for l=1:Threads.nthreads()
-     g .+= g_tmp[l]
-  end
-  return g
-end=#
 
 
 function convolve_adjoint_LUT!(p::NFFTPlan{T,D,1}, fHat::AbstractVector{U}, g::StridedArray{Complex{T},D}) where {D,T,U}
@@ -198,3 +182,93 @@ function convolve_adjoint_sparse_matrix!(p::NFFTPlan{T,D,1},
   mul!(vec(g), p.B, fHat)
 end
 
+
+
+
+
+
+function convolve_adjoint_LUT_MT!(p::NFFTPlan{T,D,1}, fHat::AbstractVector{U}, g::StridedArray{Complex{T},D}) where {D,T,U}
+  fill!(g, zero(T))
+  L = Val(2*p.params.m+1)
+  scale = T(1.0 / p.params.m * (p.params.LUTSize-1))
+
+  
+  x = p.x
+  n = p.n
+  
+  padding = ntuple(d->p.params.m, D)
+  blockSize = ntuple(d-> (d==1) ? 16 : 4 , D)
+  blockSizePadded = ntuple(d-> blockSize[d] + 2*padding[d] , D)
+  
+  numBlocks =  ntuple(d-> ceil(Int, n[d]/blockSize[d]) , D)
+  totalBlocks = prod(numBlocks)
+
+  nodesInBlock = [ Int[] for l in CartesianIndices(numBlocks) ]
+  
+  patches = [ zeros(ComplexF64, blockSizePadded) for l in CartesianIndices(numBlocks) ]
+  off = [ ntuple(d-> (l[d]-1)*blockSize[d]+1-padding , D) for l in CartesianIndices(numBlocks) ]
+  
+ # xscale = x[d,k] * n[d]
+ # off = floor(Int, xscale) - m - 1
+ # tmpIdx = @ntuple $(Z) l -> ( rem(l + off + n[d], n[d]) + 1)
+
+  for k=1:size(x,2)
+    idx = ntuple(d->floor(Int, rem(floor(Int, x[d,k]*n[d])+n[d],n[d])÷blockSize[d])+1, D)
+    push!(nodesInBlock[idx...], k)
+  end
+  
+  for l in CartesianIndices(numBlocks)
+    if !isempty(nodesInBlock[l])
+      fillPatch!(p, fHat, patches[l], nodesInBlock[l], L, scale)
+      addPatch!(p, g, patches[l], off[l])
+    end
+  end
+end
+
+function addPatch!(p{T,D,1}, g, patch, off) where {T,D}
+  for l in CartesianIndices(size(patch))
+    z = ntuple(d->( ( rem(l[d] + off[d] + n[d], n[d]) + 1)  ), D) 
+    g[z] = patch[l]
+  end
+end
+
+function fillPatch!(p::NFFTPlan{T,D,1}, fHat::AbstractVector, patch, nodesInBlock, L, scale)  where {D,T,U}
+  for k in nodesInBlock
+    fillOneNode!(p, fHat, patch, L, scale, k)
+  end
+end
+
+
+
+@generated function fillOneNode!(p::NFFTPlan{T,D,1}, fHat::AbstractVector{U}, g::StridedArray{Complex{T},D}, L::Val{Z}, scale, k) where {D,T,U,Z}
+  quote
+    @nexprs $(D) d -> ((tmpIdx_d, tmpWin_d) = _precomputeOneNode(p, scale, k, d, L) )
+
+    @nexprs 1 d -> prodWin_{$D} = one(T)
+    @nloops_ $D l d -> 1:$Z d->begin
+      # preexpr
+      prodWin_{d-1} = prodWin_d * tmpWin_d[l_d]
+      gidx_d = tmpIdx_d[l_d] 
+    end begin
+      # bodyexpr
+      (@nref $D g gidx) += prodWin_0 * fHat[k] 
+    end
+  end
+end
+
+
+@generated function _precomputeOneNode(windowLUT::Vector, x::AbstractMatrix{T}, n::NTuple{D,Int}, m, 
+  σ, scale, k, d, L::Val{Z}) where {T,D,Z}
+  quote
+    xscale = x[d,k] * n[d]
+    off = floor(Int, xscale) - m - 1
+    tmpIdx = @ntuple $(Z) l -> ( rem(l + off + n[d], n[d]) + 1)
+    tmpWin = @ntuple $(Z) l -> begin
+      idx = abs( (xscale - l - off)*scale ) + 1
+      idxL = floor(idx)
+      idxInt = Int(idxL)
+      (windowLUT[d][idxInt] + ( idx-idxL ) * (windowLUT[d][idxInt+1] - windowLUT[d][idxInt]))  
+    end
+    return (tmpIdx, tmpWin)
+  end
+end
