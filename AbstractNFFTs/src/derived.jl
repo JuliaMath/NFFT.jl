@@ -16,8 +16,11 @@ plan_nfft(x::AbstractArray, y::AbstractArray, args...; kargs...) where {D} =
 plan_nfft(Q::Type, x::AbstractVector, N::Integer, rest...; kwargs...) where {D}  =
     plan_nfft(Q, collect(reshape(x,1,length(x))), (N,), rest...; kwargs...)
 
-plan_nfft(Q::Type, x::AbstractVector, N::NTuple{D,Int}, rest...; kwargs...) where {D}  =
-    plan_nfft(Q, collect(reshape(x,1,length(x))), N, rest...; kwargs...)
+plan_nfft(Q::Type, x::AbstractVector, N::NTuple{D,Int}, rest...; kwargs...) where {D} =
+    plan_nfft(Q, collect(reshape(x,1,length(x))), N, rest...; kwargs...) 
+
+plan_nfft(Q::Type, x::AbstractMatrix, N::NTuple{D,Int}, rest...; kwargs...) where {D}  =
+    plan_nfft(Q, collect(x), N, rest...; kwargs...)
 
 plan_nfft(Q::Type, x::AbstractVector, y::AbstractVector, rest...; kwargs...) where {D}  =
     plan_nfft(Q, collect(reshape(x,1,length(x))), collect(reshape(y,1,length(x))), rest...; kwargs...)
