@@ -196,7 +196,7 @@ function convolve_adjoint_LUT_MT!(p::NFFTPlan{T,D,1}, fHat::AbstractVector{U}, g
   n = p.n
   
   padding = ntuple(d->p.params.m, D)
-  blockSize = ntuple(d-> (d==1) ? 16 : 4 , D)
+  blockSize = ntuple(d-> (d==1) ? 64 : 16 , D)
   #blockSize = ntuple(d-> p.n[d] , D)
   blockSizePadded = ntuple(d-> blockSize[d] + 2*padding[d] , D)
   
@@ -215,10 +215,15 @@ function convolve_adjoint_LUT_MT!(p::NFFTPlan{T,D,1}, fHat::AbstractVector{U}, g
     push!(nodesInBlock[idx...], k)
   end
   
-  for l in CartesianIndices(numBlocks)
+  lk = ReentrantLock()
+  @floop for l in CartesianIndices(numBlocks)
     if !isempty(nodesInBlock[l])
-      fillPatch!(p, fHat, patches[l], nodesInBlock[l], off[l], L, scale)
-      addPatch!(p, g, patches[l], off[l])
+      #@spawnat :any begin
+        fillPatch!(p, fHat, patches[l], nodesInBlock[l], off[l], L, scale)
+        lock(lk) do
+          addPatch!(p, g, patches[l], off[l])
+        end
+      #end
     end
   end
 end
