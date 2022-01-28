@@ -82,7 +82,7 @@ function calculateToeplitzKernel(shape, tr::AbstractMatrix{T}; m = 4, σ = 2.0, 
     shape_os = 2 .* shape
 
     p = plan_nfft(typeof(tr), tr, shape_os; m, σ, window, LUTSize, kwargs...)
-    eigMat = nfft_adjoint(p, OnesVector(Complex{T}, size(tr,2)))
+    eigMat = adjoint(p) * OnesVector(Complex{T}, size(tr,2))
     return fftplan * fftshift(eigMat)
 end
 
