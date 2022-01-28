@@ -4,14 +4,14 @@ using Random
 using LinearAlgebra
 using FFTW
 #using CuNFFT
-#using NFFTTools
+using NFFTTools
 
 Random.seed!(123)
 
-include("accuracy.jl")
-#include("wrappers.jl")
-#include("constructors.jl")
-#include("performance.jl")
 
-#include("testToeplitz.jl")
-#include("samplingDensity.jl")
+include("wrappers.jl")
+include("constructors.jl")
+include("performance.jl")
+include("accuracy.jl")
+include("testToeplitz.jl")
+include("samplingDensity.jl")

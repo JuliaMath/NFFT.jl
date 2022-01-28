@@ -171,6 +171,7 @@ function precomputation(x::Union{Matrix{T},Vector{T}}, N::NTuple{D,Int}, n, para
   else
       error("precompute = $precompute not supported by NFFT.jl!")
   end
+
   return (windowLUT, windowHatInvLUT, apodizationIdx, B)
 end
 
@@ -219,3 +220,56 @@ end
     end
   end
 end
+
+####### block precomputation #########
+
+function precomputeBlocks(x::Matrix{T}, n::NTuple{D,Int}, params, calcBlocks::Bool) where {T,D}
+
+  if calcBlocks
+    blocks, nodesInBlocks, blockOffsets = _precomputeBlocks(x, n, params.m)
+  else
+    blocks = Array{Array{Complex{T},D},D}(undef,ntuple(d->0,D))
+    nodesInBlocks = Array{Vector{Int64},D}(undef,ntuple(d->0,D))
+    blockOffsets = Array{NTuple{D,Int64},D}(undef,ntuple(d->0,D))
+  end
+  
+  return (blocks, nodesInBlocks, blockOffsets)
+end
+
+
+function _precomputeBlocks(x::Matrix{T}, n::NTuple{D,Int}, m) where {T,D}
+
+  padding = ntuple(d->m, D)
+  blockSize = ntuple(d-> (d==1) ? 32 : 32 , D)
+  #blockSize = ntuple(d-> n[d] , D)
+  blockSizePadded = ntuple(d-> blockSize[d] + 2*padding[d] , D)
+  
+  numBlocks =  ntuple(d-> ceil(Int, n[d]/blockSize[d]) , D)
+
+#@info "numBlocks= " numBlocks
+
+  nodesInBlock = [ Int[] for l in CartesianIndices(numBlocks) ]
+  numNodesInBlock = zeros(Int, numBlocks)
+  @floop  for k=1:size(x,2)
+    idx = ntuple(d->floor(Int, rem(floor(Int, x[d,k]*n[d])+n[d],n[d])÷blockSize[d])+1, D)
+    numNodesInBlock[idx...] += 1
+  end
+  @floop  for l in CartesianIndices(numBlocks)
+    sizehint!(nodesInBlock[l], numNodesInBlock[l])
+  end
+  @floop  for k=1:size(x,2)
+    idx = ntuple(d->floor(Int, rem(floor(Int, x[d,k]*n[d])+n[d],n[d])÷blockSize[d])+1, D)
+    push!(nodesInBlock[idx...], k)
+  end
+
+  blocks = Array{Array{Complex{T},D},D}(undef, numBlocks)
+  blockOffsets = Array{NTuple{D,Int64},D}(undef, numBlocks)
+  @floop for l in CartesianIndices(numBlocks)
+    blocks[l] = Array{Complex{T},D}(undef, blockSizePadded)
+    blockOffsets[l] = ntuple(d-> (l[d]-1)*blockSize[d]+1-padding[d], D)
+  end
+
+  return blocks, nodesInBlock, blockOffsets
+end
+
+#LinearIndices(n)
