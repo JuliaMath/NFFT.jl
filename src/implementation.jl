@@ -41,6 +41,9 @@ mutable struct NFFTPlan{T,D,R} <: AbstractNFFTPlan{T,D,R}
     windowLUT::Vector{Vector{T}}
     windowHatInvLUT::Vector{Vector{T}}
     B::SparseMatrixCSC{T,Int64}
+    blocks::Array{Array{Complex{T},D},D}
+    nodesInBlock::Array{Vector{Int64},D}
+    blockOffsets::Array{NTuple{D,Int64},D}
 end
 
 function Base.copy(p::NFFTPlan{T,D,R}) where {T,D,R}
@@ -50,13 +53,17 @@ function Base.copy(p::NFFTPlan{T,D,R}) where {T,D,R}
     windowLUT = copy(p.windowLUT)
     windowHatInvLUT = copy(p.windowHatInvLUT)
     B = copy(p.B)
+    blocks = deepcopy(p.blocks)
+    nodesInBlock = deepcopy(p.nodesInBlock)
+    blockOffsets = copy(p.blockOffsets)
     x = copy(p.x)
 
     FP = plan_fft!(tmpVec, p.dims; flags = p.forwardFFT.flags)
     BP = plan_bfft!(tmpVec, p.dims; flags = p.backwardFFT.flags)
 
     return NFFTPlan{T,D,R}(p.N, p.NOut, p.M, x, p.n, p.dims, p.params, FP, BP, tmpVec, 
-                           tmpVecHat, apodizationIdx, windowLUT, windowHatInvLUT, B)
+                           tmpVecHat, apodizationIdx, windowLUT, windowHatInvLUT, B,
+                           blocks, nodesInBlock, blockOffsets)
 end
 
 ################
@@ -76,11 +83,15 @@ function NFFTPlan(x::Matrix{T}, N::NTuple{D,Int}; dims::Union{Integer,UnitRange{
 
     windowLUT, windowHatInvLUT, apodizationIdx, B = precomputation(x, N[dims_], n[dims_], params)
     
+    calcBlocks = (params.precompute == LUT) && length(dims_) == D
+    blocks, nodesInBlocks, blockOffsets = precomputeBlocks(x, n, params, calcBlocks)
+
     U = params.storeApodizationIdx ? N : ntuple(d->0,D)
     tmpVecHat = Array{Complex{T},D}(undef, U)
 
     NFFTPlan(N, NOut, M, x, n, dims_, params, FP, BP, tmpVec, tmpVecHat, 
-                       apodizationIdx, windowLUT, windowHatInvLUT, B)
+                       apodizationIdx, windowLUT, windowHatInvLUT, B,
+                       blocks, nodesInBlocks, blockOffsets)
 end
 
 function AbstractNFFTs.nodes!(p::NFFTPlan{T}, x::Matrix{T}) where {T}

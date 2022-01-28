@@ -8,13 +8,12 @@ pCopy = copy(p)
 
 for n in fieldnames(typeof(p))
   println(n)
-  if n ∉ [:tmpVec, :forwardFFT, :backwardFFT]
+  if n ∉ [:tmpVec, :forwardFFT, :backwardFFT, :blocks, :nodesInBlock]
     @test getfield(p,n) == getfield(pCopy,n)
   end
 end
 
 @show p
-
 
 ## test nodes!(p, tr)
 Nx = 32
