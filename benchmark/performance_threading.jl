@@ -62,7 +62,7 @@ function nfft_performance_comparison(m = 6, σ = 2.0)
                       precompute=(preNFFTjl[pre]), sortNodes=false, fftflags=fftflags)
           b = @benchmark mul!($f, $(adjoint(p)), $fHat)
           tadjoint = minimum(b).time / 1e9
-          b = @benchmark mul!fft!($fHat, $p, $f)
+          b = @benchmark mul!($fHat, $p, $f)
           ttrafo = minimum(b).time / 1e9
         
           push!(df, (packagesStr[pl], Threads.nthreads(), D, M, N[D][U], false, preString[pre], m, σ,
