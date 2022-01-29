@@ -208,12 +208,12 @@ end
 function toBlock!(p::NFFTPlan{T,D,1}, g, block, off, isNoEdgeBlock) where {T,D}
   if !isNoEdgeBlock
     for l in CartesianIndices(size(block))
-      z = ntuple(d->( ( rem(l[d]-2 + off[d] + p.n[d], p.n[d]) + 1)  ), D) 
+      z = ntuple(d->( ( rem(l[d] + off[d] + p.n[d], p.n[d]) + 1)  ), D) 
       block[l] = g[z...] 
     end
   else
     for l in CartesianIndices(size(block))
-      z = ntuple(d->( ( l[d] + off[d] - 1) ), D) 
+      z = ntuple(d->( ( l[d] + off[d] + 1) ), D) 
       block[l] = g[z...] 
     end
   end
@@ -256,13 +256,13 @@ function convolve_adjoint_LUT_MT!(p::NFFTPlan{T,D,1}, fHat::AbstractVector{U}, g
 end
 
 function _convolve_adjoint_LUT_MT!(p::NFFTPlan{T,D,1}, fHat::AbstractVector{U}, g::StridedArray{Complex{T},D}, L) where {D,T,U}
-  fill!(g, zero(Complex{T}))
+  fill!(g, zero(T))
   scale = T(1.0 / p.params.m * (p.params.LUTSize-1))
   
   lk = ReentrantLock()
   @cthreads for l in CartesianIndices(size(p.blocks))
     if !isempty(p.nodesInBlock[l])
-      p.blocks[l] .= zero(Complex{T})
+      p.blocks[l] .= zero(T)
       fillBlock!(p, fHat, p.blocks[l], p.nodesInBlock[l], p.blockOffsets[l], L, scale)
       isNoEdgeBlock = all(1 .< Tuple(l) .< size(p.blocks))
       lock(lk) do
@@ -275,12 +275,12 @@ end
 function addBlock!(p::NFFTPlan{T,D,1}, g, block, off, isNoEdgeBlock) where {T,D}
   if !isNoEdgeBlock
     for l in CartesianIndices(size(block))
-      z = ntuple(d->( ( rem(l[d]-2 + off[d] + p.n[d], p.n[d]) + 1)  ), D) 
+      z = ntuple(d->( ( rem(l[d] + off[d] + p.n[d], p.n[d]) + 1)  ), D) 
       g[z...] += block[l]
     end
   else
     for l in CartesianIndices(size(block))
-      z = ntuple(d->( ( l[d] + off[d] - 1)  ), D) 
+      z = ntuple(d->( ( l[d] + off[d] + 1)  ), D) 
       g[z...] += block[l]
     end
   end
@@ -326,9 +326,10 @@ end
     #xscale = rem(x[d,k]+1.0, 1.0) * n[d]
     xscale = xtmp * n[d]
     off = floor(Int, xscale) - m - 1
-    tmpIdx = @ntuple $(Z) l -> ( l + off - off_[d] + 2 )
+    y = off - off_[d] 
+    tmpIdx = @ntuple $(Z) l -> ( l + y )
     tmpWin = @ntuple $(Z) l -> begin
-      idx = abs( (xscale - l - off)*scale ) + 1
+      idx =  abs(xscale - l - off)*scale  + 1
       idxL = floor(idx)
       idxInt = Int(idxL)
       (windowLUT[d][idxInt] + ( idx-idxL ) * (windowLUT[d][idxInt+1] - windowLUT[d][idxInt]))  
