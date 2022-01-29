@@ -239,7 +239,7 @@ function precomputeBlocks(x::Matrix{T}, n::NTuple{D,Int}, params, calcBlocks::Bo
 end
 
 function shiftNodes!(x::Matrix{T}) where T
-  for k=1:size(x,2)
+  @cthreads for k=1:size(x,2)
     for d=1:size(x,1)
       if x[d,k] < zero(T)
         x[d,k] += one(T)
