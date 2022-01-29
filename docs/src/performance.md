@@ -48,5 +48,5 @@ Some observations:
 
 We next look at the multi-threading performance for 1,2,4, and 8 threads. 
 
-![Performance Multi-threaded](./assets/performance_mt_LUT.svg)
+![Performance Multi-threaded](./assets/performance_mt_LUT_2_1024_1048576.svg)
 

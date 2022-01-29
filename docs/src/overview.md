@@ -18,14 +18,14 @@ g = p * f                            # calculate forward NFFT
 # output
 
 8-element Vector{ComplexF64}:
- -2.7271964441683756 + 3.8456253205787014im
- -10.845196223492461 + 28.19548180087219im
-  14.036233742227378 + 1.6000061110655517im
-   21.40183545854721 - 11.48566387092235im
- -13.314940379821042 - 5.046095924063817im
-  -6.727871850561189 + 13.675811696584672im
-   4.774803144961602 - 1.3445459029406543im
-   16.24290276811969 + 4.374304822278348im
+  -2.727196444168377 + 3.8456253205786997im
+ -10.845196223492469 + 28.195481800872184im
+   14.03623374222739 + 1.6000061110655381im
+  21.401835458547204 - 11.485663870922346im
+ -13.314940379821035 - 5.046095924063813im
+ -6.7278718505611845 + 13.675811696584672im
+   4.774803144961601 - 1.3445459029406557im
+  16.242902768119695 + 4.374304822278346im
 ```
 
 In 2D:
@@ -92,8 +92,8 @@ The NFFT has the following parameters that can be passed as a keyword argument t
 
 | Parameter                          | Description      | Example Values        |
 | :--------------------------------- | :--------------- | :------------------ |
-| `reltol`      | TODO.  |  `reltol` $=1e-9$      |
-| `m`      | Kernel size. The convolution matrix has `2m+1` non-zero entries around each sampling node in each dimension.  |  `m` $\in \{2,\dots,8\}$      |
+| `reltol`      | Relative tolerance that the NFFT achieves.  |  `reltol` $=1e-9$      |
+| `m`      | Kernel size parameter. The convolution matrix has `2m+1` non-zero entries around each sampling node in each dimension.  |  `m` $\in \{2,\dots,8\}$      |
 | `σ`     | Oversampling factor. The inner FFT is of size `σN` | `σ` $\in [1.25, 2.0]$      |
 | `window`   | Convolution window: Available are `:gauss`,  `:spline`, `:kaiser_bessel_rev`, `:kaiser_bessel`.    | `:kaiser_bessel` |
 | `precompute`        | Flag indicating the precomputation strategy for the convolution matrix         | `LUT`      |
@@ -102,16 +102,28 @@ The NFFT has the following parameters that can be passed as a keyword argument t
 | `LUTSize`        | Size of the look up table when using `precompute == NFFT.LUT`     | `20000`      |
 | `fftflags`        | flags passed to the inner `AbstractFFT` as `flags`. This can for instance be `FFTW.MEASURE` in order to optimize the inner FFT    | `FFTW.ESTIMATE`      |
 
-In practice you can use for most of the values the default values. If you want to maximize speed you can set `σ=1.25, m=3`. If you need machine precision accuracy use  `σ=2.0, m=8`. 
+In practice you can use for most of the values the default values. 
+
+The parameters `reltol`, `m`, and `σ` are linked to each other. Either pass `reltol` 
+which will automatically set `m` and `σ`, or set the later parameters which will
+set the `reltol`.
+
+The relation between `reltol`, `m`, and `σ` depends on the window function and the NFFT implementation. We use the formula
+```math
+w = 2m + 1 = \left\lceil \text{log}_{10} \frac{1}{\text{reltol}} \right\rceil + 1
+```
+independently of the chosen window.
+
+
 
 ## Precomputation
 
-There are different pre-computation strategies available. Again you don't need to change this if you satisfied with the default speed. The reason to have some sort of precomputation is that the NFFT is much slower if the window function is evaluated on demand.
+There are different pre-computation strategies available. Again you don't need to change this parameter since the default `NFFT.LUT` is the best choice in most situations. However, our GPU implementation requires `NFFT.FULL` and thus there sometimes is need to change this value. In addition, it allows NFFT researchers to enforce a certain precomputation strategy, which can be mandatory when comparing different implementations in benchmarks.
 
 | Value                          | Description      | 
 | :--------------------------------- | :--------------- | 
 | `NFFT.LUT`      | This option uses a look-up table to first sample the window function and later use linear interpolation during the actual convolution. `LUTSize` controls the size of the look-up table. We don't have error estimates but a value of 20,000 is in practice large enough.  |  
-| `NFFT.FULL`      | This option precomputes the entire convolution matrix and stores it as a `SparseMatrixCSC`. This option requires more memory an requires the most precomputation time. However, the transformation itself has maximum performance. In addition it is easy to perform the NFFT on the GPU with this option, see CuNFFT.  | 
+| `NFFT.FULL`      | This option precomputes the entire convolution matrix and stores it as a `SparseMatrixCSC`. This option requires more memory and the longest precomputation time. This allows simple GPU implementations see CuNFFT.  | 
 | `NFFT.TENSOR`      | This option calculates the window on demand but exploits the tensor structure for multi-dimensional plans. Hence, this option makes no approximation but reaches a similar performance as `NFFT.LUT`. This option is right now only available in the NFFT3 backend.  | 
 
 ## Multi-Threading
@@ -120,21 +132,10 @@ Most parts of NFFT are multi-threaded when running on the CPU. To this end, star
 ```
 julia -t T
 ```
-where `T` it the number of desired threads. NFFT.jl will use all threads that are specified. You can dynamically switch off multi-threading by calling the internal function
-```
-  NFFT._use_threads[] = false
-```
-Currently, the number of threads used for the FFTW is not changed, i.e. you likely want to set
-```
-  FFTW.set_num_threads(Threads.nthreads())
-```
-The following operations are currently multi-threaded:
- * precomputation
- * apodization and its adjoint
- * FFT (using FFTW)
- * convolution
+where `T` it the number of desired threads. NFFT.jl will use all threads that are specified. 
 
- What is currently missing is a multi-threaded version of the adjoint convolution, which is challenging to implement efficiently (needs blocking techniques). When using the `precompute = FULL` operation one could potentially exploit a sparse matrix library that supports blocking.
+Currently, the NFFT.LUT is fully multi-threaded while NFFT.LUT is multi-threaded in the precomputation
+and forward transformation, while the adjoint is not yet multi-threaded.
 
 ## Directional
 

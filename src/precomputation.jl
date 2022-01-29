@@ -283,5 +283,3 @@ function _precomputeBlocks(x::Matrix{T}, n::NTuple{D,Int}, m) where {T,D}
 
   return blocks, nodesInBlock, blockOffsets
 end
-
-#LinearIndices(n)

@@ -7,7 +7,7 @@ We next define the non-equidistant discrete Fourier transform (NDFT) that corres
 ```math
 I_{\bm{N}} := \left\lbrace \pmb{k} \in \mathbb{Z}^d: -\frac{N_i}{2} \leq \bm{k}_i \leq \frac{N_i}{2}-1, i=1,2,\ldots,d \right\rbrace
 ```
-and thus represents the same data the would be considered for an ordinary DFT. The NDFT is now defined as
+and thus represents the same data that would be considered for an ordinary DFT. The NDFT is  defined as
 ```math
   	f(\bm{x}_j) := \sum_{ \bm{k} \in I_{\bm{N}}} \hat{f}_{\bm{k}} \, \mathrm{e}^{-2\pi\mathrm{i}\,\bm{k}\cdot\bm{x}}
 ```
@@ -21,6 +21,9 @@ We note that in general the adjoint NDFT is not the inverse.
 
 !!! note
     The indices in the index set ``I_{\bm{N}}`` are centered around zero, which is the usual definition of the NFFT. In contrast the indices for the DFT usually run from ``1,\dots,N_d``. This means an `fftshift` needs to be applied to change from one representation to the other.
+
+!!! note
+    In the literature the NFFT has different names. Often it is called NUFFT, and in the MRI context gridding. The NFFT is sometimes divided into three types of which type 1 corresponds to the adjoint NFFT, type 2 corresponds to the direct NFFT and type 3 corresponds to the NNFFT that we discuss later. Further information on this alternative formulation can be found [here](https://finufft.readthedocs.io/en/latest/math.html). 
 
 ## Matrix-Vector Notation
 
@@ -41,7 +44,6 @@ The adjoint can than be written as
  \hat{\bm{g}} = \bm{A}^{\mathsf{H}}  \bm{f}
 ```
 where ``\hat{\bm{g}} \in \mathbb{C}^\mathbf{N}``.
-
 
 
 ## NFFT
@@ -86,3 +88,7 @@ where now ``(\bm{l}, \bm{k}, \bm{r}) \in I_\mathbf{N}`` and ``\bm{N}_\text{sub}`
 
 !!! note
     The directional NFFT can also be considered to be a slicing of a tensor with subsequent application of a regular NFFT. But the aforementioned formulation can be used to implement a much more efficient algorithm than can be achieved with slicing.
+
+## NNDFT / NNFFT
+
+*Under construction*
