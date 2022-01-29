@@ -250,21 +250,21 @@ function _precomputeBlocks(x::Matrix{T}, n::NTuple{D,Int}, m) where {T,D}
 
   nodesInBlock = [ Int[] for l in CartesianIndices(numBlocks) ]
   numNodesInBlock = zeros(Int, numBlocks)
-  @floop  for k=1:size(x,2)
+  @cthreads  for k=1:size(x,2)
     idx = ntuple(d->floor(Int, rem(floor(Int, x[d,k]*n[d])+n[d],n[d])÷blockSize[d])+1, D)
     numNodesInBlock[idx...] += 1
   end
-  @floop  for l in CartesianIndices(numBlocks)
+  @cthreads  for l in CartesianIndices(numBlocks)
     sizehint!(nodesInBlock[l], numNodesInBlock[l])
   end
-  @floop  for k=1:size(x,2)
+  @cthreads  for k=1:size(x,2)
     idx = ntuple(d->floor(Int, rem(floor(Int, x[d,k]*n[d])+n[d],n[d])÷blockSize[d])+1, D)
     push!(nodesInBlock[idx...], k)
   end
 
   blocks = Array{Array{Complex{T},D},D}(undef, numBlocks)
   blockOffsets = Array{NTuple{D,Int64},D}(undef, numBlocks)
-  @floop for l in CartesianIndices(numBlocks)
+  @cthreads for l in CartesianIndices(numBlocks)
     blocks[l] = Array{Complex{T},D}(undef, blockSizePadded)
     blockOffsets[l] = ntuple(d-> (l[d]-1)*blockSize[d]+1-padding[d], D)
   end
