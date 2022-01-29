@@ -320,10 +320,9 @@ end
   σ, scale, k, d, L::Val{Z}, off_) where {T,D,Z}
   quote
     xtmp = x[d,k]
-    if xtmp < zero(T)
-      xtmp += one(T)
-    end
-    #xscale = rem(x[d,k]+1.0, 1.0) * n[d]
+    #if xtmp < zero(T)
+    #  xtmp += one(T)
+    #end
     xscale = xtmp * n[d]
     off = floor(Int, xscale) - m - 1
     y = off - off_[d] 

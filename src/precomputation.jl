@@ -169,6 +169,7 @@ function precomputation(x::Union{Matrix{T},Vector{T}}, N::NTuple{D,Int}, n, para
   elseif precompute == FULL
       B = precomputeB(win, x, N, n, m, M, σ, LUTSize, T)
   else
+      B = sparse([],[],T[])
       error("precompute = $precompute not supported by NFFT.jl!")
   end
 
@@ -194,7 +195,7 @@ function precompWindowHatInvLUT(p::NFFTParams{T}, N, n, windowHatInvLUT_) where 
 end
 
 @generated function precompWindowHatInvLUT(p::NFFTParams{T}, windowHatInvLUT::AbstractArray{Complex{T},D}, 
-           apodIdx::AbstractArray{Int,D}, N, n, windowHatInvLUT_, o) where {D,T}
+           apodIdx::AbstractArray{Int,D}, N, n, windowHatInvLUT_, o)::Nothing where {D,T}
   quote
     linIdx = LinearIndices(n)
 
@@ -218,6 +219,7 @@ end
         windowHatInvLUT[i+N2, CartesianIndex(@ntuple $(D-1) l)] = v
       end
     end
+    return
   end
 end
 
@@ -236,6 +238,16 @@ function precomputeBlocks(x::Matrix{T}, n::NTuple{D,Int}, params, calcBlocks::Bo
   return (blocks, nodesInBlocks, blockOffsets)
 end
 
+function shiftNodes!(x::Matrix{T}) where T
+  for k=1:size(x,2)
+    for d=1:size(x,1)
+      if x[d,k] < zero(T)
+        x[d,k] += one(T)
+      end
+    end
+  end
+  return x
+end
 
 function _precomputeBlocks(x::Matrix{T}, n::NTuple{D,Int}, m) where {T,D}
 
@@ -251,14 +263,14 @@ function _precomputeBlocks(x::Matrix{T}, n::NTuple{D,Int}, m) where {T,D}
   nodesInBlock = [ Int[] for l in CartesianIndices(numBlocks) ]
   numNodesInBlock = zeros(Int, numBlocks)
   @cthreads  for k=1:size(x,2)
-    idx = ntuple(d->floor(Int, rem(floor(Int, x[d,k]*n[d])+n[d],n[d])÷blockSize[d])+1, D)
+    idx = ntuple(d->floor(Int, x[d,k]*n[d])÷blockSize[d]+1, D)
     numNodesInBlock[idx...] += 1
   end
   @cthreads  for l in CartesianIndices(numBlocks)
     sizehint!(nodesInBlock[l], numNodesInBlock[l])
   end
   @cthreads  for k=1:size(x,2)
-    idx = ntuple(d->floor(Int, rem(floor(Int, x[d,k]*n[d])+n[d],n[d])÷blockSize[d])+1, D)
+    idx = ntuple(d->floor(Int, x[d,k]*n[d])÷blockSize[d]+1, D)
     push!(nodesInBlock[idx...], k)
   end
 

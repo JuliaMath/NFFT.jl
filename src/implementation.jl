@@ -84,12 +84,18 @@ function NFFTPlan(x::Matrix{T}, N::NTuple{D,Int}; dims::Union{Integer,UnitRange{
     windowLUT, windowHatInvLUT, apodizationIdx, B = precomputation(x, N[dims_], n[dims_], params)
     
     calcBlocks = (params.precompute == LUT) && length(dims_) == D
-    blocks, nodesInBlocks, blockOffsets = precomputeBlocks(x, n, params, calcBlocks)
+    if calcBlocks 
+      # we copy x since precomputeBlocks will shift the nodes for performance reasons
+      x_ = shiftNodes!(copy(x))
+    else
+      x_ = x
+    end
+    blocks, nodesInBlocks, blockOffsets = precomputeBlocks(x_, n, params, calcBlocks)
 
     U = params.storeApodizationIdx ? N : ntuple(d->0,D)
     tmpVecHat = Array{Complex{T},D}(undef, U)
 
-    NFFTPlan(N, NOut, M, x, n, dims_, params, FP, BP, tmpVec, tmpVecHat, 
+    NFFTPlan(N, NOut, M, x_, n, dims_, params, FP, BP, tmpVec, tmpVecHat, 
                        apodizationIdx, windowLUT, windowHatInvLUT, B,
                        blocks, nodesInBlocks, blockOffsets)
 end
@@ -102,11 +108,18 @@ function AbstractNFFTs.nodes!(p::NFFTPlan{T}, x::Matrix{T}) where {T}
 
     windowLUT, windowHatInvLUT, apodizationIdx, B = precomputation(x, p.N, p.n, p.params)
 
+    if !isempty(p.blocks) 
+      # we copy x since precomputeBlocks will shift the nodes for performance reasons
+      x_ = shiftNodes!(copy(x))
+    else
+      x_ = x
+    end
+
     p.M = size(x, 2)
     p.windowLUT = windowLUT
     p.windowHatInvLUT = windowHatInvLUT
     p.B = B
-    p.x = x
+    p.x = x_
 
     return p
 end

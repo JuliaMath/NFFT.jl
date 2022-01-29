@@ -27,7 +27,7 @@ NFFT.nodes!(p2, trj1)
 @test p1.N == p2.N
 @test p1.NOut == p2.NOut
 @test p1.M == p2.M
-@test p1.x == p2.x
+@test all(p1.x .== p2.x)
 @test p1.n == p2.n
 @test p1.dims == p2.dims
 for n in fieldnames(typeof(p1.params))
