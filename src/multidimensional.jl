@@ -328,11 +328,12 @@ end
     off = floor(Int, xscale) - m - 1
     y = off - off_[d] 
     tmpIdx = @ntuple $(Z) l -> ( l + y )
+    win = windowLUT[d]
     tmpWin = @ntuple $(Z) l -> begin
       idx =  abs(xscale - l - off)*scale  + 1
-      idxL = floor(idx)
-      idxInt = Int(idxL)
-      (windowLUT[d][idxInt] + ( idx-idxL ) * (windowLUT[d][idxInt+1] - windowLUT[d][idxInt]))  
+      idxInt = floor(Int, idx)
+
+      (windowLUT[d][idxInt] + ( idx-idxInt ) * (win[idxInt+1] - win[idxInt]))  
     end
     return (tmpIdx, tmpWin)
   end
