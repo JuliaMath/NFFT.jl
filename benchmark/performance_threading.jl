@@ -4,7 +4,7 @@ using Plots, StatsPlots, CategoricalArrays
 pgfplotsx()
 #gr()
 
-BenchmarkTools.DEFAULT_PARAMETERS.seconds = 3
+
 
 include("../Wrappers/NFFT3.jl")
 include("../Wrappers/FINUFFT.jl")
@@ -13,17 +13,18 @@ include("../Wrappers/FINUFFT.jl")
 const LUTSize = 20000
 
 const threads = [1,2,4,8] #,16]
-const preString = ["LUT"]#, "FULL"]
-const preNFFTjl = [NFFT.LUT, NFFT.FULL]
+const preString = "LUT"
+const preNFFTjl = [NFFT.LUT, NFFT.LUT, NFFT.TENSOR]
 const packagesCtor = [NFFTPlan, FINUFFTPlan, NFFT3Plan]
 const packagesStr = ["NFFT.jl","FINUFFT", "NFFT3"]
+const benchmarkTime = [0.1, 4, 4]
 
 NFFT.FFTW.set_num_threads(Threads.nthreads())
 ccall(("omp_set_num_threads",NFFT3.lib_path_nfft),Nothing,(Int64,),convert(Int64,Threads.nthreads()))
 @info ccall(("nfft_get_num_threads",NFFT3.lib_path_nfft),Int64,())
 NFFT._use_threads[] = (Threads.nthreads() > 1)
 
-function nfft_performance_comparison(m = 6, σ = 2.0)
+function nfft_performance_comparison(m = 4, σ = 2.0)
   println("\n\n ##### nfft_performance_threading ##### \n\n")
 
   df = DataFrame(Package=String[], Threads=Int[], D=Int[], M=Int[], N=Int[], 
@@ -40,9 +41,7 @@ function nfft_performance_comparison(m = 6, σ = 2.0)
       NN = ntuple(d->N[D][U], D)
       M = prod(NN) #÷ 8
 
-      for pre = length(preString)
-
-        @info D, NN, M, pre
+        @info D, NN, M
         
         T = Float64
 
@@ -55,19 +54,22 @@ function nfft_performance_comparison(m = 6, σ = 2.0)
         for pl = 1:length(packagesStr)
 
           planner = packagesCtor[pl]
+          BenchmarkTools.DEFAULT_PARAMETERS.seconds = benchmarkTime[1]
           b = @benchmark $planner($x, $NN; m=$m, σ=$σ, window=:kaiser_bessel, LUTSize=$LUTSize, 
-                                 precompute=$(preNFFTjl[pre]), sortNodes=false, fftflags=$fftflags)
+                                 precompute=$(preNFFTjl[pl]), sortNodes=false, fftflags=$fftflags)
           tpre = minimum(b).time / 1e9
           p = planner(x, NN; m=m, σ=σ, window=:kaiser_bessel, LUTSize=LUTSize, 
-                      precompute=(preNFFTjl[pre]), sortNodes=false, fftflags=fftflags)
+                      precompute=(preNFFTjl[pl]), sortNodes=false, fftflags=fftflags)
+          BenchmarkTools.DEFAULT_PARAMETERS.seconds = benchmarkTime[2]                      
           b = @benchmark mul!($f, $(adjoint(p)), $fHat)
           tadjoint = minimum(b).time / 1e9
+          BenchmarkTools.DEFAULT_PARAMETERS.seconds = benchmarkTime[3]
           b = @benchmark mul!($fHat, $p, $f)
           ttrafo = minimum(b).time / 1e9
         
-          push!(df, (packagesStr[pl], Threads.nthreads(), D, M, N[D][U], false, preString[pre], m, σ,
+          push!(df, (packagesStr[pl], Threads.nthreads(), D, M, N[D][U], false, preString, m, σ,
                    tpre, ttrafo, tadjoint))
-        end  
+
       end
     end
   end

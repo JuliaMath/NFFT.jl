@@ -240,7 +240,7 @@ end
 function _precomputeBlocks(x::Matrix{T}, n::NTuple{D,Int}, m) where {T,D}
 
   padding = ntuple(d->m, D)
-  blockSize = ntuple(d-> (d==1) ? 32 : 32 , D)
+  blockSize = ntuple(d-> (d==1) ? 64 : 64 , D)
   #blockSize = ntuple(d-> n[d] , D)
   blockSizePadded = ntuple(d-> blockSize[d] + 2*padding[d] , D)
   
