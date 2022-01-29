@@ -266,7 +266,7 @@ function _precomputeBlocks(x::Matrix{T}, n::NTuple{D,Int}, m) where {T,D}
   blockOffsets = Array{NTuple{D,Int64},D}(undef, numBlocks)
   @cthreads for l in CartesianIndices(numBlocks)
     blocks[l] = Array{Complex{T},D}(undef, blockSizePadded)
-    blockOffsets[l] = ntuple(d-> (l[d]-1)*blockSize[d]+1-padding[d], D)
+    blockOffsets[l] = ntuple(d-> (l[d]-1)*blockSize[d]-padding[d]-1, D)
   end
 
   return blocks, nodesInBlock, blockOffsets
