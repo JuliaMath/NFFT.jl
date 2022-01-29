@@ -17,7 +17,7 @@ const preString = "LUT"
 const preNFFTjl = [NFFT.LUT, NFFT.LUT, NFFT.TENSOR]
 const packagesCtor = [NFFTPlan, FINUFFTPlan, NFFT3Plan]
 const packagesStr = ["NFFT.jl","FINUFFT", "NFFT3"]
-const benchmarkTime = [0.1, 4, 4]
+const benchmarkTime = [0.1, 8, 8]
 
 NFFT.FFTW.set_num_threads(Threads.nthreads())
 ccall(("omp_set_num_threads",NFFT3.lib_path_nfft),Nothing,(Int64,),convert(Int64,Threads.nthreads()))
@@ -78,7 +78,7 @@ end
 
 
 
-function plot_performance(df; pre = "LUT")
+function plot_performance(df; pre = "LUT", D=2, N=1024, M=N*N)
 
   Plots.scalefontsizes()
   Plots.scalefontsizes(1.5)
@@ -90,9 +90,10 @@ function plot_performance(df; pre = "LUT")
   tadjoint = zeros(length(threads), length(labelsA))
   for (i,p) in enumerate(packagesStr)
     for (j,th) in enumerate(threads)
-      tpre[j,i] = df[df.Threads .== th .&& df.Package.==p .&& df.Pre.==pre,:TimePre][1]
-      ttrafo[j,i] = df[df.Threads .== th .&& df.Package.==p .&& df.Pre.==pre,:TimeTrafo][1]
-      tadjoint[j,i] = df[df.Threads .== th .&& df.Package.==p .&& df.Pre.==pre,:TimeAdjoint][1]
+      df_ = df[df.Threads .== th .&& df.Package.==p .&& df.Pre.==pre .&& df.D .== D .&& df.M .== M .&& df.N .==N ,:]
+      tpre[j,i] = df_[1,:TimePre]
+      ttrafo[j,i] = df_[1,:TimeTrafo]
+      tadjoint[j,i] = df_[1,:TimeAdjoint]
     end
   end
   
@@ -105,21 +106,24 @@ function plot_performance(df; pre = "LUT")
   name = CategoricalArray(repeat(labelsB, outer = length(labelsA)))
   levels!(name, labelsB)
   
-  p1 = groupedbar(name, tpre, ylabel = "time / s",  group = ctg,
-          bar_width = 0.67,
-          lw = 0, framestyle = :box, size=(800,600), title = L"\textrm{Precompute}")
 
-  p2 = groupedbar(name, ttrafo, ylabel = "time / s",  group = ctg,
-          bar_width = 0.67, legend = :none,
+  maxtime = max(maximum(tpre), maximum(ttrafo), maximum(tadjoint))
+
+  p1 = groupedbar(name, ttrafo, ylabel = "time / s",  group = ctg,
+          bar_width = 0.67, legend = :none, ylims=(0,maxtime),
           lw = 0, framestyle = :box, size=(800,600), title = L"\textrm{NFFT}")
 
-  p3 = groupedbar(name, tadjoint, ylabel = "time / s",  group = ctg,
-          bar_width = 0.67, legend = :none,
+  p2 = groupedbar(name, tadjoint, ylabel = "time / s",  group = ctg,
+          bar_width = 0.67, legend = :none, ylims=(0,maxtime),
           lw = 0, framestyle = :box, size=(800,600), title = L"\textrm{NFFT}^H")
+          
+  p3 = groupedbar(name, tpre, ylabel = "time / s",  group = ctg,
+          bar_width = 0.67, ylims=(0,maxtime),
+          lw = 0, framestyle = :box, size=(800,600), title = L"\textrm{Precompute}")
   
   p = plot(p1, p2, p3, layout=(3,1), size=(800,600), dpi=200)
 
-  savefig(p, "../docs/src/assets/performance_mt_$(pre).svg")
+  savefig(p, "../docs/src/assets/performance_mt_$(pre)_$(D)_$(N)_$(M).svg")
   return p
 end
 
@@ -197,7 +201,8 @@ else
   df = DataFrame(data, vec(header))
   delete!(ENV, "NFFT_PERF_THREADING")
 
-  plot_performance(df, pre="LUT")
+  plot_performance(df, pre="LUT", N=1024, M=1024*1024)
+  #plot_performance(df, pre="LUT", N=1024, M=1024*1024*4)
   #plot_performance(df, pre="FULL") 
   #plot_performance_serial(df)
 end
