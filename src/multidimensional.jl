@@ -109,7 +109,7 @@ function convolve_LUT!(p::NFFTPlan{T,D,1}, g::AbstractArray{Complex{T},D}, fHat:
 end
 
 function _precomputeOneNode(p::NFFTPlan{T,D,1}, scale, k, d, L::Val{Z}) where {T,D,Z}
-    return _precomputeOneNode(p.windowLUT, p.x, p.n, p.params.m, p.params.σ, scale, k, d, L) 
+    return _precomputeOneNode(p.windowLUT, p.x, p.n, p.params.m, p.params.σ, scale, k, d, L, p.params.LUTSize) 
 end
 
 @generated function _convolve_LUT(p::NFFTPlan{T,D,1}, g::AbstractArray{Complex{T},D}, L::Val{Z}, scale, k) where {D,T,Z}
@@ -326,25 +326,49 @@ end
 end
 
 function _precomputeOneNodeShifted(p::NFFTPlan, scale, k, d, L, off_) 
-  return _precomputeOneNodeShifted(p.windowLUT, p.x, p.n, p.params.m, p.params.σ, scale, k, d, L, off_) 
+  return _precomputeOneNodeShifted(p.windowLUT, p.x, p.n, p.params.m, p.params.σ, scale, k, d, L, off_, p.params.LUTSize) 
 end
 
 @generated function _precomputeOneNodeShifted(windowLUT::Vector, x::AbstractMatrix{T}, n::NTuple{D,Int}, m, 
-  σ, scale, k, d, L::Val{Z}, off_) where {T,D,Z}
+  σ, scale, k, d, L::Val{Z}, off_, LUTSize) where {T,D,Z}
   quote
     xtmp = x[d,k]
     xscale = xtmp * n[d]
     off = unsafe_trunc(Int, xscale) - m - 1
     y = off - off_[d] 
     win = windowLUT[d]
+    offLUT = (3*LUTSize)÷2
+
+    idx = (xscale - off)*scale  + offLUT + 1
+
     tmpWin = @ntuple $(Z) l -> begin
-      idx =  abs(xscale - l - off)*scale  + 1
-      idxInt = unsafe_trunc(Int, idx)
+      idx_ = idx-l*scale  
+      idxInt = unsafe_trunc(Int, idx_) 
       w1 = win[idxInt]
       w2 = win[idxInt+1]
-      α = ( idx-idxInt )
+      α = ( idx_ - idxInt )
       (w1 + α * (w2 - w1) )
     end
     return (y, tmpWin)
   end
 end
+
+# abs(  ( xscale - l - off) / ( p.params.m * (p.params.LUTSize-1)) )    )
+
+# scale = T(1.0 / p.params.m * (p.params.LUTSize-1))
+
+# windowLUT[d][l] = win(  ((l - 1) / (K - 1)) * m / n[d]   , n[d], m, σ)
+
+
+#=
+function precomputeLUT(win, windowLUT, n, m, σ, K, T)
+    Z = round(Int, 3 * K / 2)
+    for d = 1:length(windowLUT)
+        windowLUT[d] = Vector{T}(undef, Z)
+        @cthreads for l = 1:Z
+            y = ((l - 1) / (K - 1)) * m / n[d]
+            windowLUT[d][l] = win(y, n[d], m, σ)
+        end
+    end
+end
+=#

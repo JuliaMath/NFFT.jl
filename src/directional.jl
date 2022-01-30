@@ -68,6 +68,7 @@ end
   quote
     fill!(fHat, zero(T))
     scale = T(1.0 / p.params.m * (p.params.LUTSize-1))
+    offLUT = (3*p.params.LUTSize)÷2
 
     for k in 1:p.M
       ### The first L1 loops contain no NFFT
@@ -85,7 +86,7 @@ end
           @nloops_ $L2 d->l_{d+$L1} d->(c_d-p.params.m):(c_d+p.params.m) d->begin
             # preexpr
             gidx_{d+$L1} = rem(l_{d+$L1}+p.n[d+$L1], p.n[d+$L1]) + 1
-            idx = abs( (xscale_d - l_{d+$L1})*scale ) + 1
+            idx = (xscale_d - l_{d+$L1} )*scale + offLUT + 1
             idxL = floor(idx)
             idxInt = Int(idxL)
             prodWin_{d-1} = prodWin_d * (p.windowLUT[d][idxInt] + ( idx-idxL ) * (p.windowLUT[d][idxInt+1] - p.windowLUT[d][idxInt]))
@@ -118,6 +119,7 @@ end
   quote
     fill!(g, zero(T))
     scale = T(1.0 / p.params.m * (p.params.LUTSize-1))
+    offLUT = (3*p.params.LUTSize)÷2
 
     for k in 1:p.M
       ### The first L1 loops contain no NFFT
@@ -135,7 +137,7 @@ end
           @nloops_ $L2 d->l_{d+$L1} d->(c_d-p.params.m):(c_d+p.params.m) d->begin
             # preexpr
             gidx_{d+$L1} = rem(l_{d+$L1}+p.n[d+$L1], p.n[d+$L1]) + 1
-            idx = abs( (xscale_d - l_{d+$L1})*scale ) + 1
+            idx = (xscale_d - l_{d+$L1})*scale + offLUT + 1
             idxL = floor(idx)
             idxInt = Int(idxL)
             prodWin_{d-1} = prodWin_d * (p.windowLUT[d][idxInt] + ( idx-idxL ) * (p.windowLUT[d][idxInt+1] - p.windowLUT[d][idxInt]))

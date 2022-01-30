@@ -59,7 +59,7 @@ function precomputeB(win, x, N::NTuple{D,Int}, n::NTuple{D,Int}, m, M, σ, K, T)
   scale = T(1.0 / m * (K-1))
 
   @cthreads for k in 1:M
-    _precomputeB(win, x, N, n, m, M, σ, scale, I, J, V, mProd, nProd, L, k)
+    _precomputeB(win, x, N, n, m, M, σ, scale, I, J, V, mProd, nProd, L, k, K)
   end
 
   S = SparseMatrixCSC(prod(n), M, J, vec(I), vec(V))
@@ -67,10 +67,10 @@ function precomputeB(win, x, N::NTuple{D,Int}, n::NTuple{D,Int}, m, M, σ, K, T)
 end
 
 @inline @generated function _precomputeB(win, x::AbstractMatrix{T}, N::NTuple{D,Int}, n::NTuple{D,Int}, m, M, 
-                     σ, scale, I, J, V, mProd, nProd, L::Val{Z}, k) where {T, D, Z}
+                     σ, scale, I, J, V, mProd, nProd, L::Val{Z}, k, LUTSize) where {T, D, Z}
   quote
 
-    @nexprs $(D) d -> ((tmpIdx_d, tmpWin_d) = _precomputeOneNode(win, x, n, m, σ, scale, k, d, L) )
+    @nexprs $(D) d -> ((tmpIdx_d, tmpWin_d) = _precomputeOneNode(win, x, n, m, σ, scale, k, d, L, LUTSize) )
 
     @nexprs 1 d -> κ_{$D} = 1 # This is a hack, I actually want to write κ_$D = 1
     @nexprs 1 d -> ζ_{$D} = 1
@@ -92,7 +92,7 @@ end
 ### precomputation of the window and the indices required during convolution ###
 
 @generated function _precomputeOneNode(win::Function, x::AbstractMatrix{T}, n::NTuple{D,Int}, m, 
-  σ, scale, k, d, L::Val{Z}) where {T,D,Z}
+  σ, scale, k, d, L::Val{Z}, LUTSize) where {T,D,Z}
   quote
     xscale = x[d,k] * n[d]
     off = unsafe_trunc(Int, xscale) - m - 1
@@ -103,13 +103,14 @@ end
 end
 
 @generated function _precomputeOneNode(windowLUT::Vector, x::AbstractMatrix{T}, n::NTuple{D,Int}, m, 
-  σ, scale, k, d, L::Val{Z}) where {T,D,Z}
+  σ, scale, k, d, L::Val{Z}, LUTSize) where {T,D,Z}
   quote
     xscale = x[d,k] * n[d]
     off = unsafe_trunc(Int, xscale) - m - 1
     tmpIdx = @ntuple $(Z) l -> ( rem(l + off + n[d], n[d]) + 1)
+    offLUT = (3*LUTSize)÷2
     tmpWin = @ntuple $(Z) l -> begin
-      idx = abs( (xscale - l - off)*scale ) + 1
+      idx = (xscale - l - off)*scale + offLUT + 1
       idxL = unsafe_trunc(idx)
       idxInt = Int(idxL)
       (windowLUT[d][idxInt] + ( idx-idxL ) * (windowLUT[d][idxInt+1] - windowLUT[d][idxInt]))  
@@ -122,11 +123,12 @@ end
 ##################
 
 function precomputeLUT(win, windowLUT, n, m, σ, K, T)
-    Z = round(Int, 3 * K / 2)
+    #Z = round(Int, 3 * K / 2)
+    Z = 3*K #round(Int, 3 * K)
     for d = 1:length(windowLUT)
         windowLUT[d] = Vector{T}(undef, Z)
         @cthreads for l = 1:Z
-            y = ((l - 1) / (K - 1)) * m / n[d]
+            y = ((l - 1 - Z÷2) / (K - 1)) * m / n[d]
             windowLUT[d][l] = win(y, n[d], m, σ)
         end
     end
