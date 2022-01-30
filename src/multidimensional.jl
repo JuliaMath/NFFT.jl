@@ -256,13 +256,15 @@ function convolve_adjoint_LUT_MT!(p::NFFTPlan{T,D,1}, fHat::AbstractVector{U}, g
 end
 
 function _convolve_adjoint_LUT_MT!(p::NFFTPlan{T,D,1}, fHat::AbstractVector{U}, g::StridedArray{Complex{T},D}, L) where {D,T,U}
-  fill!(g, zero(T))
+  #g .= zero(T)
+  ccall(:memset, Ptr{Cvoid}, (Ptr{Cvoid}, Cint, Csize_t), g, 0, sizeof(g))
   scale = T(1.0 / p.params.m * (p.params.LUTSize-1))
   
   lk = ReentrantLock()
   @cthreads for l in CartesianIndices(size(p.blocks))
     if !isempty(p.nodesInBlock[l])
-      p.blocks[l] .= zero(T)
+      # p.blocks[l] .= zero(T)
+      ccall(:memset, Ptr{Cvoid}, (Ptr{Cvoid}, Cint, Csize_t), p.blocks[l], 0, sizeof(p.blocks[l]))
       fillBlock!(p, fHat, p.blocks[l], p.nodesInBlock[l], p.blockOffsets[l], L, scale)
       isNoEdgeBlock = all(1 .< Tuple(l) .< size(p.blocks))
       lock(lk) do
@@ -297,7 +299,11 @@ end
 @generated function fillOneNode!(p::NFFTPlan{T,D,1}, fHat::AbstractVector, block::StridedArray{Complex{T},D},
                           off, L::Val{Z}, scale, k) where {D,T,Z}
   quote
+    fHat_ = fHat[k]
+
     @nexprs $(D) d -> ((tmpIdx_d, tmpWin_d) = _precomputeOneNodeShifted(p, scale, k, d, L, off) )
+
+
 
     @nexprs 1 d -> prodWin_{$D} = one(T)
     @nloops_ $D l d -> 1:$Z d->begin
@@ -306,7 +312,7 @@ end
       block_idx_d = tmpIdx_d[l_d]  
     end begin
       # bodyexpr
-      (@nref $D block block_idx) += prodWin_0 * fHat[k] 
+      (@nref $D block block_idx) += prodWin_0 * fHat_ 
     end
     return
   end
@@ -324,15 +330,15 @@ end
     #  xtmp += one(T)
     #end
     xscale = xtmp * n[d]
-    off = floor(Int, xscale) - m - 1
+    off = unsafe_trunc(Int, xscale) - m - 1
     y = off - off_[d] 
     tmpIdx = @ntuple $(Z) l -> ( l + y )
     win = windowLUT[d]
     tmpWin = @ntuple $(Z) l -> begin
       idx =  abs(xscale - l - off)*scale  + 1
-      idxInt = floor(Int, idx)
+      idxInt = unsafe_trunc(Int, idx)
 
-      (windowLUT[d][idxInt] + ( idx-idxInt ) * (win[idxInt+1] - win[idxInt]))  
+      (win[idxInt] + ( idx-idxInt ) * (win[idxInt+1] - win[idxInt]))  
     end
     return (tmpIdx, tmpWin)
   end

@@ -95,7 +95,7 @@ end
   σ, scale, k, d, L::Val{Z}) where {T,D,Z}
   quote
     xscale = x[d,k] * n[d]
-    off = floor(Int, xscale) - m - 1
+    off = unsafe_trunc(Int, xscale) - m - 1
     tmpIdx = @ntuple $(Z) l -> ( rem(l + off + n[d], n[d]) + 1)
     tmpWin = @ntuple $(Z) l -> (win(abs( (xscale - l - off) )  / n[d], n[d], m, σ) )
     return (tmpIdx, tmpWin)
@@ -106,11 +106,11 @@ end
   σ, scale, k, d, L::Val{Z}) where {T,D,Z}
   quote
     xscale = x[d,k] * n[d]
-    off = floor(Int, xscale) - m - 1
+    off = unsafe_trunc(Int, xscale) - m - 1
     tmpIdx = @ntuple $(Z) l -> ( rem(l + off + n[d], n[d]) + 1)
     tmpWin = @ntuple $(Z) l -> begin
       idx = abs( (xscale - l - off)*scale ) + 1
-      idxL = floor(idx)
+      idxL = unsafe_trunc(idx)
       idxInt = Int(idxL)
       (windowLUT[d][idxInt] + ( idx-idxL ) * (windowLUT[d][idxInt+1] - windowLUT[d][idxInt]))  
     end
@@ -263,14 +263,14 @@ function _precomputeBlocks(x::Matrix{T}, n::NTuple{D,Int}, m) where {T,D}
   nodesInBlock = [ Int[] for l in CartesianIndices(numBlocks) ]
   numNodesInBlock = zeros(Int, numBlocks)
   @cthreads  for k=1:size(x,2)
-    idx = ntuple(d->floor(Int, x[d,k]*n[d])÷blockSize[d]+1, D)
+    idx = ntuple(d->unsafe_trunc(Int, x[d,k]*n[d])÷blockSize[d]+1, D)
     numNodesInBlock[idx...] += 1
   end
   @cthreads  for l in CartesianIndices(numBlocks)
     sizehint!(nodesInBlock[l], numNodesInBlock[l])
   end
   @cthreads  for k=1:size(x,2)
-    idx = ntuple(d->floor(Int, x[d,k]*n[d])÷blockSize[d]+1, D)
+    idx = ntuple(d->unsafe_trunc(Int, x[d,k]*n[d])÷blockSize[d]+1, D)
     push!(nodesInBlock[idx...], k)
   end
 
