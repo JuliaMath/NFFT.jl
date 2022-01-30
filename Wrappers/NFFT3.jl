@@ -1,3 +1,4 @@
+using LinearAlgebra
 import NFFT3
 
 mutable struct NFFT3Plan{T,D} <: AbstractNFFTPlan{T,D,1} 

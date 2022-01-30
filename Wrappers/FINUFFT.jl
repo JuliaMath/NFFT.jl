@@ -1,3 +1,4 @@
+using LinearAlgebra
 import FINUFFT
 
 mutable struct FINUFFTPlan{T,D} <: AbstractNFFTPlan{T,D,1} 
