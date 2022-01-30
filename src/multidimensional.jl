@@ -228,21 +228,25 @@ end
   return
 end
 
-@generated function _convolve_LUT_MT(p::NFFTPlan{T,D,1}, patch::StridedArray{Complex{T},D},
+@generated function _convolve_LUT_MT(p::NFFTPlan{T,D,1}, block::StridedArray{Complex{T},D},
                           off, L::Val{Z}, scale, k) where {D,T,Z}
   quote
-    @nexprs $(D) d -> ((tmpIdx_d, tmpWin_d) = _precomputeOneNodeShifted(p, scale, k, d, L, off) )
+    @nexprs $(D) d -> ((off_d, tmpWin_d) = _precomputeOneNodeShifted(p, scale, k, d, L, off) )
 
     fHat = zero(Complex{T})
 
     @nexprs 1 d -> prodWin_{$D} = one(T)
-    @nloops_ $D l d -> 1:$Z d->begin
+    @nloops_ $(D-1)  (d->l_{d+1})  (d -> 1:$Z) d->begin
       # preexpr
-      prodWin_{d-1} = prodWin_d * tmpWin_d[l_d]
-      patch_idx_d = tmpIdx_d[l_d]  
+      prodWin_{d} = prodWin_{d+1} * tmpWin_d[l_{d+1}]
+      block_idx_{d+1} = off_{d+1} + l_{d+1} 
     end begin
       # bodyexpr
-       fHat += prodWin_0 * (@nref $D patch patch_idx)
+      @inbounds for l_1 = 1:$Z
+        block_idx_1 = off_1 + l_1 
+        prodWin_0 = prodWin_1 * tmpWin_1[l_1]
+        fHat += prodWin_0 * (@nref $D block block_idx)
+      end
     end
     return fHat
   end
@@ -301,18 +305,21 @@ end
   quote
     fHat_ = fHat[k]
 
-    @nexprs $(D) d -> ((tmpIdx_d, tmpWin_d) = _precomputeOneNodeShifted(p, scale, k, d, L, off) )
+    @nexprs $(D) d -> ((off_d, tmpWin_d) = _precomputeOneNodeShifted(p, scale, k, d, L, off) )
 
+    innerWin = @ntuple $(Z) l -> tmpWin_1[l] * fHat_
 
-
-    @nexprs 1 d -> prodWin_{$D} = one(T)
-    @nloops_ $D l d -> 1:$Z d->begin
+    @nexprs 1 d -> prodWin_{$D} = fHat_
+    @nloops_ $(D-1)  (d->l_{d+1})  (d -> 1:$Z) d->begin
       # preexpr
-      prodWin_{d-1} = prodWin_d * tmpWin_d[l_d]
-      block_idx_d = tmpIdx_d[l_d]  
+      prodWin_{d} = prodWin_{d+1} * tmpWin_d[l_{d+1}]
+      block_idx_{d+1} = off_{d+1} + l_{d+1} 
     end begin
       # bodyexpr
-      (@nref $D block block_idx) += prodWin_0 * fHat_ 
+      @inbounds  for l_1 = 1:$Z
+        block_idx_1 = off_1 + l_1 
+        (@nref $D block block_idx) += innerWin[l_1] 
+      end
     end
     return
   end
@@ -326,13 +333,9 @@ end
   σ, scale, k, d, L::Val{Z}, off_) where {T,D,Z}
   quote
     xtmp = x[d,k]
-    #if xtmp < zero(T)
-    #  xtmp += one(T)
-    #end
     xscale = xtmp * n[d]
     off = unsafe_trunc(Int, xscale) - m - 1
     y = off - off_[d] 
-    tmpIdx = @ntuple $(Z) l -> ( l + y )
     win = windowLUT[d]
     tmpWin = @ntuple $(Z) l -> begin
       idx =  abs(xscale - l - off)*scale  + 1
@@ -340,6 +343,6 @@ end
 
       (win[idxInt] + ( idx-idxInt ) * (win[idxInt+1] - win[idxInt]))  
     end
-    return (tmpIdx, tmpWin)
+    return (y, tmpWin)
   end
 end
