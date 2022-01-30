@@ -1,8 +1,5 @@
 # Accuracy and Performance
 
-!!! note
-    This page is still under construction. Please do not take the accuracy and benchmarks of NFFT3 and FINUFFT seriously.
-
 On this page, the accuracy and the performance of NFFT.jl are investigated. For comparison we use
 the C library NFFT3 and the C++ library FINUFFT. The shown data are useful for understanding
 the performance characteristics of the NFFT and help choosing the parameters accordingly.
