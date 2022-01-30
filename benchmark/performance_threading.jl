@@ -12,12 +12,12 @@ include("../Wrappers/FINUFFT.jl")
 
 const LUTSize = 20000
 
-const threads = [1,2,4,8] #,16]
+const threads = [1,2,4,8,16]
 const preString = "LUT"
-const preNFFTjl = [NFFT.LUT, NFFT.LUT, NFFT.TENSOR]
-const packagesCtor = [NFFTPlan, FINUFFTPlan, NFFT3Plan]
-const packagesStr = ["NFFT.jl","FINUFFT", "NFFT3"]
-const benchmarkTime = [0.1, 8, 8]
+const precomp = [NFFT.LUT, NFFT.LUT, NFFT.LUT, NFFT.TENSOR]
+const packagesCtor = [NFFTPlan, FINUFFTPlan, NFFT3Plan, NFFT3Plan]
+const packagesStr = ["NFFT.jl","FINUFFT", "NFFT3/LUT", "NFFT3/TENSOR"]
+const benchmarkTime = [0.1, 20, 20]
 
 NFFT.FFTW.set_num_threads(Threads.nthreads())
 ccall(("omp_set_num_threads",NFFT3.lib_path_nfft),Nothing,(Int64,),convert(Int64,Threads.nthreads()))
@@ -56,10 +56,10 @@ function nfft_performance_comparison(m = 4, σ = 2.0)
           planner = packagesCtor[pl]
           BenchmarkTools.DEFAULT_PARAMETERS.seconds = benchmarkTime[1]
           b = @benchmark $planner($x, $NN; m=$m, σ=$σ, window=:kaiser_bessel, LUTSize=$LUTSize, 
-                                 precompute=$(preNFFTjl[pl]), sortNodes=false, fftflags=$fftflags)
+                                 precompute=$(precomp[pl]), sortNodes=false, fftflags=$fftflags)
           tpre = minimum(b).time / 1e9
           p = planner(x, NN; m=m, σ=σ, window=:kaiser_bessel, LUTSize=LUTSize, 
-                      precompute=(preNFFTjl[pl]), sortNodes=false, fftflags=fftflags)
+                      precompute=(precomp[pl]), sortNodes=false, fftflags=fftflags)
           BenchmarkTools.DEFAULT_PARAMETERS.seconds = benchmarkTime[2]                      
           b = @benchmark mul!($f, $(adjoint(p)), $fHat)
           tadjoint = minimum(b).time / 1e9
@@ -78,7 +78,7 @@ end
 
 
 
-function plot_performance(df; pre = "LUT", D=2, N=1024, M=N*N)
+function plot_performance(df; D=2, N=1024, M=N*N)
 
   Plots.scalefontsizes()
   Plots.scalefontsizes(1.5)
@@ -89,8 +89,8 @@ function plot_performance(df; pre = "LUT", D=2, N=1024, M=N*N)
   ttrafo = zeros(length(threads), length(labelsA))
   tadjoint = zeros(length(threads), length(labelsA))
   for (i,p) in enumerate(packagesStr)
-    for (j,th) in enumerate(threads)
-      df_ = df[df.Threads .== th .&& df.Package.==p .&& df.Pre.==pre .&& df.D .== D .&& df.M .== M .&& df.N .==N ,:]
+    for (j,th) in enumerate(threads) #.&& df.Pre.==precomp[i] 
+      df_ = df[df.Threads .== th .&& df.Package.==p .&& df.D .== D .&& df.M .== M .&& df.N .==N ,:]
       tpre[j,i] = df_[1,:TimePre]
       ttrafo[j,i] = df_[1,:TimeTrafo]
       tadjoint[j,i] = df_[1,:TimeAdjoint]
@@ -123,9 +123,60 @@ function plot_performance(df; pre = "LUT", D=2, N=1024, M=N*N)
   
   p = plot(p1, p2, p3, layout=(3,1), size=(800,600), dpi=200)
 
-  savefig(p, "../docs/src/assets/performance_mt_$(pre)_$(D)_$(N)_$(M).svg")
+  savefig(p, "../docs/src/assets/performance_mt_$(D)_$(N)_$(M).svg")
   return p
 end
+
+
+### run the code ###
+
+if haskey(ENV, "NFFT_PERF_THREADING")
+  df = nfft_performance_comparison(4, 2.0)
+
+  if isfile("performance_mt.csv")
+    data, header = readdlm("performance_mt.csv", ',', header=true);
+    df_ = DataFrame(data, vec(header))
+    append!(df, df_)
+  end
+
+  writedlm("performance_mt.csv", Iterators.flatten(([names(df)], eachrow(df))), ',')
+
+else
+  rm("performance_mt.csv", force=true)
+  ENV["NFFT_PERF_THREADING"] = 1
+  for t in threads
+    cmd = `julia -t $t performance_threading.jl`
+    @info cmd
+    run(cmd)
+
+  end
+  data, header = readdlm("performance_mt.csv", ',', header=true);
+  df = DataFrame(data, vec(header))
+  delete!(ENV, "NFFT_PERF_THREADING")
+
+  plot_performance(df, N=1024, M=1024*1024)
+  #plot_performance(df, pre="LUT", N=1024, M=1024*1024*4)
+  #plot_performance(df, pre="FULL") 
+  #plot_performance_serial(df)
+end
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 
 
 
@@ -173,36 +224,3 @@ function plot_performance_serial(df)
 end
 
 
-
-
-### run the code ###
-
-if haskey(ENV, "NFFT_PERF_THREADING")
-  df = nfft_performance_comparison(4, 2.0)
-
-  if isfile("performance_mt.csv")
-    data, header = readdlm("performance_mt.csv", ',', header=true);
-    df_ = DataFrame(data, vec(header))
-    append!(df, df_)
-  end
-
-  writedlm("performance_mt.csv", Iterators.flatten(([names(df)], eachrow(df))), ',')
-
-else
-  rm("performance_mt.csv", force=true)
-  ENV["NFFT_PERF_THREADING"] = 1
-  for t in threads
-    cmd = `julia -t $t performance_threading.jl`
-    @info cmd
-    run(cmd)
-
-  end
-  data, header = readdlm("performance_mt.csv", ',', header=true);
-  df = DataFrame(data, vec(header))
-  delete!(ENV, "NFFT_PERF_THREADING")
-
-  plot_performance(df, pre="LUT", N=1024, M=1024*1024)
-  #plot_performance(df, pre="LUT", N=1024, M=1024*1024*4)
-  #plot_performance(df, pre="FULL") 
-  #plot_performance_serial(df)
-end
