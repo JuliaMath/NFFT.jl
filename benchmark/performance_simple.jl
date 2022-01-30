@@ -14,7 +14,7 @@ function nfft_performance_simple(;N = 1024, M = N*N, m = 4, LUTSize=20000,
 
   timing = TimingStats()
   x = T.(rand(2,M) .- 0.5)
-  x .= sortslices(x, dims=2) # sort nodes to gain cache locality
+  #x .= sortslices(x, dims=2) # sort nodes to gain cache locality
   
   fHat = randn(Complex{T}, M)
   f = randn(Complex{T}, (N,N))

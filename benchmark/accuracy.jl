@@ -20,7 +20,7 @@ function nfft_accuracy_comparison()
       M = prod(NN)
       
       for σ in range(1.25, 4, length=12)
-        for m = 1:14
+        for m = 2:14
           @info "D=$D  σ=$σ  m=$m "
           x = rand(D,M) .- 0.5
           fHat = randn(ComplexF64, M)
@@ -29,7 +29,7 @@ function nfft_accuracy_comparison()
 
             planner = packagesCtor[pl]
 
-            p = planner(x, NN; m, σ, precompute=NFFT.FULL)
+            p = planner(x, NN; m, σ, precompute=NFFT.LUT)
             pNDFT = NDFTPlan(x, NN)
             f = adjoint(pNDFT) * fHat
             fApprox = adjoint(p) * fHat
@@ -54,7 +54,7 @@ function plot_accuracy(df, D=1)
 
   σs = range(1.25, 4, length=12)
 
-  m = 1:14
+  m = 2:14
 
   df1_ = df[df.σ.==σs[4] .&& df.D.==D,:]
   df2_ = df[df.m.==8 .&& df.D.==D,:]

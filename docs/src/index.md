@@ -26,7 +26,14 @@ This will install the packages `NFFT.jl` and all its dependencies. Most importan
 
 Additional NFFT related tools can be obtained by adding the package `NFFTTools.jl`. If you need support for `CUDA` you also need to install the package `CuNFFT.jl`.
 
-In case you want to use an alternative NFFT implementation such as [NFFT3.jl](https://github.com/NFFT/NFFT3.jl) or [FINUFFT.jl](https://github.com/ludvigak/FINUFFT.jl) we provide wrapper types allowing to use them as `AbstractNFFTs` implementations.
+In case you want to use an alternative NFFT implementation such as [NFFT3.jl](https://github.com/NFFT/NFFT3.jl) or [FINUFFT.jl](https://github.com/ludvigak/FINUFFT.jl) we provide wrapper types allowing to use them as `AbstractNFFTs` implementations. They can be used like this:
+
+```julia
+julia> using AbstractNFFTs
+julia> include(joinpath(dirname(pathof(AbstractNFFTs)), "..", "..", "Wrappers", "FINUFFT.jl"))
+julia> include(joinpath(dirname(pathof(AbstractNFFTs)), "..", "..", "Wrappers", "NFFT3.jl"))
+```
+This requires that you first `add` the package you want to use. 
 
 ## Guide
 
