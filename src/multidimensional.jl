@@ -238,7 +238,7 @@ end
     @nexprs 1 d -> prodWin_{$D} = one(T)
     @nloops_ $(D-1)  (d->l_{d+1})  (d -> 1:$Z) d->begin
       # preexpr
-      prodWin_{d} = prodWin_{d+1} * tmpWin_d[l_{d+1}]
+      prodWin_{d} = prodWin_{d+1} * tmpWin_{d+1}[l_{d+1}]
       block_idx_{d+1} = off_{d+1} + l_{d+1} 
     end begin
       # bodyexpr
@@ -309,16 +309,16 @@ end
 
     innerWin = @ntuple $(Z) l -> tmpWin_1[l] * fHat_
 
-    @nexprs 1 d -> prodWin_{$D} = fHat_
+    @nexprs 1 d -> prodWin_{$D} = one(T)
     @nloops_ $(D-1)  (d->l_{d+1})  (d -> 1:$Z) d->begin
       # preexpr
-      prodWin_{d} = prodWin_{d+1} * tmpWin_d[l_{d+1}]
+      prodWin_{d} = prodWin_{d+1} * tmpWin_{d+1}[l_{d+1}]
       block_idx_{d+1} = off_{d+1} + l_{d+1} 
     end begin
       # bodyexpr
       @inbounds  for l_1 = 1:$Z
         block_idx_1 = off_1 + l_1 
-        (@nref $D block block_idx) += innerWin[l_1] 
+        (@nref $D block block_idx) += innerWin[l_1] * prodWin_1
       end
     end
     return
