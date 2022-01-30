@@ -73,12 +73,12 @@ function LinearAlgebra.mul!(fHat::StridedArray, p::FINUFFTPlan{T,D}, f::Abstract
 
   forwardPlan = FINUFFT.finufft_makeplan(2,collect(p.N),-1,1,p.reltol;
                                         nthreads = Threads.nthreads(), 
-                                        fftw = p.fftflags)
+                                        fftw = p.fftflags, upsampfac=2.0, debug=0)
 
   nodes = ntuple(d->vec(p.x[d,:]), D)
   FINUFFT.finufft_setpts!(forwardPlan, nodes...)
   
-  FINUFFT.finufft_exec!(forwardPlan, f, fHat)
+  @time FINUFFT.finufft_exec!(forwardPlan, f, fHat)
 
   FINUFFT.finufft_destroy!(forwardPlan)
 
@@ -91,7 +91,7 @@ function LinearAlgebra.mul!(f::StridedArray, pl::Adjoint{Complex{T},<:FINUFFTPla
 
   adjointPlan = FINUFFT.finufft_makeplan(1,collect(p.N), 1, 1, p.reltol; 
                                 nthreads = Threads.nthreads(), 
-                                fftw = p.fftflags)
+                                fftw = p.fftflags, upsampfac=2.0, debug=0)
 
   nodes = ntuple(d->vec(p.x[d,:]), D)
   FINUFFT.finufft_setpts!(adjointPlan, nodes...)
