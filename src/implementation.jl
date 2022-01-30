@@ -58,7 +58,7 @@ function Base.copy(p::NFFTPlan{T,D,R}) where {T,D,R}
     nodesInBlock = deepcopy(p.nodesInBlock)
     blockOffsets = copy(p.blockOffsets)
     idxInBlock = copy(p.idxInBlock)
-    x = copy(p.x)
+    x = p.x
 
     FP = plan_fft!(tmpVec, p.dims; flags = p.forwardFFT.flags)
     BP = plan_bfft!(tmpVec, p.dims; flags = p.backwardFFT.flags)
@@ -83,21 +83,15 @@ function NFFTPlan(x::Matrix{T}, N::NTuple{D,Int}; dims::Union{Integer,UnitRange{
     FP = plan_fft!(tmpVec, dims_; fftflags_...)
     BP = plan_bfft!(tmpVec, dims_; fftflags_...)
 
-    windowLUT, windowHatInvLUT, apodizationIdx, B = precomputation(x, N[dims_], n[dims_], params)
-    
     calcBlocks = (params.precompute == LUT) && length(dims_) == D
-    if calcBlocks 
-      # we copy x since precomputeBlocks will shift the nodes for performance reasons
-      x_ = shiftNodes!(copy(x))
-    else
-      x_ = x
-    end
-    blocks, nodesInBlocks, blockOffsets, idxInBlock = precomputeBlocks(x_, n, params, calcBlocks)
+    blocks, nodesInBlocks, blockOffsets, idxInBlock = precomputeBlocks(x, n, params, calcBlocks)
+
+    windowLUT, windowHatInvLUT, apodizationIdx, B = precomputation(x, N[dims_], n[dims_], params)
 
     U = params.storeApodizationIdx ? N : ntuple(d->0,D)
     tmpVecHat = Array{Complex{T},D}(undef, U)
 
-    NFFTPlan(N, NOut, M, x_, n, dims_, params, FP, BP, tmpVec, tmpVecHat, 
+    NFFTPlan(N, NOut, M, x, n, dims_, params, FP, BP, tmpVec, tmpVecHat, 
                        apodizationIdx, windowLUT, windowHatInvLUT, B,
                        blocks, nodesInBlocks, blockOffsets, idxInBlock)
 end
@@ -110,18 +104,11 @@ function AbstractNFFTs.nodes!(p::NFFTPlan{T}, x::Matrix{T}) where {T}
 
     windowLUT, windowHatInvLUT, apodizationIdx, B = precomputation(x, p.N, p.n, p.params)
 
-    if !isempty(p.blocks) 
-      # we copy x since precomputeBlocks will shift the nodes for performance reasons
-      x_ = shiftNodes!(copy(x))
-    else
-      x_ = x
-    end
-
     p.M = size(x, 2)
     p.windowLUT = windowLUT
     p.windowHatInvLUT = windowHatInvLUT
     p.B = B
-    p.x = x_
+    p.x = x
 
     return p
 end

@@ -149,7 +149,7 @@ function precomputation(x::Union{Matrix{T},Vector{T}}, N::NTuple{D,Int}, n, para
   m = params.m; σ = params.σ; window=params.window 
   LUTSize = params.LUTSize; precompute = params.precompute
 
-  win, win_hat = getWindow(window)
+  win, win_hat = getWindow(window) # highly type instable. But what should be do
   M = size(x, 2)
 
   windowLUT = Vector{Vector{T}}(undef, D)
@@ -181,6 +181,7 @@ end
 ####################################
 
 
+# This function is type instable. why???
 function precompWindowHatInvLUT(p::NFFTParams{T}, N, n, windowHatInvLUT_) where {T}
   
   windowHatInvLUT = zeros(Complex{T}, N)
@@ -230,7 +231,10 @@ end
 function precomputeBlocks(x::Matrix{T}, n::NTuple{D,Int}, params, calcBlocks::Bool) where {T,D}
 
   if calcBlocks
-    blocks, nodesInBlocks, blockOffsets, idxInBlock = _precomputeBlocks(x, n, params.m, params.LUTSize)
+    xShift = copy(x)
+    shiftNodes!(xShift)
+    blocks, nodesInBlocks, blockOffsets, idxInBlock = 
+        _precomputeBlocks(xShift, n, params.m, params.LUTSize)
   else
     blocks = Array{Array{Complex{T},D},D}(undef,ntuple(d->0,D))
     nodesInBlocks = Array{Vector{Int64},D}(undef,ntuple(d->0,D))
@@ -249,19 +253,17 @@ function shiftNodes!(x::Matrix{T}) where T
       end
     end
   end
-  return x
+  return
 end
 
 function _precomputeBlocks(x::Matrix{T}, n::NTuple{D,Int}, m, LUTSize) where {T,D}
 
   padding = ntuple(d->m, D)
-  blockSize = ntuple(d-> (d==1) ? 64 : 64 , D)
-  #blockSize = ntuple(d-> n[d] , D)
+  blockSize = ntuple(d-> (d==1) ? 64 : 64 , D) # What is the best block size?
+  #blockSize = ntuple(d-> n[d] , D) # just one block
   blockSizePadded = ntuple(d-> blockSize[d] + 2*padding[d] , D)
   
   numBlocks =  ntuple(d-> ceil(Int, n[d]/blockSize[d]) , D)
-
-#@info "numBlocks= " numBlocks
 
   nodesInBlock = [ Int[] for l in CartesianIndices(numBlocks) ]
   numNodesInBlock = zeros(Int, numBlocks)
@@ -277,26 +279,29 @@ function _precomputeBlocks(x::Matrix{T}, n::NTuple{D,Int}, m, LUTSize) where {T,
     push!(nodesInBlock[idx...], k)
   end
 
+  scale = T( (LUTSize-1) / m )
+  offLUT = (3*LUTSize)÷2
+
   blocks = Array{Array{Complex{T},D},D}(undef, numBlocks)
   blockOffsets = Array{NTuple{D,Int64},D}(undef, numBlocks)
-  @cthreads for l in CartesianIndices(numBlocks)
-    blocks[l] = Array{Complex{T},D}(undef, blockSizePadded)
-    blockOffsets[l] = ntuple(d-> (l[d]-1)*blockSize[d]-padding[d]-1, D)
-  end
-
-
-  scale = T( (LUTSize-1) / m )
   idxInBlock = Array{Matrix{Tuple{Int,Float64}},D}(undef, numBlocks)
-  @cthreads  for l in CartesianIndices(numBlocks)
+
+  @cthreads for l in CartesianIndices(numBlocks)
     if !isempty(nodesInBlock[l])
+      # precompute blocks
+      blocks[l] = Array{Complex{T},D}(undef, blockSizePadded)
+
+      # precompute blockOffsets
+      blockOffsets[l] = ntuple(d-> (l[d]-1)*blockSize[d]-padding[d]-1, D)
+
+      # precompute idxInBlock
       idxInBlock[l] = Matrix{Tuple{Int,Float64}}(undef, D, length(nodesInBlock[l]))
-      for (i,k) in enumerate(nodesInBlock[l])
-        for d=1:D
-          xtmp = x[d,k]
+      @inbounds for (i,k) in enumerate(nodesInBlock[l])
+        @inbounds for d=1:D
+          xtmp = x[d,k] # this is expensive because of cache misses
           xscale = xtmp * n[d]
           off = unsafe_trunc(Int, xscale) - m - 1
           y = off - blockOffsets[l][d] 
-          offLUT = (3*LUTSize)÷2
           idx = (xscale - off)*scale  + offLUT + 1
           idxInBlock[l][d,i] = (y,idx)
         end
