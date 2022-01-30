@@ -78,7 +78,7 @@ function LinearAlgebra.mul!(fHat::StridedArray, p::FINUFFTPlan{T,D}, f::Abstract
   nodes = ntuple(d->vec(p.x[d,:]), D)
   FINUFFT.finufft_setpts!(forwardPlan, nodes...)
   
-  @time FINUFFT.finufft_exec!(forwardPlan, f, fHat)
+  FINUFFT.finufft_exec!(forwardPlan, f, fHat)
 
   FINUFFT.finufft_destroy!(forwardPlan)
 
