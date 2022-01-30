@@ -334,11 +334,10 @@ end
     y, idx_0 = idxInBlock[d,k]
 
     tmpWin = @ntuple $(Z) l -> begin
-       
-      idxInt = unsafe_trunc(Int, idx_{l-1}) 
-      α = ( idx_{l-1} - idxInt )
-
       idx_{l} = idx_{l-1}-scale  
+
+      idxInt = unsafe_trunc(Int, idx_{l}) 
+      α = ( idx_{l} - idxInt )
 
       w1 = win[idxInt]
       w2 = win[idxInt+1]
