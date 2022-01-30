@@ -340,8 +340,10 @@ end
     tmpWin = @ntuple $(Z) l -> begin
       idx =  abs(xscale - l - off)*scale  + 1
       idxInt = unsafe_trunc(Int, idx)
-
-      (win[idxInt] + ( idx-idxInt ) * (win[idxInt+1] - win[idxInt]))  
+      w1 = win[idxInt]
+      w2 = win[idxInt+1]
+      α = ( idx-idxInt )
+      (w1 + α * (w2 - w1) )
     end
     return (y, tmpWin)
   end
