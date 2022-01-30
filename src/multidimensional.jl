@@ -200,7 +200,7 @@ function _convolve_LUT_MT!(p::NFFTPlan{T,D,1}, g::AbstractArray{Complex{T},D}, f
     if !isempty(p.nodesInBlock[l])
       isNoEdgeBlock = all(1 .< Tuple(l) .< size(p.blocks))
       toBlock!(p, g, p.blocks[l], p.blockOffsets[l], isNoEdgeBlock)
-      calcOneNode!(p, fHat, p.nodesInBlock[l], p.blocks[l], p.blockOffsets[l], L, scale)
+      calcOneNode!(p, fHat, p.nodesInBlock[l], p.blocks[l], p.blockOffsets[l], L, scale,  p.idxInBlock[l])
     end
   end
 end
@@ -221,17 +221,17 @@ function toBlock!(p::NFFTPlan{T,D,1}, g, block, off, isNoEdgeBlock) where {T,D}
 end
 
 @noinline function calcOneNode!(p::NFFTPlan{T,D,1}, fHat, nodesInBlock, block::StridedArray{Complex{T},D},
-         off, L::Val{Z}, scale) where {D,T,Z}
-  for k in nodesInBlock
-    fHat[k] = _convolve_LUT_MT(p, block, off, L, scale, k)
+         off, L::Val{Z}, scale, idxInBlock) where {D,T,Z}
+  for (kLocal,k) in enumerate(nodesInBlock)
+    fHat[k] = _convolve_LUT_MT(p, block, off, L, scale, k, kLocal, idxInBlock)
   end
   return
 end
 
 @generated function _convolve_LUT_MT(p::NFFTPlan{T,D,1}, block::StridedArray{Complex{T},D},
-                          off, L::Val{Z}, scale, k) where {D,T,Z}
+                          off, L::Val{Z}, scale, k, kLocal, idxInBlock) where {D,T,Z}
   quote
-    @nexprs $(D) d -> ((off_d, tmpWin_d) = _precomputeOneNodeShifted(p, scale, k, d, L, off) )
+    @nexprs $(D) d -> ((off_d, tmpWin_d) = _precomputeOneNodeShifted(p, scale, kLocal, d, L, off, idxInBlock) )
 
     fHat = zero(Complex{T})
 
@@ -269,7 +269,7 @@ function _convolve_adjoint_LUT_MT!(p::NFFTPlan{T,D,1}, fHat::AbstractVector{U}, 
     if !isempty(p.nodesInBlock[l])
       # p.blocks[l] .= zero(T)
       ccall(:memset, Ptr{Cvoid}, (Ptr{Cvoid}, Cint, Csize_t), p.blocks[l], 0, sizeof(p.blocks[l]))
-      fillBlock!(p, fHat, p.blocks[l], p.nodesInBlock[l], p.blockOffsets[l], L, scale)
+      fillBlock!(p, fHat, p.blocks[l], p.nodesInBlock[l], p.blockOffsets[l], L, scale, p.idxInBlock[l])
       isNoEdgeBlock = all(1 .< Tuple(l) .< size(p.blocks))
       lock(lk) do
         addBlock!(p, g, p.blocks[l], p.blockOffsets[l], isNoEdgeBlock)
@@ -293,19 +293,19 @@ function addBlock!(p::NFFTPlan{T,D,1}, g, block, off, isNoEdgeBlock) where {T,D}
   return
 end
 
-@noinline function fillBlock!(p::NFFTPlan, fHat::AbstractVector, block, nodesInBlock, off, L, scale)
-  for k in nodesInBlock
-    fillOneNode!(p, fHat, block, off, L, scale, k)
+@noinline function fillBlock!(p::NFFTPlan, fHat::AbstractVector, block, nodesInBlock, off, L, scale, idxInBlock)
+  for (kLocal,k) in enumerate(nodesInBlock)
+    fillOneNode!(p, fHat, block, off, L, scale, k, kLocal, idxInBlock)
   end
   return
 end
 
 @generated function fillOneNode!(p::NFFTPlan{T,D,1}, fHat::AbstractVector, block::StridedArray{Complex{T},D},
-                          off, L::Val{Z}, scale, k) where {D,T,Z}
+                          off, L::Val{Z}, scale, k, kLocal, idxInBlock) where {D,T,Z}
   quote
     fHat_ = fHat[k]
 
-    @nexprs $(D) d -> ((off_d, tmpWin_d) = _precomputeOneNodeShifted(p, scale, k, d, L, off) )
+    @nexprs $(D) d -> ((off_d, tmpWin_d) = _precomputeOneNodeShifted(p, scale, kLocal, d, L, off, idxInBlock) )
 
     innerWin = @ntuple $(Z) l -> tmpWin_1[l] * fHat_
 
@@ -325,25 +325,40 @@ end
   end
 end
 
-function _precomputeOneNodeShifted(p::NFFTPlan, scale, k, d, L, off_) 
-  return _precomputeOneNodeShifted(p.windowLUT, p.x, p.n, p.params.m, p.params.σ, scale, k, d, L, off_, p.params.LUTSize) 
+function _precomputeOneNodeShifted(p::NFFTPlan, scale, k, d, L, off_, idxInBlock) 
+  return _precomputeOneNodeShifted(p.windowLUT, p.x, p.n, p.params.m, p.params.σ, scale, k, d, L, off_, p.params.LUTSize, idxInBlock) 
 end
 
-@generated function _precomputeOneNodeShifted(windowLUT::Vector, x::AbstractMatrix{T}, n::NTuple{D,Int}, m, 
-  σ, scale, k, d, L::Val{Z}, off_, LUTSize) where {T,D,Z}
-  quote
-    xtmp = x[d,k]
-    xscale = xtmp * n[d]
-    off = unsafe_trunc(Int, xscale) - m - 1
-    y = off - off_[d] 
-    win = windowLUT[d]
-    offLUT = (3*LUTSize)÷2
+function floor_and_rem(n::Float64)
+  magic1 = 0x1.8p52
+  magic2 = 2^52-1
+  n1 = n+magic1
+  rem = n-(n1-magic1)
+  floor = reinterpret(UInt64, n1) & magic2
+  return floor, rem
+end
 
-    idx = (xscale - off)*scale  + offLUT + 1
+
+
+@generated function _precomputeOneNodeShifted(windowLUT::Vector, x::AbstractMatrix{T}, n::NTuple{D,Int}, m, 
+  σ, scale, k, d, L::Val{Z}, off_, LUTSize, idxInBlock) where {T,D,Z}
+  quote
+
+    win = windowLUT[d]
+
+    ###magic1 = 0x1.8p52
+    ###magic2 = 2^51-1
+
+    y, idx = idxInBlock[d,k]
 
     tmpWin = @ntuple $(Z) l -> begin
       idx_ = idx-l*scale  
       idxInt = unsafe_trunc(Int, idx_) 
+
+      ###n1 = idx_+magic1
+      ###α = idx_-(n1-magic1)
+      ###idxInt = reinterpret(Int, n1) & magic2
+
       w1 = win[idxInt]
       w2 = win[idxInt+1]
       α = ( idx_ - idxInt )
@@ -352,23 +367,3 @@ end
     return (y, tmpWin)
   end
 end
-
-# abs(  ( xscale - l - off) / ( p.params.m * (p.params.LUTSize-1)) )    )
-
-# scale = T(1.0 / p.params.m * (p.params.LUTSize-1))
-
-# windowLUT[d][l] = win(  ((l - 1) / (K - 1)) * m / n[d]   , n[d], m, σ)
-
-
-#=
-function precomputeLUT(win, windowLUT, n, m, σ, K, T)
-    Z = round(Int, 3 * K / 2)
-    for d = 1:length(windowLUT)
-        windowLUT[d] = Vector{T}(undef, Z)
-        @cthreads for l = 1:Z
-            y = ((l - 1) / (K - 1)) * m / n[d]
-            windowLUT[d][l] = win(y, n[d], m, σ)
-        end
-    end
-end
-=#

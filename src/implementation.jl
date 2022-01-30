@@ -44,6 +44,7 @@ mutable struct NFFTPlan{T,D,R} <: AbstractNFFTPlan{T,D,R}
     blocks::Array{Array{Complex{T},D},D}
     nodesInBlock::Array{Vector{Int64},D}
     blockOffsets::Array{NTuple{D,Int64},D}
+    idxInBlock::Array{Matrix{Tuple{Int,Float64}},D}
 end
 
 function Base.copy(p::NFFTPlan{T,D,R}) where {T,D,R}
@@ -56,6 +57,7 @@ function Base.copy(p::NFFTPlan{T,D,R}) where {T,D,R}
     blocks = deepcopy(p.blocks)
     nodesInBlock = deepcopy(p.nodesInBlock)
     blockOffsets = copy(p.blockOffsets)
+    idxInBlock = copy(p.idxInBlock)
     x = copy(p.x)
 
     FP = plan_fft!(tmpVec, p.dims; flags = p.forwardFFT.flags)
@@ -63,7 +65,7 @@ function Base.copy(p::NFFTPlan{T,D,R}) where {T,D,R}
 
     return NFFTPlan{T,D,R}(p.N, p.NOut, p.M, x, p.n, p.dims, p.params, FP, BP, tmpVec, 
                            tmpVecHat, apodizationIdx, windowLUT, windowHatInvLUT, B,
-                           blocks, nodesInBlock, blockOffsets)
+                           blocks, nodesInBlock, blockOffsets, idxInBlock)
 end
 
 ################
@@ -90,14 +92,14 @@ function NFFTPlan(x::Matrix{T}, N::NTuple{D,Int}; dims::Union{Integer,UnitRange{
     else
       x_ = x
     end
-    blocks, nodesInBlocks, blockOffsets = precomputeBlocks(x_, n, params, calcBlocks)
+    blocks, nodesInBlocks, blockOffsets, idxInBlock = precomputeBlocks(x_, n, params, calcBlocks)
 
     U = params.storeApodizationIdx ? N : ntuple(d->0,D)
     tmpVecHat = Array{Complex{T},D}(undef, U)
 
     NFFTPlan(N, NOut, M, x_, n, dims_, params, FP, BP, tmpVec, tmpVecHat, 
                        apodizationIdx, windowLUT, windowHatInvLUT, B,
-                       blocks, nodesInBlocks, blockOffsets)
+                       blocks, nodesInBlocks, blockOffsets, idxInBlock)
 end
 
 function AbstractNFFTs.nodes!(p::NFFTPlan{T}, x::Matrix{T}) where {T}

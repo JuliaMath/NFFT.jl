@@ -230,14 +230,15 @@ end
 function precomputeBlocks(x::Matrix{T}, n::NTuple{D,Int}, params, calcBlocks::Bool) where {T,D}
 
   if calcBlocks
-    blocks, nodesInBlocks, blockOffsets = _precomputeBlocks(x, n, params.m)
+    blocks, nodesInBlocks, blockOffsets, idxInBlock = _precomputeBlocks(x, n, params.m, params.LUTSize)
   else
     blocks = Array{Array{Complex{T},D},D}(undef,ntuple(d->0,D))
     nodesInBlocks = Array{Vector{Int64},D}(undef,ntuple(d->0,D))
     blockOffsets = Array{NTuple{D,Int64},D}(undef,ntuple(d->0,D))
+    idxInBlock = Array{Matrix{Tuple{Int,Float64}},D}(undef, ntuple(d->0,D))
   end
   
-  return (blocks, nodesInBlocks, blockOffsets)
+  return (blocks, nodesInBlocks, blockOffsets, idxInBlock)
 end
 
 function shiftNodes!(x::Matrix{T}) where T
@@ -251,7 +252,7 @@ function shiftNodes!(x::Matrix{T}) where T
   return x
 end
 
-function _precomputeBlocks(x::Matrix{T}, n::NTuple{D,Int}, m) where {T,D}
+function _precomputeBlocks(x::Matrix{T}, n::NTuple{D,Int}, m, LUTSize) where {T,D}
 
   padding = ntuple(d->m, D)
   blockSize = ntuple(d-> (d==1) ? 64 : 64 , D)
@@ -283,5 +284,27 @@ function _precomputeBlocks(x::Matrix{T}, n::NTuple{D,Int}, m) where {T,D}
     blockOffsets[l] = ntuple(d-> (l[d]-1)*blockSize[d]-padding[d]-1, D)
   end
 
-  return blocks, nodesInBlock, blockOffsets
+
+  scale = T( (LUTSize-1) / m )
+  idxInBlock = Array{Matrix{Tuple{Int,Float64}},D}(undef, numBlocks)
+  @cthreads  for l in CartesianIndices(numBlocks)
+    if !isempty(nodesInBlock[l])
+      idxInBlock[l] = Matrix{Tuple{Int,Float64}}(undef, D, length(nodesInBlock[l]))
+      for (i,k) in enumerate(nodesInBlock[l])
+        for d=1:D
+          xtmp = x[d,k]
+          xscale = xtmp * n[d]
+          off = unsafe_trunc(Int, xscale) - m - 1
+          y = off - blockOffsets[l][d] 
+          offLUT = (3*LUTSize)÷2
+          idx = (xscale - off)*scale  + offLUT + 1
+          idxInBlock[l][d,i] = (y,idx)
+        end
+      end
+    end
+  end
+
+
+
+  return blocks, nodesInBlock, blockOffsets, idxInBlock
 end
