@@ -6,17 +6,19 @@ LUTSize = 20000
 
 @testset "NFFT in multiple dimensions" begin
     for (u,N) in enumerate([(256,), (30,32), (10,12,14), (6,6,6,6)])
-      for (pre,storeApod) in zip([NFFT.LUT, NFFT.FULL, NFFT.LUT],
-                                 [false, false, true])
+      for (pre,storeApod, blocking) in zip([NFFT.LUT, NFFT.FULL, NFFT.LUT, NFFT.LUT],
+                                           [false, false, true, false],
+                                           [true, false, true, false])
         eps = [1e-7, 1e-3, 1e-6, 1e-4]
         for (l,window) in enumerate([:kaiser_bessel, :gauss, :kaiser_bessel_rev, :spline])
             D = length(N)
-            @info "Testing in $D dimensions using window=$window precompute=$pre storeApod=$storeApod"
+            @info "Testing $D, window=$window, pre=$pre, storeApod=$storeApod, block=$blocking"
 
             M = prod(N)
             x = rand(Float64,D,M) .- 0.5
             p = plan_nfft(x, N; m, σ, window, LUTSize, precompute = pre, storeApodizationIdx = storeApod,
-                         fftflags = FFTW.ESTIMATE)
+                         fftflags = FFTW.ESTIMATE, blocking)
+
             pNDFT = NDFTPlan(x, N)
 
             fHat = rand(Float64,M) + rand(Float64,M)*im

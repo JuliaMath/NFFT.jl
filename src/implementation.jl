@@ -19,10 +19,11 @@ Base.@kwdef mutable struct NFFTParams{T}
   σ::T = 2.0
   reltol::T = 1e-9
   window::Symbol = :kaiser_bessel
-  LUTSize::Int64 = 20000
+  LUTSize::Int64 = 20000  # fixme: chose 2^10 * (m+2) as does the NFFT3
   precompute::PrecomputeFlags = LUT
   sortNodes::Bool = false
   storeApodizationIdx::Bool = false
+  blocking::Bool = true
 end
 
 mutable struct NFFTPlan{T,D,R} <: AbstractNFFTPlan{T,D,R} 
@@ -83,7 +84,7 @@ function NFFTPlan(x::Matrix{T}, N::NTuple{D,Int}; dims::Union{Integer,UnitRange{
     FP = plan_fft!(tmpVec, dims_; fftflags_...)
     BP = plan_bfft!(tmpVec, dims_; fftflags_...)
 
-    calcBlocks = (params.precompute == LUT) && length(dims_) == D
+    calcBlocks = (params.precompute == LUT) && params.blocking && length(dims_) == D
     blocks, nodesInBlocks, blockOffsets, idxInBlock = precomputeBlocks(x, n, params, calcBlocks)
 
     windowLUT, windowHatInvLUT, apodizationIdx, B = precomputation(x, N[dims_], n[dims_], params)

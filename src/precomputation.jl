@@ -111,7 +111,7 @@ end
     offLUT = (3*LUTSize)÷2
     tmpWin = @ntuple $(Z) l -> begin
       idx = (xscale - l - off)*scale + offLUT + 1
-      idxL = unsafe_trunc(idx)
+      idxL = unsafe_trunc(Int, idx)
       idxInt = Int(idxL)
       (windowLUT[d][idxInt] + ( idx-idxL ) * (windowLUT[d][idxInt+1] - windowLUT[d][idxInt]))  
     end
@@ -251,15 +251,20 @@ function shiftNodes!(x::Matrix{T}) where T
       if x[d,k] < zero(T)
         x[d,k] += one(T)
       end
+      if x[d,k] == one(T) # We need to ensure that the nodes are within [0,1)
+        x[d,k] -= eps(T)
+      end
     end
-  end
+  end 
   return
 end
 
 function _precomputeBlocks(x::Matrix{T}, n::NTuple{D,Int}, m, LUTSize) where {T,D}
 
   padding = ntuple(d->m, D)
-  blockSize = ntuple(d-> (d==1) ? 64 : 64 , D) # What is the best block size?
+  # What is the best block size?
+  # Limit the block size to at maximum n
+  blockSize = ntuple(d-> min((d==1) ? 64 : 64, n[d]) , D)
   #blockSize = ntuple(d-> n[d] , D) # just one block
   blockSizePadded = ntuple(d-> blockSize[d] + 2*padding[d] , D)
   

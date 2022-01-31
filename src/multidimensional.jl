@@ -92,11 +92,15 @@ end
 
 function AbstractNFFTs.convolve!(p::NFFTPlan{T,D,1}, g::AbstractArray{Complex{T},D}, fHat::StridedVector{U}) where {D,T,U}
   if isempty(p.B)
-    #convolve_LUT!(p, g, fHat)
-    convolve_LUT_MT!(p, g, fHat)
+    if p.params.blocking
+      convolve_LUT_MT!(p, g, fHat)
+    else
+      convolve_LUT!(p, g, fHat)
+    end
   else
     convolve_sparse_matrix!(p, g, fHat)
   end
+  return
 end
 
 function convolve_LUT!(p::NFFTPlan{T,D,1}, g::AbstractArray{Complex{T},D}, fHat::StridedVector{U}) where {D,T,U}
@@ -140,11 +144,11 @@ end
 
 function AbstractNFFTs.convolve_adjoint!(p::NFFTPlan{T,D,1}, fHat::AbstractVector{U}, g::StridedArray{Complex{T},D}) where {D,T,U}
   if isempty(p.B)
-    #if NFFT._use_threads[]
+    if p.params.blocking
       convolve_adjoint_LUT_MT!(p, fHat, g)
-    #else
-    #  convolve_adjoint_LUT!(p, fHat, g)
-    #end
+    else
+      convolve_adjoint_LUT!(p, fHat, g)
+    end
   else
     convolve_adjoint_sparse_matrix!(p, fHat, g)
   end
