@@ -1,0 +1,295 @@
+<?xml version="1.0" encoding="UTF-8" standalone="no"?>
+<svg
+   xmlns:dc="http://purl.org/dc/elements/1.1/"
+   xmlns:cc="http://creativecommons.org/ns#"
+   xmlns:rdf="http://www.w3.org/1999/02/22-rdf-syntax-ns#"
+   xmlns:svg="http://www.w3.org/2000/svg"
+   xmlns="http://www.w3.org/2000/svg"
+   xmlns:sodipodi="http://sodipodi.sourceforge.net/DTD/sodipodi-0.dtd"
+   xmlns:inkscape="http://www.inkscape.org/namespaces/inkscape"
+   inkscape:version="1.0beta1 (32d4812, 2019-09-19)"
+   sodipodi:docname="NFFTPackages.svg"
+   viewBox="0 0 142.28926 114.31241"
+   height="190.52068"
+   width="237.14877"
+   xml:space="preserve"
+   id="svg833"
+   version="1.1">
+  <metadata
+     id="metadata839">
+    <rdf:RDF>
+      <cc:Work
+         rdf:about="">
+        <dc:format>image/svg+xml</dc:format>
+        <dc:type
+           rdf:resource="http://purl.org/dc/dcmitype/StillImage" />
+        <dc:title></dc:title>
+      </cc:Work>
+    </rdf:RDF>
+  </metadata>
+  <defs
+     id="defs837">
+    <clipPath
+       id="clipPath853"
+       clipPathUnits="userSpaceOnUse">
+      <path
+         inkscape:connector-curvature="0"
+         id="path851"
+         d="M 0,0 H 2384 V 3370 H 0 Z" />
+    </clipPath>
+    <clipPath
+       id="clipPath865"
+       clipPathUnits="userSpaceOnUse">
+      <path
+         inkscape:connector-curvature="0"
+         id="path863"
+         d="M 0,0 H 2384 V 3370 H 0 Z" />
+    </clipPath>
+    <clipPath
+       id="clipPath881"
+       clipPathUnits="userSpaceOnUse">
+      <path
+         inkscape:connector-curvature="0"
+         id="path879"
+         d="M 0,0 H 2384 V 3370 H 0 Z" />
+    </clipPath>
+    <clipPath
+       id="clipPath897"
+       clipPathUnits="userSpaceOnUse">
+      <path
+         inkscape:connector-curvature="0"
+         id="path895"
+         d="M 0,0 H 2384 V 3370 H 0 Z" />
+    </clipPath>
+    <clipPath
+       id="clipPath911"
+       clipPathUnits="userSpaceOnUse">
+      <path
+         inkscape:connector-curvature="0"
+         id="path909"
+         d="M 0,0 H 2384 V 3370 H 0 Z" />
+    </clipPath>
+    <clipPath
+       id="clipPath927"
+       clipPathUnits="userSpaceOnUse">
+      <path
+         inkscape:connector-curvature="0"
+         id="path925"
+         d="M 0,0 H 2384 V 3370 H 0 Z" />
+    </clipPath>
+    <clipPath
+       id="clipPath941"
+       clipPathUnits="userSpaceOnUse">
+      <path
+         inkscape:connector-curvature="0"
+         id="path939"
+         d="M 0,0 H 2384 V 3370 H 0 Z" />
+    </clipPath>
+    <clipPath
+       id="clipPath957"
+       clipPathUnits="userSpaceOnUse">
+      <path
+         inkscape:connector-curvature="0"
+         id="path955"
+         d="M 0,0 H 2384 V 3370 H 0 Z" />
+    </clipPath>
+  </defs>
+  <sodipodi:namedview
+     scale-x="0.6"
+     inkscape:current-layer="g841"
+     inkscape:window-maximized="0"
+     inkscape:window-y="23"
+     inkscape:window-x="27"
+     inkscape:cy="147.29832"
+     inkscape:cx="151.18663"
+     inkscape:zoom="1.3249068"
+     fit-margin-bottom="0"
+     fit-margin-right="0"
+     fit-margin-left="0"
+     fit-margin-top="0"
+     showgrid="false"
+     id="namedview835"
+     inkscape:window-height="755"
+     inkscape:window-width="1253"
+     inkscape:pageshadow="2"
+     inkscape:pageopacity="0"
+     guidetolerance="10"
+     gridtolerance="10"
+     objecttolerance="10"
+     borderopacity="1"
+     inkscape:document-rotation="0"
+     bordercolor="#666666"
+     pagecolor="#ffffff" />
+  <g
+     transform="matrix(1.3333333,0,0,-1.3333333,-22.024833,135.56981)"
+     inkscape:label="NFFTPackages"
+     inkscape:groupmode="layer"
+     id="g841">
+    <g
+       transform="translate(72,45.323)"
+       id="g843">
+      <g
+         transform="translate(-72,-45.323)"
+         id="g845">
+        <g
+           id="g847">
+          <g
+             clip-path="url(#clipPath853)"
+             id="g849">
+            <g
+               transform="scale(0.1)"
+               id="g855" />
+          </g>
+        </g>
+      </g>
+      <g
+         transform="translate(-72,-45.323)"
+         id="g857">
+        <g
+           id="g859">
+          <g
+             clip-path="url(#clipPath865)"
+             id="g861">
+            <g
+               transform="scale(0.1)"
+               id="g867" />
+          </g>
+        </g>
+      </g>
+      <text
+         id="text871"
+         style="font-variant:normal;font-weight:normal;font-size:8.9664px;font-family:'Noto Sans Yi';-inkscape-font-specification:NotoSans-Regular;writing-mode:lr-tb;fill:#000000;fill-opacity:1;fill-rule:nonzero;stroke:none"
+         transform="matrix(1,0,0,-1,-41.244,49.542)"><tspan
+           id="tspan869"
+           sodipodi:role="line"
+           y="0"
+           x="0 5.7295294 11.243866 15.538772 18.775642 22.299437 27.329588 31.633459 34.870331 41.684795 46.338356 50.991917 55.439251 59.734158 62.137154 64.450485">AbstractNFFTs.jl</tspan></text>
+      <g
+         transform="translate(-72,-45.323)"
+         id="g873">
+        <g
+           id="g875">
+          <g
+             clip-path="url(#clipPath881)"
+             id="g877">
+            <g
+               transform="scale(0.1)"
+               id="g883" />
+          </g>
+        </g>
+      </g>
+      <text
+         id="text887"
+         style="font-variant:normal;font-weight:normal;font-size:8.9664px;font-family:'Noto Sans Yi';-inkscape-font-specification:NotoSans-Regular;writing-mode:lr-tb;fill:#000000;fill-opacity:1;fill-rule:nonzero;stroke:none"
+         transform="matrix(1,0,0,-1,-56.357,11.007)"><tspan
+           id="tspan885"
+           sodipodi:role="line"
+           y="0"
+           x="0 6.8144641 11.468025 16.121588 20.577888 22.980883 25.294214">NFFT.jl</tspan></text>
+      <g
+         transform="translate(-72,-45.323)"
+         id="g889">
+        <g
+           id="g891">
+          <g
+             clip-path="url(#clipPath897)"
+             id="g893">
+            <g
+               transform="scale(0.1)"
+               id="g899">
+              <path
+                 inkscape:connector-curvature="0"
+                 id="path901"
+                 style="fill:none;stroke:#000000;stroke-width:6;stroke-linecap:butt;stroke-linejoin:miter;stroke-miterlimit:10;stroke-dasharray:none;stroke-opacity:1"
+                 d="M 641.375,881.305 391.648,677.273" />
+            </g>
+          </g>
+        </g>
+      </g>
+      <g
+         transform="translate(-72,-45.323)"
+         id="g903">
+        <g
+           id="g905">
+          <g
+             clip-path="url(#clipPath911)"
+             id="g907">
+            <g
+               transform="scale(0.1)"
+               id="g913" />
+          </g>
+        </g>
+      </g>
+      <text
+         id="text917"
+         style="font-variant:normal;font-weight:normal;font-size:8.9664px;font-family:'Noto Sans Yi';-inkscape-font-specification:NotoSans-Regular;writing-mode:lr-tb;fill:#000000;fill-opacity:1;fill-rule:nonzero;stroke:none"
+         transform="matrix(1,0,0,-1,1.767,11.007)"><tspan
+           id="tspan915"
+           sodipodi:role="line"
+           y="0"
+           x="0 6.8144641 11.468025 16.121588 21.286234 25.65287 31.077543 36.502213 38.815544 43.110451 45.513447 47.826778">NFFTTools.jl</tspan></text>
+      <g
+         transform="translate(-72,-45.323)"
+         id="g919">
+        <g
+           id="g921">
+          <g
+             clip-path="url(#clipPath927)"
+             id="g923">
+            <g
+               transform="scale(0.1)"
+               id="g929">
+              <path
+                 inkscape:connector-curvature="0"
+                 id="path931"
+                 style="fill:none;stroke:#000000;stroke-width:6;stroke-linecap:butt;stroke-linejoin:miter;stroke-miterlimit:10;stroke-dasharray:none;stroke-opacity:1"
+                 d="M 641.375,881.305 891.102,677.273" />
+            </g>
+          </g>
+        </g>
+      </g>
+      <g
+         transform="translate(-72,-45.323)"
+         id="g933">
+        <g
+           id="g935">
+          <g
+             clip-path="url(#clipPath941)"
+             id="g937">
+            <g
+               transform="scale(0.1)"
+               id="g943" />
+          </g>
+        </g>
+      </g>
+      <text
+         id="text947"
+         style="font-variant:normal;font-weight:normal;font-size:8.9664px;font-family:'Noto Sans Yi';-inkscape-font-specification:NotoSans-Regular;writing-mode:lr-tb;fill:#000000;fill-opacity:1;fill-rule:nonzero;stroke:none"
+         transform="matrix(1,0,0,-1,7.43,-27.528)"><tspan
+           id="tspan945"
+           sodipodi:role="line"
+           y="0"
+           x="0 5.6667647 11.208 18.022465 22.676025 27.329588 31.776922 34.179916 36.493248">CuNFFT.jl</tspan></text>
+      <g
+         transform="translate(-72,-45.323)"
+         id="g949">
+        <g
+           id="g951">
+          <g
+             clip-path="url(#clipPath957)"
+             id="g953">
+            <g
+               transform="scale(0.1)"
+               id="g959">
+              <path
+                 inkscape:connector-curvature="0"
+                 id="path961"
+                 style="fill:none;stroke:#000000;stroke-width:6;stroke-linecap:butt;stroke-linejoin:miter;stroke-miterlimit:10;stroke-dasharray:none;stroke-opacity:1"
+                 d="M 988.328,495.953 V 291.926" />
+            </g>
+          </g>
+        </g>
+      </g>
+    </g>
+  </g>
+</svg>

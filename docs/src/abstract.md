@@ -3,12 +3,17 @@
 The package `AbstractNFFTs` provides the abstract interface for NFFT implementations. Defining an abstract interface has the advantage that different implementation can exist and be exchanged with 
 close to zero effort on the user side.
 
+An overview about the current packages and their dependencies is shown in the following package tree:
+
+![Performance Multi-threaded](./assets/NFFTPackages.svg)
+
 ## Implementations
 
 Right now there are three implementations:
 1. **NFFT.jl**: This is the reference implementation running und the cpu.
 2. **CuNFFT.jl**: An implementation running on graphics hardware of Nvidia exploiting CUDA.jl
-3. **NFFT3.jl**: In the test directory of `NFFT.jl` there is a wrapper around the NFFT3.jl package following the  `AbstractNFFTs` interface. `NFFT3.jl` is itself a wrapper around the high performance C library [nfft3](http://www.nfft.org).
+3. **NFFT3.jl**: In the `Wrapper` directory of `NFFT.jl` there is a wrapper around the NFFT3.jl package following the  `AbstractNFFTs` interface. `NFFT3.jl` is itself a wrapper around the high performance C library [nfft3](http://www.nfft.org).
+3. **FINUFFT.jl**: In the `Wrapper` directory of `NFFT.jl` there is a wrapper around the FINUFFT.jl package. `FINUFFT.jl` is itself a wrapper around the high performance C++ library [FINUFFT](https://finufft.readthedocs.io).
 
 ## Interface
 
