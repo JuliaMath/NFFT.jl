@@ -105,7 +105,7 @@ end
 
 function convolve_LUT!(p::NFFTPlan{T,D,1}, g::AbstractArray{Complex{T},D}, fHat::StridedVector{U}) where {D,T,U}
   L = Val(2*p.params.m+1)
-  scale = T(1.0 / p.params.m * (p.params.LUTSize-1))
+  scale = Int(p.params.LUTSize/(p.params.m+2))
 
   @cthreads for k in 1:p.M
       fHat[k] = _convolve_LUT(p, g, L, scale, k)
@@ -158,7 +158,7 @@ end
 function convolve_adjoint_LUT!(p::NFFTPlan{T,D,1}, fHat::AbstractVector{U}, g::StridedArray{Complex{T},D}) where {D,T,U}
   fill!(g, zero(T))
   L = Val(2*p.params.m+1)
-  scale = T(1.0 / p.params.m * (p.params.LUTSize-1))
+  scale = Int(p.params.LUTSize/(p.params.m+2))
 
   @inbounds @simd for k in 1:p.M
     _convolve_adjoint_LUT!(p, fHat, g, L, scale, k)
@@ -198,7 +198,7 @@ function convolve_LUT_MT!(p::NFFTPlan, g, fHat)
 end
 
 function _convolve_LUT_MT!(p::NFFTPlan{T,D,1}, g, fHat, L) where {D,T}
-  scale = T(1.0 / p.params.m * (p.params.LUTSize-1))
+  scale = Int(p.params.LUTSize/(p.params.m+2))
 
   @cthreads for l in CartesianIndices(size(p.blocks))
     if !isempty(p.nodesInBlock[l])
@@ -266,7 +266,7 @@ end
 function _convolve_adjoint_LUT_MT!(p::NFFTPlan{T,D,1}, fHat, g, L) where {D,T}
   #g .= zero(T)
   ccall(:memset, Ptr{Cvoid}, (Ptr{Cvoid}, Cint, Csize_t), g, 0, sizeof(g))
-  scale = T(1.0 / p.params.m * (p.params.LUTSize-1))
+  scale = Int(p.params.LUTSize/(p.params.m+2))
   
   lk = ReentrantLock()
   @cthreads for l in CartesianIndices(size(p.blocks))
@@ -330,23 +330,3 @@ end
   end
 end
 
-
-@generated function _precomputeOneNodeShifted(windowLUT, scale, k, d, L::Val{Z}, idxInBlock) where {Z}
-  quote
-    win = windowLUT[d]
-
-    y, idx_0 = idxInBlock[d,k]
-
-    tmpWin = @ntuple $(Z) l -> begin
-      idx_{l} = idx_{l-1}-scale  
-
-      idxInt = unsafe_trunc(Int, idx_{l}) 
-      α = ( idx_{l} - idxInt )
-
-      w1 = win[idxInt]
-      w2 = win[idxInt+1]
-      (w1 + α * (w2 - w1) )
-    end
-    return (y, tmpWin)
-  end
-end

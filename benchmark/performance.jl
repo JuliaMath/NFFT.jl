@@ -10,7 +10,7 @@ include("../Wrappers/NFFT3.jl")
 include("../Wrappers/FINUFFT.jl")
 
 
-const LUTSize = 20000
+const LUTSize = 2^11
 
 const threads = [1,2,4,8,16]
 const preString = "LUT"

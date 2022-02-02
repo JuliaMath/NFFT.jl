@@ -3,7 +3,7 @@ using NFFT
 N = 1024 
 M = N*N 
 m = 4 
-LUTSize=20000
+LUTSize=2^11
 σ = 2.0
 pre=NFFT.LUT 
 T=Float64 

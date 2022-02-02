@@ -77,7 +77,7 @@ include("../Wrappers/NFFT3.jl")
 
   m = 5
   σ = 2.0
-  LUTSize = 20000
+  LUTSize = 2^16
 
   for (u,N) in enumerate([(256,), (30,32), (10,12,14), (6,6,6,6)])
     for pre in [NFFT.LUT, NFFT.FULL]

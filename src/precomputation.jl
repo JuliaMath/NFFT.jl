@@ -9,6 +9,7 @@ function initParams(x::Matrix{T}, N::NTuple{D,Int}, dims::Union{Integer,UnitRang
   params.m = m
   params.σ = σ
   params.reltol = reltol
+  params.LUTSize *= (m+2) # ensure that LUTSize is dividable by (m+2)
 
   if length(dims_) != size(x,1)
       throw(ArgumentError("Nodes x have dimension $(size(x,1)) != $(length(dims_))"))
@@ -56,7 +57,7 @@ function precomputeB(win, x, N::NTuple{D,Int}, n::NTuple{D,Int}, m, M, σ, K, T)
   mProd = ntuple(d-> (d==1) ? 1 : (2*m+1)^(d-1), D)
   nProd = ntuple(d-> (d==1) ? 1 : prod(n[1:(d-1)]), D)
   L = Val(2*m+1)
-  scale = T(1.0 / m * (K-1))
+  scale = Int(K/(m+2))
 
   @cthreads for k in 1:M
     _precomputeB(win, x, N, n, m, M, σ, scale, I, J, V, mProd, nProd, L, k, K)
@@ -95,9 +96,10 @@ end
   σ, scale, k, d, L::Val{Z}, LUTSize) where {T,D,Z}
   quote
     xscale = x[d,k] * n[d]
-    off = unsafe_trunc(Int, xscale) - m - 1
-    tmpIdx = @ntuple $(Z) l -> ( rem(l + off + n[d], n[d]) + 1)
-    tmpWin = @ntuple $(Z) l -> (win(abs( (xscale - l - off) )  / n[d], n[d], m, σ) )
+    off = floor(Int, xscale) - m
+    tmpIdx = @ntuple $(Z) l -> ( rem(l + off + n[d] - 1, n[d]) + 1)
+
+    tmpWin = @ntuple $(Z) l -> (win( (xscale - (l-1) - off)  / n[d], n[d], m, σ) )
     return (tmpIdx, tmpWin)
   end
 end
@@ -106,33 +108,81 @@ end
   σ, scale, k, d, L::Val{Z}, LUTSize) where {T,D,Z}
   quote
     xscale = x[d,k] * n[d]
-    off = unsafe_trunc(Int, xscale) - m - 1
-    tmpIdx = @ntuple $(Z) l -> ( rem(l + off + n[d], n[d]) + 1)
-    offLUT = (3*LUTSize)÷2
-    tmpWin = @ntuple $(Z) l -> begin
-      idx = (xscale - l - off)*scale + offLUT + 1
-      idxL = unsafe_trunc(Int, idx)
-      idxInt = Int(idxL)
-      (windowLUT[d][idxInt] + ( idx-idxL ) * (windowLUT[d][idxInt+1] - windowLUT[d][idxInt]))  
-    end
+    off = floor(Int, xscale) - m 
+    tmpIdx = @ntuple $(Z) l -> ( rem(l + off + n[d] - 1, n[d]) + 1)
+
+    idx = ((xscale - off)*LUTSize)/(m+2)
+    tmpWin =  _precomputeShiftedWindowEntries(windowLUT, idx, scale, d, L)
+
     return (tmpIdx, tmpWin)
+  end
+end
+
+
+@generated function _precomputeOneNodeShifted(windowLUT, scale, k, d, L::Val{Z}, idxInBlock) where {Z}
+  quote
+    y, idx = idxInBlock[d,k]
+    tmpWin =  _precomputeShiftedWindowEntries(windowLUT, idx, scale, d, L)
+
+    return (y, tmpWin)
+  end
+end
+
+@generated  function _precomputeShiftedWindowEntries(windowLUT::Vector, idx, scale, d, L::Val{Z}) where {Z}
+  quote
+    idxL = floor(Int,idx) 
+    idxInt = Int(idxL)
+    α = ( idx-idxL )
+    win = windowLUT[d]
+
+    tmpWin = @ntuple $(Z) l -> begin
+      # Uncommented code: This is the version where we pull in l into the abs.
+      # We pulled this out of the iteration.
+      # idx = abs((xscale - (l-1)  - off)*LUTSize)/(m+2)
+
+      # The second +1 is because Julia has 1-based indexing
+      # The first +1 is part of the index calculation and needs(!)
+      # to be part of the abs. The abs is shifting to the positive interval
+      # and this +1 matches the `floor` above, which rounds down. In turn
+      # for positive and negative indices a different neighbour is calculated
+      idxInt1 = abs( idxInt - (l-1)*scale ) +1 
+      idxInt2 = abs( idxInt - (l-1)*scale +1) +1
+
+      (win[idxInt1] + α * (win[idxInt2] - win[idxInt1])) 
+    end
+    return tmpWin
   end
 end
 
 
 ##################
 
+## function nfft_precompute_lin_psi in NFFT3
+"""
+Precompute the look up table for the window function φ.
+
+Remarks: 
+* Only the positive half is computed
+* The window is computed for the interval [0, (m+2)/n]. The reason for the +2 is
+  that we do evaluate the window function outside its interval, since x does not 
+  necessary match the sampling points
+* The window has K+1 entries and during the index calculation we multiply with the 
+  factor K/(m+2).
+* It is very important that K/(m+2) is an integer since our index calculation exploits
+  this fact. We therefore always use `Int(K/(m+2))`instead of `K÷(m+2)` since this gives
+  an error while the later variant would silently error.
+"""
 function precomputeLUT(win, windowLUT, n, m, σ, K, T)
-    #Z = round(Int, 3 * K / 2)
-    Z = 3*K #round(Int, 3 * K)
     for d = 1:length(windowLUT)
-        windowLUT[d] = Vector{T}(undef, Z)
-        @cthreads for l = 1:Z
-            y = ((l - 1 - Z÷2) / (K - 1)) * m / n[d]
-            windowLUT[d][l] = win(y, n[d], m, σ)
+        windowLUT[d] = Vector{T}(undef, K+1)
+        step = (m+2) / (K*n[d])
+        @cthreads for l = 1:(K+1)
+            y = ( (l-1) * step ) 
+            windowLUT[d][l] = win(y , n[d], m, σ)
         end
     end
 end
+
 
 function precomputeWindowHatInvLUT(windowHatInvLUT, win_hat, N, n, m, σ, T)
   for d=1:length(windowHatInvLUT)
@@ -170,6 +220,8 @@ function precomputation(x::Union{Matrix{T},Vector{T}}, N::NTuple{D,Int}, n, para
       B = sparse([],[],T[])
   elseif precompute == FULL
       B = precomputeB(win, x, N, n, m, M, σ, LUTSize, T)
+      #precomputeLUT(win, windowLUT, n, m, σ, LUTSize, T) # These versions are for debugging
+      #B = precomputeB(windowLUT, x, N, n, m, M, σ, LUTSize, T)
   else
       B = sparse([],[],T[])
       error("precompute = $precompute not supported by NFFT.jl!")
@@ -284,8 +336,7 @@ function _precomputeBlocks(x::Matrix{T}, n::NTuple{D,Int}, m, LUTSize) where {T,
     push!(nodesInBlock[idx...], k)
   end
 
-  scale = T( (LUTSize-1) / m )
-  offLUT = (3*LUTSize)÷2
+  scale = Int(LUTSize/(m+2))
 
   blocks = Array{Array{Complex{T},D},D}(undef, numBlocks)
   blockOffsets = Array{NTuple{D,Int64},D}(undef, numBlocks)
@@ -305,9 +356,9 @@ function _precomputeBlocks(x::Matrix{T}, n::NTuple{D,Int}, m, LUTSize) where {T,
         @inbounds for d=1:D
           xtmp = x[d,k] # this is expensive because of cache misses
           xscale = xtmp * n[d]
-          off = unsafe_trunc(Int, xscale) - m - 1
-          y = off - blockOffsets[l][d] 
-          idx = (xscale - off)*scale  + offLUT + 1
+          off = unsafe_trunc(Int, xscale) - m 
+          y = off - blockOffsets[l][d] - 1
+          idx = ((xscale - off)*LUTSize)/(m+2)
           idxInBlock[l][d,i] = (y,idx)
         end
       end
