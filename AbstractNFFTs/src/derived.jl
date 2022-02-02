@@ -36,7 +36,7 @@ nfft(x, f::AbstractArray{T,D}, rest...; kwargs...)
 calculates the NFFT of the array `f` for the nodes contained in the matrix `x`
 The output is a vector of length M=`size(nodes,2)`
 """
-function nfft(x, f::AbstractArray{T,D}, kargs...) where {T,D}
+function nfft(x, f::AbstractArray{T,D}; kargs...) where {T,D}
   p = plan_nfft(x, size(f); kargs... )
   return p * f
 end

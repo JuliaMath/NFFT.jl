@@ -4,6 +4,42 @@ m = 5
 σ = 2.0
 LUTSize = 2^16
 
+
+@testset "High-level NFFT" begin
+  @info "High-level NFFT"
+  N = (32,32)
+  eps =  1e-3
+  D = length(N)
+
+  M = prod(N)
+  x = rand(Float64,D,M) .- 0.5
+
+  fHat = rand(Float64,M) + rand(Float64,M)*im
+  f = ndft_adjoint(x, N, fHat,)
+  fApprox = nfft_adjoint(x, N, fHat, reltol=1e-9)
+  e = norm(f[:] - fApprox[:]) / norm(f[:])
+  @debug "error adjoint nfft "  e
+  @test e < eps
+
+  gHat = ndft(x, f)
+  gHatApprox = nfft(x, f, reltol=1e-9)
+  e = norm(gHat[:] - gHatApprox[:]) / norm(gHat[:])
+  @debug "error nfft "  e
+  @test e < eps
+
+  f = ndft_adjoint(x, N, ComplexF32.(fHat))
+  fApprox = nfft_adjoint(x, N, ComplexF32.(fHat))
+  e = norm(f[:] - fApprox[:]) / norm(f[:])
+  @debug "error adjoint nfft "  e
+  @test e < eps
+
+  gHat = ndft(x, ComplexF32.(f))
+  gHatApprox = nfft(x, ComplexF32.(f))
+  e = norm(gHat[:] - gHatApprox[:]) / norm(gHat[:])
+  @debug "error nfft "  e
+  @test e < eps
+end
+
 @testset "NFFT in multiple dimensions" begin
     for (u,N) in enumerate([(256,), (30,32), (10,12,14), (6,6,6,6)])
       for (pre,storeApod, blocking) in zip([NFFT.LUT, NFFT.FULL, NFFT.LUT, NFFT.LUT],
@@ -36,41 +72,6 @@ LUTSize = 2^16
         end
       end
     end
-end
-
-@testset "High-level NFFT" begin
-  @info "High-level NFFT"
-  N = (32,32)
-  eps =  1e-3
-  D = length(N)
-
-  M = prod(N)
-  x = rand(Float64,D,M) .- 0.5
-
-  fHat = rand(Float64,M) + rand(Float64,M)*im
-  f = ndft_adjoint(x, N, fHat)
-  fApprox = nfft_adjoint(x, N, fHat)
-  e = norm(f[:] - fApprox[:]) / norm(f[:])
-  @debug "error adjoint nfft "  e
-  @test e < eps
-
-  gHat = ndft(x, f)
-  gHatApprox = nfft(x, f)
-  e = norm(gHat[:] - gHatApprox[:]) / norm(gHat[:])
-  @debug "error nfft "  e
-  @test e < eps
-
-  f = ndft_adjoint(x, N, ComplexF32.(fHat))
-  fApprox = nfft_adjoint(x, N, ComplexF32.(fHat))
-  e = norm(f[:] - fApprox[:]) / norm(f[:])
-  @debug "error adjoint nfft "  e
-  @test e < eps
-
-  gHat = ndft(x, ComplexF32.(f))
-  gHatApprox = nfft(x, ComplexF32.(f))
-  e = norm(gHat[:] - gHatApprox[:]) / norm(gHat[:])
-  @debug "error nfft "  e
-  @test e < eps
 end
 
 
