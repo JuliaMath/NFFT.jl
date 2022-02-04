@@ -15,6 +15,12 @@ end
 
 @show p
 
+## test range error
+
+
+x = [-0.6  0.9; 0.5  -0.5]
+@test_throws ArgumentError NFFTPlan(x, (2,2))
+
 ## test nodes!(p, tr)
 Nx = 32
 trj1 = rand(2, 1000) .- 0.5

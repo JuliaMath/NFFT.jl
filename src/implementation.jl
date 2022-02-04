@@ -76,6 +76,8 @@ end
 function NFFTPlan(x::Matrix{T}, N::NTuple{D,Int}; dims::Union{Integer,UnitRange{Int64}}=1:D,
                  fftflags=nothing, kwargs...) where {T,D}
 
+    checkNodes(x)
+
     params, N, NOut, M, n, dims_ = initParams(x, N, dims; kwargs...)
     
     tmpVec = Array{Complex{T},D}(undef, n)
