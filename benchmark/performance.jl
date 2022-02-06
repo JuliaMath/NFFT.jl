@@ -17,7 +17,7 @@ const preString = "LUT"
 const precomp = [NFFT.LUT, NFFT.TENSOR, NFFT.LUT, NFFT.LUT, NFFT.TENSOR]
 const packagesCtor = [NFFTPlan, NFFTPlan, FINUFFTPlan, NFFT3Plan, NFFT3Plan]
 const packagesStr = ["NFFT.jl/LUT", "NFFT.jl/TENSOR", "FINUFFT", "NFFT3/LUT", "NFFT3/TENSOR"]
-const benchmarkTime = [0.1, 20, 20]
+const benchmarkTime = [5, 25, 25]
 
 NFFT.FFTW.set_num_threads(Threads.nthreads())
 ccall(("omp_set_num_threads",NFFT3.lib_path_nfft),Nothing,(Int64,),convert(Int64,Threads.nthreads()))
@@ -25,7 +25,7 @@ ccall(("omp_set_num_threads",NFFT3.lib_path_nfft),Nothing,(Int64,),convert(Int64
 NFFT._use_threads[] = (Threads.nthreads() > 1)
 
 function nfft_performance_comparison(m = 4, σ = 2.0)
-  println("\n\n ##### nfft_performance_threading ##### \n\n")
+  println("\n\n ##### nfft_performance ##### \n\n")
 
   df = DataFrame(Package=String[], Threads=Int[], D=Int[], M=Int[], N=Int[], 
                    Undersampled=Bool[], Pre=String[], m = Int[], σ=Float64[],
@@ -130,7 +130,7 @@ end
 
 ### run the code ###
 
-if haskey(ENV, "NFFT_PERF_THREADING")
+if haskey(ENV, "NFFT_PERF")
   df = nfft_performance_comparison(4, 2.0)
 
   if isfile("performance_mt.csv")
@@ -143,16 +143,16 @@ if haskey(ENV, "NFFT_PERF_THREADING")
 
 else
   rm("performance_mt.csv", force=true)
-  ENV["NFFT_PERF_THREADING"] = 1
+  ENV["NFFT_PERF"] = 1
   for t in threads
-    cmd = `julia -t $t performance_threading.jl`
+    cmd = `julia -t $t performance.jl`
     @info cmd
     run(cmd)
 
   end
   data, header = readdlm("performance_mt.csv", ',', header=true);
   df = DataFrame(data, vec(header))
-  delete!(ENV, "NFFT_PERF_THREADING")
+  delete!(ENV, "NFFT_PERF")
 
   plot_performance(df, N=1024, M=1024*1024)
   #plot_performance(df, pre="LUT", N=1024, M=1024*1024*4)
