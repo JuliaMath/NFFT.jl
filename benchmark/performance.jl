@@ -14,9 +14,9 @@ const LUTSize = 2^11
 
 const threads = [1,2,4,8,16]
 const preString = "LUT"
-const precomp = [NFFT.LUT, NFFT.LUT, NFFT.LUT, NFFT.TENSOR]
-const packagesCtor = [NFFTPlan, FINUFFTPlan, NFFT3Plan, NFFT3Plan]
-const packagesStr = ["NFFT.jl","FINUFFT", "NFFT3/LUT", "NFFT3/TENSOR"]
+const precomp = [NFFT.LUT, NFFT.TENSOR, NFFT.LUT, NFFT.LUT, NFFT.TENSOR]
+const packagesCtor = [NFFTPlan, NFFTPlan, FINUFFTPlan, NFFT3Plan, NFFT3Plan]
+const packagesStr = ["NFFT.jl/LUT", "NFFT.jl/TENSOR", "FINUFFT", "NFFT3/LUT", "NFFT3/TENSOR"]
 const benchmarkTime = [0.1, 20, 20]
 
 NFFT.FFTW.set_num_threads(Threads.nthreads())
