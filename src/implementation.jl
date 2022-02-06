@@ -38,14 +38,19 @@ mutable struct NFFTPlan{T,D,R} <: AbstractNFFTPlan{T,D,R}
     backwardFFT::FFTW.cFFTWPlan{Complex{T},1,true,D,UnitRange{Int64}}
     tmpVec::Array{Complex{T},D}
     tmpVecHat::Array{Complex{T},D}
+    # Caches for apodization
     apodizationIdx::Array{Int64,1}
-    windowLUT::Vector{Vector{T}}
     windowHatInvLUT::Vector{Vector{T}}
-    B::SparseMatrixCSC{T,Int64}
+    # Caches for precompute = FULL
+    windowLUT::Vector{Vector{T}}  
+    # Caches for blocking
     blocks::Array{Array{Complex{T},D},D}
     nodesInBlock::Array{Vector{Int64},D}
     blockOffsets::Array{NTuple{D,Int64},D}
-    idxInBlock::Array{Matrix{Tuple{Int,Float64}},D}
+    idxInBlock::Array{Matrix{Tuple{Int,Float64}},D} # Why not T?
+    windowTensor::Array{Array{T,3},D}
+    # Cache for precompute = FULL
+    B::SparseMatrixCSC{T,Int64}
 end
 
 function Base.copy(p::NFFTPlan{T,D,R}) where {T,D,R}
@@ -59,15 +64,17 @@ function Base.copy(p::NFFTPlan{T,D,R}) where {T,D,R}
     nodesInBlock = deepcopy(p.nodesInBlock)
     blockOffsets = copy(p.blockOffsets)
     idxInBlock = copy(p.idxInBlock)
+    windowTensor = copy(p.windowTensor)
     x = p.x
 
     FP = plan_fft!(tmpVec, p.dims; flags = p.forwardFFT.flags)
     BP = plan_bfft!(tmpVec, p.dims; flags = p.backwardFFT.flags)
 
     return NFFTPlan{T,D,R}(p.N, p.NOut, p.M, x, p.n, p.dims, p.params, FP, BP, tmpVec, 
-                           tmpVecHat, apodizationIdx, windowLUT, windowHatInvLUT, B,
-                           blocks, nodesInBlock, blockOffsets, idxInBlock)
+                           tmpVecHat, apodizationIdx, windowHatInvLUT, windowLUT,
+                           blocks, nodesInBlock, blockOffsets, idxInBlock, windowTensor, B)
 end
+
 
 ################
 # constructor
@@ -86,8 +93,10 @@ function NFFTPlan(x::Matrix{T}, N::NTuple{D,Int}; dims::Union{Integer,UnitRange{
     FP = plan_fft!(tmpVec, dims_; fftflags_...)
     BP = plan_bfft!(tmpVec, dims_; fftflags_...)
 
-    calcBlocks = (params.precompute == LUT) && params.blocking && length(dims_) == D
-    blocks, nodesInBlocks, blockOffsets, idxInBlock = precomputeBlocks(x, n, params, calcBlocks)
+    calcBlocks = (params.precompute == LUT || params.precompute == TENSOR) && 
+                 params.blocking && length(dims_) == D
+
+    blocks, nodesInBlocks, blockOffsets, idxInBlock, windowTensor = precomputeBlocks(x, n, params, calcBlocks)
 
     windowLUT, windowHatInvLUT, apodizationIdx, B = precomputation(x, N[dims_], n[dims_], params)
 
@@ -95,8 +104,8 @@ function NFFTPlan(x::Matrix{T}, N::NTuple{D,Int}; dims::Union{Integer,UnitRange{
     tmpVecHat = Array{Complex{T},D}(undef, U)
 
     NFFTPlan(N, NOut, M, x, n, dims_, params, FP, BP, tmpVec, tmpVecHat, 
-                       apodizationIdx, windowLUT, windowHatInvLUT, B,
-                       blocks, nodesInBlocks, blockOffsets, idxInBlock)
+                       apodizationIdx, windowHatInvLUT, windowLUT,
+                       blocks, nodesInBlocks, blockOffsets, idxInBlock, windowTensor, B)
 end
 
 function AbstractNFFTs.nodes!(p::NFFTPlan{T}, x::Matrix{T}) where {T}

@@ -8,10 +8,10 @@ include("../Wrappers/FINUFFT.jl")
 #const packagesStr = ["NFFT.jl/LUT","NFFT.jl/NonBlock","NFFT.jl/FULL","FINUFFT", "NFFT3"]
 #const precomp = [NFFT.LUT, NFFT.LUT, NFFT.FULL, NFFT.LUT, NFFT.LUT]
 #const blocking = [true, false, false, false, false]
-const packagesCtor = [NFFTPlan, NFFTPlan,  NFFT3Plan, NFFT3Plan, FINUFFTPlan]
-const packagesStr = ["NFFT.jl/FULL", "NFFT.jl/LUT", "NFFT3/LUT", "NFFT3/TENSOR", "FINUFFTPlan"]
-const precomp = [NFFT.FULL, NFFT.LUT, NFFT.LUT, NFFT.TENSOR, NFFT.LUT]
-const blocking = [false, true, false, false, false, false]
+const packagesCtor = [NFFTPlan, NFFTPlan, NFFTPlan,  NFFT3Plan, NFFT3Plan, FINUFFTPlan]
+const packagesStr = ["NFFT.jl/FULL", "NFFT.jl/LUT", "NFFT.jl/TENSOR", "NFFT3/LUT", "NFFT3/TENSOR", "FINUFFTPlan"]
+const precomp = [NFFT.FULL, NFFT.LUT, NFFT.TENSOR, NFFT.LUT, NFFT.TENSOR, NFFT.LUT]
+const blocking = [false, true, true, false, false, false, false]
 
 
 const σs = [2.0] #range(1.25, 4, length=12)
@@ -71,9 +71,9 @@ function plot_accuracy(df, D=1)
   Plots.scalefontsizes(1.5)
   
 
-  colors = [:black, :orange, :green, :gray, :blue, :yellow, :purple]
-  ls = [:solid, :dashdot, :solid, :dash, :solid, :dash, :solid]
-  shape = [:xcross, :circle, :circle, :xcross, :xcross, :circle]
+  colors = [:black, :orange, :green, :brown, :gray, :blue, :purple, :yellow ]
+  ls = [:solid, :dashdot, :dash, :solid, :dash, :solid, :dash, :solid]
+  shape = [:xcross, :circle, :xcross, :circle, :xcross, :xcross, :circle]
 
   p1 = plot(ms, df1_[df1_.Package.==packagesStr[1],:ErrorTrafo], 
             yscale = :log10, label=packagesStr[1], lw=2, xlabel = "m", ylabel="Relative Error",

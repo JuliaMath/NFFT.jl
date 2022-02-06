@@ -204,7 +204,13 @@ function _convolve_LUT_MT!(p::NFFTPlan{T,D,1}, g, fHat, L) where {D,T}
     if !isempty(p.nodesInBlock[l])
       isNoEdgeBlock = all(1 .< Tuple(l) .< size(p.blocks))
       toBlock!(p, g, p.blocks[l], p.blockOffsets[l], isNoEdgeBlock)
-      calcOneNode!(p, fHat, p.nodesInBlock[l], p.blocks[l], p.blockOffsets[l], L, scale,  p.idxInBlock[l])
+      if p.params.precompute == LUT
+        windowTensor = nothing
+      else
+        windowTensor = p.windowTensor[l]
+      end
+      calcOneNode!(p, fHat, p.nodesInBlock[l], p.blocks[l], p.blockOffsets[l], L, 
+                   scale, p.idxInBlock[l], windowTensor)
     end
   end
 end
@@ -225,17 +231,18 @@ function toBlock!(p::NFFTPlan{T,D,1}, g, block, off, isNoEdgeBlock) where {T,D}
 end
 
 @noinline function calcOneNode!(p::NFFTPlan{T,D,1}, fHat, nodesInBlock, block,
-         off, L::Val{Z}, scale, idxInBlock) where {D,T,Z}
+         off, L::Val{Z}, scale, idxInBlock, windowTensor) where {D,T,Z}
   for (kLocal,k) in enumerate(nodesInBlock)
-    fHat[k] = _convolve_LUT_MT(p, block, off, L, scale, k, kLocal, idxInBlock)
+    fHat[k] = _convolve_LUT_MT(p, block, off, L, scale, k, kLocal, idxInBlock, windowTensor)
   end
   return
 end
 
 @generated function _convolve_LUT_MT(p::NFFTPlan{T,D,1}, block,
-                          off, L::Val{Z}, scale, k, kLocal, idxInBlock) where {D,T,Z}
+                          off, L::Val{Z}, scale, k, kLocal, idxInBlock, windowTensor) where {D,T,Z}
   quote
-    @nexprs $(D) d -> ((off_d, tmpWin_d) = _precomputeOneNodeShifted(p.windowLUT, scale, kLocal, d, L, idxInBlock) )
+    @nexprs $(D) d -> ((off_d, tmpWin_d) = 
+       _precomputeOneNodeShifted(p.windowLUT, scale, kLocal, d, L, idxInBlock, windowTensor) )
 
     fHat = zero(Complex{T})
 
@@ -273,7 +280,12 @@ function _convolve_adjoint_LUT_MT!(p::NFFTPlan{T,D,1}, fHat, g, L) where {D,T}
     if !isempty(p.nodesInBlock[l])
       # p.blocks[l] .= zero(T)
       ccall(:memset, Ptr{Cvoid}, (Ptr{Cvoid}, Cint, Csize_t), p.blocks[l], 0, sizeof(p.blocks[l]))
-      fillBlock!(p, fHat, p.blocks[l], p.nodesInBlock[l], p.blockOffsets[l], L, scale, p.idxInBlock[l])
+      if p.params.precompute == LUT
+        windowTensor = nothing
+      else
+        windowTensor = p.windowTensor[l]
+      end
+      fillBlock!(p, fHat, p.blocks[l], p.nodesInBlock[l], p.blockOffsets[l], L, scale, p.idxInBlock[l], windowTensor)
       isNoEdgeBlock = all(1 .< Tuple(l) .< size(p.blocks))
       lock(lk) do
         addBlock!(p, g, p.blocks[l], p.blockOffsets[l], isNoEdgeBlock)
@@ -297,20 +309,20 @@ function addBlock!(p::NFFTPlan{T,D,1}, g, block, off, isNoEdgeBlock) where {T,D}
   return
 end
 
-@noinline function fillBlock!(p::NFFTPlan, fHat, block, nodesInBlock, off, L, scale, idxInBlock)
+@noinline function fillBlock!(p::NFFTPlan, fHat, block, nodesInBlock, off, L, scale, idxInBlock, windowTensor)
   for (kLocal,k) in enumerate(nodesInBlock)
-    fillOneNode!(p, fHat, block, off, L, scale, k, kLocal, idxInBlock)
+    fillOneNode!(p, fHat, block, off, L, scale, k, kLocal, idxInBlock, windowTensor)
   end
   return
 end
 
 @generated function fillOneNode!(p::NFFTPlan{T,D,1}, fHat, block,
-                          off, L::Val{Z}, scale, k, kLocal, idxInBlock) where {D,T,Z}
+                          off, L::Val{Z}, scale, k, kLocal, idxInBlock, windowTensor) where {D,T,Z}
   quote
     fHat_ = fHat[k]
 
     @nexprs $(D) d -> ((off_d, tmpWin_d) = 
-          _precomputeOneNodeShifted(p.windowLUT, scale, kLocal, d, L, idxInBlock) )
+          _precomputeOneNodeShifted(p.windowLUT, scale, kLocal, d, L, idxInBlock, windowTensor) )
 
     innerWin = @ntuple $(Z) l -> tmpWin_1[l] * fHat_
 

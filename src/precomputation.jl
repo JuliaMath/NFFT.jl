@@ -119,7 +119,8 @@ end
 end
 
 
-@generated function _precomputeOneNodeShifted(windowLUT, scale, k, d, L::Val{Z}, idxInBlock) where {Z}
+@generated function _precomputeOneNodeShifted(windowLUT, scale, k, d, L::Val{Z}, idxInBlock::Matrix,
+                                              windowTensor::Nothing) where {Z}
   quote
     y, idx = idxInBlock[d,k]
     tmpWin =  _precomputeShiftedWindowEntries(windowLUT, idx, scale, d, L)
@@ -149,6 +150,26 @@ end
       idxInt2 = abs( idxInt - (l-1)*scale +1) +1
 
       (win[idxInt1] + α * (win[idxInt2] - win[idxInt1])) 
+    end
+    return tmpWin
+  end
+end
+
+@generated function _precomputeOneNodeShifted(windowLUT, scale, k, d, L::Val{Z}, idxInBlock::Matrix,
+                                              windowTensor::Array) where {Z}
+  quote
+    y, idx = idxInBlock[d,k]
+    tmpWin =  _precomputeShiftedWindowEntries(windowTensor, k, d, L)
+
+    return (y, tmpWin)
+  end
+end
+
+
+@generated  function _precomputeShiftedWindowEntries(windowTensor, k, d, L::Val{Z}) where {Z}
+  quote
+    tmpWin = @ntuple $(Z) l -> begin
+      windowTensor[l, d, k]
     end
     return tmpWin
   end
@@ -222,6 +243,8 @@ function precomputation(x::Union{Matrix{T},Vector{T}}, N::NTuple{D,Int}, n, para
       B = precomputeB(win, x, N, n, m, M, σ, LUTSize, T)
       #precomputeLUT(win, windowLUT, n, m, σ, LUTSize, T) # These versions are for debugging
       #B = precomputeB(windowLUT, x, N, n, m, M, σ, LUTSize, T)
+  elseif precompute == TENSOR
+      B = sparse([],[],T[])
   else
       B = sparse([],[],T[])
       error("precompute = $precompute not supported by NFFT.jl!")
@@ -285,41 +308,26 @@ function precomputeBlocks(x::Matrix{T}, n::NTuple{D,Int}, params, calcBlocks::Bo
   if calcBlocks
     xShift = copy(x)
     shiftNodes!(xShift)
-    blocks, nodesInBlocks, blockOffsets, idxInBlock = 
+    blocks, nodesInBlocks, blockOffsets = 
         _precomputeBlocks(xShift, n, params.m, params.LUTSize)
+
+    idxInBlock =  _precomputeIdxInBlock(xShift, n, params.m, params.LUTSize, blockOffsets, nodesInBlocks)
+    if params.precompute != TENSOR
+      windowTensor = Array{Array{T,3},D}(undef, ntuple(d->0,D))
+    else
+      #idxInBlock = Array{Matrix{Tuple{Int,Float64}},D}(undef, ntuple(d->0,D))
+      windowTensor = _precomputeWindowTensor(x, n, params.m, params.σ, nodesInBlocks, params.window)
+    end
+
   else
     blocks = Array{Array{Complex{T},D},D}(undef,ntuple(d->0,D))
     nodesInBlocks = Array{Vector{Int64},D}(undef,ntuple(d->0,D))
     blockOffsets = Array{NTuple{D,Int64},D}(undef,ntuple(d->0,D))
     idxInBlock = Array{Matrix{Tuple{Int,Float64}},D}(undef, ntuple(d->0,D))
+    windowTensor = Array{Array{T,3},D}(undef, ntuple(d->0,D))
   end
   
-  return (blocks, nodesInBlocks, blockOffsets, idxInBlock)
-end
-
-function shiftNodes!(x::Matrix{T}) where T
-  @cthreads for k=1:size(x,2)
-    for d=1:size(x,1)
-      if x[d,k] < zero(T)
-        x[d,k] += one(T)
-      end
-      if x[d,k] == one(T) # We need to ensure that the nodes are within [0,1)
-        x[d,k] -= eps(T)
-      end
-    end
-  end 
-  return
-end
-
-function checkNodes(x::Matrix{T}) where T
-  @cthreads for k=1:size(x,2)
-    for d=1:size(x,1)
-      if abs(x[d,k]) > 0.5
-        throw(ArgumentError("Nodes x need to be within the range [-1/2, 1/2) but x[$d,$k] = $(x[d,k])!"))
-      end
-    end
-  end 
-  return
+  return (blocks, nodesInBlocks, blockOffsets, idxInBlock, windowTensor)
 end
 
 function _precomputeBlocks(x::Matrix{T}, n::NTuple{D,Int}, m, LUTSize) where {T,D}
@@ -347,11 +355,8 @@ function _precomputeBlocks(x::Matrix{T}, n::NTuple{D,Int}, m, LUTSize) where {T,
     push!(nodesInBlock[idx...], k)
   end
 
-  scale = Int(LUTSize/(m+2))
-
   blocks = Array{Array{Complex{T},D},D}(undef, numBlocks)
   blockOffsets = Array{NTuple{D,Int64},D}(undef, numBlocks)
-  idxInBlock = Array{Matrix{Tuple{Int,Float64}},D}(undef, numBlocks)
 
   @cthreads for l in CartesianIndices(numBlocks)
     if !isempty(nodesInBlock[l])
@@ -360,6 +365,22 @@ function _precomputeBlocks(x::Matrix{T}, n::NTuple{D,Int}, m, LUTSize) where {T,
 
       # precompute blockOffsets
       blockOffsets[l] = ntuple(d-> (l[d]-1)*blockSize[d]-padding[d]-1, D)
+    end
+  end
+
+  return blocks, nodesInBlock, blockOffsets
+end
+
+
+
+function _precomputeIdxInBlock(x::Matrix{T}, n::NTuple{D,Int}, m, LUTSize, blockOffsets, nodesInBlock) where {T,D}
+
+  numBlocks = size(nodesInBlock)
+
+  idxInBlock = Array{Matrix{Tuple{Int,Float64}},D}(undef, numBlocks)
+
+  @cthreads for l in CartesianIndices(numBlocks)
+    if !isempty(nodesInBlock[l])
 
       # precompute idxInBlock
       idxInBlock[l] = Matrix{Tuple{Int,Float64}}(undef, D, length(nodesInBlock[l]))
@@ -376,7 +397,41 @@ function _precomputeBlocks(x::Matrix{T}, n::NTuple{D,Int}, m, LUTSize) where {T,
     end
   end
 
+  return idxInBlock
+end
 
+function _precomputeWindowTensor(x::Matrix{T}, n::NTuple{D,Int}, m, σ, nodesInBlock, window::Symbol) where {T,D}
+  win, win_hat = getWindow(window) # highly type instable. But what should be do
+  return _precomputeWindowTensor(x, n, m, σ, nodesInBlock, win) 
+end
 
-  return blocks, nodesInBlock, blockOffsets, idxInBlock
+function _precomputeWindowTensor(x::Matrix{T}, n::NTuple{D,Int}, m, σ, nodesInBlock, win::Function) where {T,D}
+
+  numBlocks = size(nodesInBlock)
+  windowTensor = Array{Array{T,3},D}(undef, numBlocks)
+
+ # xscale = x[d,k] * n[d]
+ # off = floor(Int, xscale) - m
+ # tmpWin = @ntuple $(Z) l -> (win( (xscale - (l-1) - off)  / n[d], n[d], m, σ) )
+
+  @cthreads for l in CartesianIndices(numBlocks)
+    if !isempty(nodesInBlock[l])
+
+      # precompute idxInBlock
+      windowTensor[l] = Array{T,3}(undef, 2*m+1, D, length(nodesInBlock[l]))
+      @inbounds for (i,k) in enumerate(nodesInBlock[l])
+        @inbounds for d=1:D
+          xtmp = x[d,k] #- 0.5  # this is expensive because of cache misses
+          xscale = xtmp * n[d]
+          #off = unsafe_trunc(Int, xscale) - m 
+          off = floor(Int, xscale) - m
+          @inbounds for k=1:(2*m+1)
+            windowTensor[l][k,d,i] = win( (xscale - (k-1) - off)  / n[d], n[d], m, σ)
+          end
+        end
+      end
+    end
+  end
+
+  return windowTensor
 end
