@@ -4,10 +4,7 @@ using Plots; pgfplotsx()
 include("../Wrappers/NFFT3.jl")
 include("../Wrappers/FINUFFT.jl")
 
-#const packagesCtor = [NFFTPlan, NFFTPlan, NFFTPlan, FINUFFTPlan, NFFT3Plan]
-#const packagesStr = ["NFFT.jl/LUT","NFFT.jl/NonBlock","NFFT.jl/FULL","FINUFFT", "NFFT3"]
-#const precomp = [NFFT.LUT, NFFT.LUT, NFFT.FULL, NFFT.LUT, NFFT.LUT]
-#const blocking = [true, false, false, false, false]
+
 const packagesCtor = [NFFTPlan, NFFTPlan, NFFTPlan,  NFFT3Plan, NFFT3Plan, FINUFFTPlan]
 const packagesStr = ["NFFT.jl/FULL", "NFFT.jl/LUT", "NFFT.jl/TENSOR", "NFFT3/LUT", "NFFT3/TENSOR", "FINUFFTPlan"]
 const precomp = [NFFT.FULL, NFFT.LUT, NFFT.TENSOR, NFFT.LUT, NFFT.TENSOR, NFFT.LUT]
@@ -15,7 +12,7 @@ const blocking = [false, true, true, false, false, false, false]
 
 
 const σs = [2.0] #range(1.25, 4, length=12)
-const ms = 3:10 
+const ms = 3:8
 const LUTSize=2^14
 
 function nfft_accuracy_comparison()
@@ -36,16 +33,19 @@ function nfft_accuracy_comparison()
           x = rand(D,M) .- 0.5
           fHat = randn(ComplexF64, M)
 
+          # ground truth (numerical)
+          pNDFT = NDFTPlan(x, NN)
+          f = adjoint(pNDFT) * fHat
+          gHat = pNDFT * f
+
           for pl = 1:length(packagesStr)
 
             planner = packagesCtor[pl]
             p = planner(x, NN; m, σ, precompute=precomp[pl], LUTSize=LUTSize, blocking=blocking[pl])
-            pNDFT = NDFTPlan(x, NN)
-            f = adjoint(pNDFT) * fHat
+
             fApprox = adjoint(p) * fHat
             eadjoint = norm(f[:] - fApprox[:]) / norm(f[:])
 
-            gHat = pNDFT * f
             gHatApprox = p * f
             etrafo = norm(gHat[:] - gHatApprox[:]) / norm(gHat[:])
             
@@ -104,8 +104,8 @@ end
 
 
 
-#df = nfft_accuracy_comparison()
-#writedlm("accuracy.csv", Iterators.flatten(([names(df)], eachrow(df))), ',')
+df = nfft_accuracy_comparison()
+writedlm("accuracy.csv", Iterators.flatten(([names(df)], eachrow(df))), ',')
 
 data, header = readdlm("accuracy.csv", ',', header=true);
 df = DataFrame(data, vec(header))

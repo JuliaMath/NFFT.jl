@@ -9,7 +9,11 @@ function initParams(x::Matrix{T}, N::NTuple{D,Int}, dims::Union{Integer,UnitRang
   params.m = m
   params.σ = σ
   params.reltol = reltol
-  params.LUTSize *= (m+2) # ensure that LUTSize is dividable by (m+2)
+
+  # Taken from NFFT3 
+  m2K = [1, 3, 7, 9, 14, 17, 20, 23, 24]
+  K = m2K[min(m+1,length(m2K))] 
+  params.LUTSize = 2^(K) * (m+2) # ensure that LUTSize is dividable by (m+2)
 
   if length(dims_) != size(x,1)
       throw(ArgumentError("Nodes x have dimension $(size(x,1)) != $(length(dims_))"))
@@ -402,10 +406,11 @@ end
 
 function _precomputeWindowTensor(x::Matrix{T}, n::NTuple{D,Int}, m, σ, nodesInBlock, window::Symbol) where {T,D}
   win, win_hat = getWindow(window) # highly type instable. But what should be do
+
   return _precomputeWindowTensor(x, n, m, σ, nodesInBlock, win) 
 end
 
-function _precomputeWindowTensor(x::Matrix{T}, n::NTuple{D,Int}, m, σ, nodesInBlock, win::Function) where {T,D}
+function _precomputeWindowTensor(x::Matrix{T}, n::NTuple{D,Int}, m, σ, nodesInBlock, win) where {T,D}
 
   numBlocks = size(nodesInBlock)
   windowTensor = Array{Array{T,3},D}(undef, numBlocks)
