@@ -6,11 +6,7 @@ the performance characteristics of the NFFT and help choosing the parameters acc
 
 ## Accuracy
 
-!!! note
-    The accuracy section of the documentation is still under construction. There is currently a bug in NFFT/LUT
-    that prevents the accuracy going down for larger `m`.
-
-We start with the accuracy. The following plot shows the relative error of a 2D NFFT (``N=(64,64), M=64^2``) compared to the NDFT for different choices of ``m`` and ``\sigma``:
+We start with the accuracy. The following plot shows the relative error of a 2D NFFT (``N=(64,64), M=64^2``) compared to the NDFT for different choices of ``m`` and ``\sigma = 2``:
 
 ![Accurracy](./assets/accuracy_D2.svg)
 
