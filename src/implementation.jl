@@ -42,7 +42,7 @@ mutable struct NFFTPlan{T,D,R} <: AbstractNFFTPlan{T,D,R}
     apodizationIdx::Array{Int64,1}
     windowHatInvLUT::Vector{Vector{T}}
     # Caches for precompute = FULL
-    windowLUT::Vector{Vector{T}}  
+    windowLUT::Vector{T}
     # Caches for blocking
     blocks::Array{Array{Complex{T},D},D}
     nodesInBlock::Array{Vector{Int64},D}

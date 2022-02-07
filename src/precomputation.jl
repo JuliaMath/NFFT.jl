@@ -138,7 +138,6 @@ end
     idxL = floor(Int,idx) 
     idxInt = Int(idxL)
     α = ( idx-idxL )
-    win = windowLUT[d]
 
     tmpWin = @ntuple $(Z) l -> begin
       # Uncommented code: This is the version where we pull in l into the abs.
@@ -153,7 +152,7 @@ end
       idxInt1 = abs( idxInt - (l-1)*scale ) +1 
       idxInt2 = abs( idxInt - (l-1)*scale +1) +1
 
-      (win[idxInt1] + α * (win[idxInt2] - win[idxInt1])) 
+      (windowLUT[idxInt1] + α * (windowLUT[idxInt2] - windowLUT[idxInt1])) 
     end
     return tmpWin
   end
@@ -197,15 +196,15 @@ Remarks:
   this fact. We therefore always use `Int(K/(m+2))`instead of `K÷(m+2)` since this gives
   an error while the later variant would silently error.
 """
-function precomputeLUT(win, windowLUT, n, m, σ, K, T)
-    for d = 1:length(windowLUT)
-        windowLUT[d] = Vector{T}(undef, K+1)
-        step = (m+2) / (K*n[d])
-        @cthreads for l = 1:(K+1)
-            y = ( (l-1) * step ) 
-            windowLUT[d][l] = win(y , n[d], m, σ)
-        end
-    end
+function precomputeLUT(win, n, m, σ, K, T)
+  windowLUT = Vector{T}(undef, K+1)
+
+  step = (m+2) / (K)
+  @cthreads for l = 1:(K+1)
+      y = ( (l-1) * step ) 
+      windowLUT[l] = win(y, 1, m, σ)
+  end
+  return windowLUT
 end
 
 
@@ -227,8 +226,6 @@ function precomputation(x::Union{Matrix{T},Vector{T}}, N::NTuple{D,Int}, n, para
   win, win_hat = getWindow(window) # highly type instable. But what should be do
   M = size(x, 2)
 
-  windowLUT = Vector{Vector{T}}(undef, D)
-
   windowHatInvLUT_ = Vector{Vector{T}}(undef, D)
   precomputeWindowHatInvLUT(windowHatInvLUT_, win_hat, N, n, m, σ, T)
 
@@ -241,17 +238,20 @@ function precomputation(x::Union{Matrix{T},Vector{T}}, N::NTuple{D,Int}, n, para
   end
 
   if precompute == LUT
-      precomputeLUT(win, windowLUT, n, m, σ, LUTSize, T)
-      B = sparse([],[],T[])
+    windowLUT = precomputeLUT(win, n, m, σ, LUTSize, T)
+    B = sparse([],[],T[])
   elseif precompute == FULL
-      B = precomputeB(win, x, N, n, m, M, σ, LUTSize, T)
-      #precomputeLUT(win, windowLUT, n, m, σ, LUTSize, T) # These versions are for debugging
-      #B = precomputeB(windowLUT, x, N, n, m, M, σ, LUTSize, T)
+    windowLUT = Vector{T}(undef, 0)
+    B = precomputeB(win, x, N, n, m, M, σ, LUTSize, T)
+    #windowLUT = precomputeLUT(win, windowLUT, n, m, σ, LUTSize, T) # These versions are for debugging
+    #B = precomputeB(windowLUT, x, N, n, m, M, σ, LUTSize, T)
   elseif precompute == TENSOR
-      B = sparse([],[],T[])
-  else
-      B = sparse([],[],T[])
-      error("precompute = $precompute not supported by NFFT.jl!")
+    windowLUT = Vector{T}(undef, 0)
+    B = sparse([],[],T[])
+  else 
+    windowLUT = Vector{T}(undef, 0)
+    B = sparse([],[],T[])
+    error("precompute = $precompute not supported by NFFT.jl!")
   end
 
   return (windowLUT, windowHatInvLUT, apodizationIdx, B)
@@ -431,7 +431,7 @@ function _precomputeWindowTensor(x::Matrix{T}, n::NTuple{D,Int}, m, σ, nodesInB
           #off = unsafe_trunc(Int, xscale) - m 
           off = floor(Int, xscale) - m
           @inbounds for k=1:(2*m+1)
-            windowTensor[l][k,d,i] = win( (xscale - (k-1) - off)  / n[d], n[d], m, σ)
+            windowTensor[l][k,d,i] = win( (xscale - (k-1) - off), 1, m, σ)
           end
         end
       end

@@ -88,7 +88,7 @@ end
             idx = abs((xscale_d - l_{d+$L1} )*scale) + 1
             idxL = floor(idx)
             idxInt = Int(idxL)
-            prodWin_{d-1} = prodWin_d * (p.windowLUT[d][idxInt] + ( idx-idxL ) * (p.windowLUT[d][idxInt+1] - p.windowLUT[d][idxInt]))
+            prodWin_{d-1} = prodWin_d * (p.windowLUT[idxInt] + ( idx-idxL ) * (p.windowLUT[idxInt+1] - p.windowLUT[idxInt]))
           end begin
              # bodyexpr
              ### The last L3 loops contain no NFFT
@@ -138,7 +138,7 @@ end
             idx = abs((xscale_d - l_{d+$L1})*scale) + 1
             idxL = floor(idx)
             idxInt = Int(idxL)
-            prodWin_{d-1} = prodWin_d * (p.windowLUT[d][idxInt] + ( idx-idxL ) * (p.windowLUT[d][idxInt+1] - p.windowLUT[d][idxInt]))
+            prodWin_{d-1} = prodWin_d * (p.windowLUT[idxInt] + ( idx-idxL ) * (p.windowLUT[idxInt+1] - p.windowLUT[idxInt]))
           end begin
              # bodyexpr
              ### The last L3 loops contain no NFFT
