@@ -415,10 +415,6 @@ function _precomputeWindowTensor(x::Matrix{T}, n::NTuple{D,Int}, m, σ, nodesInB
   numBlocks = size(nodesInBlock)
   windowTensor = Array{Array{T,3},D}(undef, numBlocks)
 
- # xscale = x[d,k] * n[d]
- # off = floor(Int, xscale) - m
- # tmpWin = @ntuple $(Z) l -> (win( (xscale - (l-1) - off)  / n[d], n[d], m, σ) )
-
   @cthreads for l in CartesianIndices(numBlocks)
     if !isempty(nodesInBlock[l])
 

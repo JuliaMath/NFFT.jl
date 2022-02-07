@@ -9,7 +9,7 @@ using LinearAlgebra
 using FLoops
 import Base.size
 using Reexport
-using SpecialFunctions: besseli
+using SpecialFunctions: besseli, besselj
 
 @reexport using AbstractNFFTs
 

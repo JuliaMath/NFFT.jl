@@ -45,8 +45,8 @@ end
       for (pre, storeApod, blocking) in zip([NFFT.LUT, NFFT.FULL, NFFT.LUT, NFFT.LUT, NFFT.TENSOR],
                                            [false, false, true, false, false],
                                            [true, false, true, false, true])
-        eps = [1e-7, 1e-3, 1e-6, 1e-4]
-        for (l,window) in enumerate([:kaiser_bessel, :gauss, :kaiser_bessel_rev, :spline])
+        eps = [1e-7, 1e-7, 1e-3, 1e-6, 1e-4]
+        for (l,window) in enumerate([:kaiser_bessel, :cosh_type, :gauss, :kaiser_bessel_rev, :spline])
             D = length(N)
             @info "Testing $D, window=$window, pre=$pre, storeApod=$storeApod, block=$blocking"
 

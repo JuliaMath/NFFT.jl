@@ -19,7 +19,7 @@ Base.@kwdef mutable struct NFFTParams{T}
   σ::T = 2.0
   reltol::T = 1e-9
   window::Symbol = :kaiser_bessel
-  LUTSize::Int64 = 2^14  # Why is 2^10 sufficient for NFFT3???
+  LUTSize::Int64 = 0
   precompute::PrecomputeFlags = LUT
   sortNodes::Bool = false
   storeApodizationIdx::Bool = false

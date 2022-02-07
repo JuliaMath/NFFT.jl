@@ -8,22 +8,29 @@ function getWindow(window::Symbol)
         return window_spline, window_spline_hat
     elseif window == :kaiser_bessel_rev
         return window_kaiser_bessel_rev, window_kaiser_bessel_rev_hat
-    else # default to kaiser_bessel
+    elseif window == :kaiser_bessel
         return window_kaiser_bessel, window_kaiser_bessel_hat
+    elseif window == :cosh_type
+        return window_cosh_type, window_cosh_type_hat
+    else 
+        error("Window $(window) not yet implemented!")
+        return window_cosh_type, window_cosh_type_hat
     end
 end
 
 function window_kaiser_bessel(x,n,m,σ)
-    b = pi*(2-1/σ)
-    arg = m^2-n^2*x^2
-    if abs(x) < m/n
-        y = sinh(b*sqrt(arg))/sqrt(arg)/pi
-    elseif abs(x) > m/n
-        y = zero(x)
-    else
-        y = b/pi
-    end
-    return y
+  m_by_n = m/n
+  b = pi*(2-1/σ)
+  if abs(x) < m_by_n
+      arg = sqrt(m^2-n^2*x^2)
+      arg_times_pi = arg*pi
+      y = sinh(b*arg)/arg_times_pi
+  elseif abs(x) > m_by_n
+      y = zero(x)
+  else
+      y = b/pi
+  end
+  return y
 end
 
 function window_kaiser_bessel_hat(k,n,m,σ)
@@ -90,3 +97,40 @@ end
 function window_spline_hat(k,n,m,σ)
     return (sinc(k/n))^(2*m)
 end
+
+# modified cosh_type window proposed in https://www-user.tu-chemnitz.de/~potts/paper/nffterror.pdf
+# equation 5.22 and following
+
+function window_cosh_type(x,n,m,σ)
+  m_by_n = m/n
+
+  β = pi*m*(2-1/σ)
+  if abs(x) < m_by_n
+      arg = (n*x) / m
+      α = sqrt(1-arg^2)
+      y = 1/(cosh(β)-1) * (cosh(β*α)-1)/(α)
+  else
+      y = zero(x)
+  end
+  return y
+end
+
+function window_cosh_type_hat(k,n,m,σ)
+  β = pi*m*(2-1/σ)
+  γ = β/(2*π)
+  ζ = π/(cosh(β)-1) * m 
+
+  arg = m * k / n
+
+  if abs(arg) < γ
+    y = ζ * ( besseli(0, sqrt(β^2-(2*π*arg)^2)) - besselj(0,2*π*arg) )
+  elseif abs(arg) > γ
+    y =  ζ * ( besselj(0, sqrt((2*π*arg)^2-β^2)) - besselj(0,2*π*arg) )
+  else
+    y = ζ * (1 - besselj(0,β))
+  end
+
+  return y
+end
+
+
