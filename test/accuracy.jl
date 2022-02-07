@@ -2,8 +2,6 @@
 
 m = 5
 σ = 2.0
-LUTSize = 2^16
-
 
 @testset "High-level NFFT" begin
   @info "High-level NFFT"
@@ -52,7 +50,7 @@ end
 
             M = prod(N)
             x = rand(Float64,D,M) .- 0.5
-            p = plan_nfft(x, N; m, σ, window, LUTSize, precompute = pre, storeApodizationIdx = storeApod,
+            p = plan_nfft(x, N; m, σ, window, precompute = pre, storeApodizationIdx = storeApod,
                          fftflags = FFTW.ESTIMATE, blocking)
 
             pNDFT = NDFTPlan(x, N)

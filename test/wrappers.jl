@@ -12,7 +12,7 @@ include("../Wrappers/FINUFFT.jl")
 
     M = prod(N)
     x = rand(Float64,D,M) .- 0.5
-    p = FINUFFTPlan(x, N) #; m, σ, LUTSize, precompute = pre, fftflags = FFTW.ESTIMATE)
+    p = FINUFFTPlan(x, N) #; m, σ, precompute = pre, fftflags = FFTW.ESTIMATE)
     pNDFT = NDFTPlan(x, N)
 
     fHat = rand(Float64,M) + rand(Float64,M)*im
@@ -77,7 +77,6 @@ include("../Wrappers/NFFT3.jl")
 
   m = 5
   σ = 2.0
-  LUTSize = 2^16
 
   for (u,N) in enumerate([(256,), (30,32), (10,12,14), (6,6,6,6)])
     for pre in [NFFT.LUT, NFFT.FULL]
@@ -88,7 +87,7 @@ include("../Wrappers/NFFT3.jl")
 
       M = prod(N)
       x = rand(Float64,D,M) .- 0.5
-      p = NFFT3Plan(x, N; m, σ, LUTSize, precompute = pre,
+      p = NFFT3Plan(x, N; m, σ, precompute = pre,
                     fftflags = FFTW.ESTIMATE)
       pNDFT = NDFTPlan(x, N)
 

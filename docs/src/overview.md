@@ -99,7 +99,6 @@ The NFFT has the following parameters that can be passed as a keyword argument t
 | `precompute`        | Flag indicating the precomputation strategy for the convolution matrix         | `LUT`      |
 | `sortNodes`        | Flag if the nodes should be sorted in a lexicographic way         | `false`      |
 | `storeApodizationIdx`        | Flag if the apodization indices should be stored. Currently this option is necessary on the GPU       | `false`      |
-| `LUTSize`        | Size of the look up table when using `precompute == NFFT.LUT`     | `2^16`      |
 | `fftflags`        | flags passed to the inner `AbstractFFT` as `flags`. This can for instance be `FFTW.MEASURE` in order to optimize the inner FFT    | `FFTW.ESTIMATE`      |
 
 In practice you the default values are properly chosen. The only parameter you should car about is `reltol`. In case of memory issues you want to change `m`, and `σ` instead and use a small oversampling factor like `1.25`.
@@ -122,7 +121,7 @@ There are different pre-computation strategies available. Again you don't need t
 
 | Value                          | Description      | 
 | :--------------------------------- | :--------------- | 
-| `NFFT.LUT`      | This option uses a look-up table to first sample the window function and later use linear interpolation during the actual convolution. `LUTSize` controls the size of the look-up table. We don't have error estimates but a value of 20,000 is in practice large enough.  |  
+| `NFFT.LUT`      | This option uses a look-up table to first sample the window function and later use linear interpolation during the actual convolution. |  
 | `NFFT.FULL`      | This option precomputes the entire convolution matrix and stores it as a `SparseMatrixCSC`. This option requires more memory and the longest precomputation time. This allows simple GPU implementations see CuNFFT.  | 
 | `NFFT.TENSOR`      | This option calculates the window on demand but exploits the tensor structure for multi-dimensional plans. Hence, this option makes no approximation but reaches a similar performance as `NFFT.LUT`. This option is right now only available in the NFFT3 backend.  | 
 

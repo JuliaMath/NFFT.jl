@@ -13,7 +13,6 @@ const blocking = [false, true, true, false, false, false, false]
 
 const σs = [2.0] #range(1.25, 4, length=12)
 const ms = 3:8
-const LUTSize=2^14
 
 function nfft_accuracy_comparison()
   println("\n\n ##### nfft_accuracy_comparison ##### \n\n")
@@ -41,7 +40,7 @@ function nfft_accuracy_comparison()
           for pl = 1:length(packagesStr)
 
             planner = packagesCtor[pl]
-            p = planner(x, NN; m, σ, precompute=precomp[pl], LUTSize=LUTSize, blocking=blocking[pl])
+            p = planner(x, NN; m, σ, precompute=precomp[pl], blocking=blocking[pl])
 
             fApprox = adjoint(p) * fHat
             eadjoint = norm(f[:] - fApprox[:]) / norm(f[:])

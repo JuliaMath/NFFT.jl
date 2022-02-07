@@ -8,7 +8,7 @@ ccall(("omp_set_num_threads",NFFT3.lib_path_nfft),Nothing,(Int64,),convert(Int64
 @info ccall(("nfft_get_num_threads",NFFT3.lib_path_nfft),Int64,())
 NFFT._use_threads[] = (Threads.nthreads() > 1)
 
-function nfft_performance_simple(;N = 1024, M = N*N, m = 4, LUTSize=2^11,
+function nfft_performance_simple(;N = 1024, M = N*N, m = 4, 
   σ = 2.0, threading=false, pre=NFFT.LUT, T=Float64, blocking=true,
   storeApodizationIdx=false, fftflags=NFFT.FFTW.MEASURE, ctor=NFFTPlan)
 
@@ -22,7 +22,7 @@ function nfft_performance_simple(;N = 1024, M = N*N, m = 4, LUTSize=2^11,
   NFFT._use_threads[] = threading
   NFFT.FFTW.set_num_threads( threading ? Threads.nthreads() : 1)
 
-  tpre = @elapsed p = ctor(x, (N,N); m, σ, window=:kaiser_bessel, LUTSize, precompute=pre, 
+  tpre = @elapsed p = ctor(x, (N,N); m, σ, window=:kaiser_bessel, precompute=pre, 
                             fftflags, storeApodizationIdx, blocking)
 
   tadjoint = @elapsed mul!(f, adjoint(p), fHat; timing)

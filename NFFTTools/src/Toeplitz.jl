@@ -3,7 +3,7 @@
 ###################################################################
 
 """
-    calculateToeplitzKernel(shape, tr::Matrix{T}[; m = 4, σ = 2.0, window = :kaiser_bessel, LUTSize = 2000, fftplan = plan_fft(zeros(Complex{T}, 2 .* shape); flags=FFTW.ESTIMATE), kwargs...])
+    calculateToeplitzKernel(shape, tr::Matrix{T}[; m = 4, σ = 2.0, window = :kaiser_bessel, fftplan = plan_fft(zeros(Complex{T}, 2 .* shape); flags=FFTW.ESTIMATE), kwargs...])
 
 Calculate the kernel for an implementation of the Gram matrix that utilizes its Toeplitz structure. The output is an array of twice the size of `shape`, as the Toeplitz trick requires an oversampling factor of 2 (cf. [Wajer, F. T. A. W., and K. P. Pruessmann. "Major speedup of reconstruction for sensitivity encoding with arbitrary trajectories." Proc. Intl. Soc. Mag. Res. Med. 2001.](https://cds.ismrm.org/ismrm-2001/PDF3/0767.pdf)). The type of the kernel is `Complex{T}`, i.e. the complex of the k-space trajectory's type; for speed and memory efficiecy, call this function with `Float32.(tr)`, and the kernel will also be `Float32`.
 
@@ -77,11 +77,11 @@ julia> convolveToeplitzKernel!(x, λ)
 
 ```
 """
-function calculateToeplitzKernel(shape, tr::AbstractMatrix{T}; m = 4, σ = 2.0, window = :kaiser_bessel, LUTSize = 2000, fftplan = plan_fft(zeros(Complex{T}, 2 .* shape); flags=FFTW.ESTIMATE), kwargs...) where {T}
+function calculateToeplitzKernel(shape, tr::AbstractMatrix{T}; m = 4, σ = 2.0, window = :kaiser_bessel, fftplan = plan_fft(zeros(Complex{T}, 2 .* shape); flags=FFTW.ESTIMATE), kwargs...) where {T}
 
     shape_os = 2 .* shape
 
-    p = plan_nfft(typeof(tr), tr, shape_os; m, σ, window, LUTSize, kwargs...)
+    p = plan_nfft(typeof(tr), tr, shape_os; m, σ, window, kwargs...)
     eigMat = adjoint(p) * OnesVector(Complex{T}, size(tr,2))
     return fftplan * fftshift(eigMat)
 end

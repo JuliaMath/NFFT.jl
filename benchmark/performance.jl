@@ -10,7 +10,6 @@ include("../Wrappers/NFFT3.jl")
 include("../Wrappers/FINUFFT.jl")
 
 
-const LUTSize = 2^11
 
 const threads = [1,2,4,8,16]
 const preString = "LUT"
@@ -55,10 +54,10 @@ function nfft_performance_comparison(m = 4, σ = 2.0)
 
           planner = packagesCtor[pl]
           BenchmarkTools.DEFAULT_PARAMETERS.seconds = benchmarkTime[1]
-          b = @benchmark $planner($x, $NN; m=$m, σ=$σ, window=:kaiser_bessel, LUTSize=$LUTSize, 
+          b = @benchmark $planner($x, $NN; m=$m, σ=$σ, window=:kaiser_bessel, 
                                  precompute=$(precomp[pl]), sortNodes=false, fftflags=$fftflags)
           tpre = minimum(b).time / 1e9
-          p = planner(x, NN; m=m, σ=σ, window=:kaiser_bessel, LUTSize=LUTSize, 
+          p = planner(x, NN; m=m, σ=σ, window=:kaiser_bessel, 
                       precompute=(precomp[pl]), sortNodes=false, fftflags=fftflags)
           BenchmarkTools.DEFAULT_PARAMETERS.seconds = benchmarkTime[2]                      
           b = @benchmark mul!($f, $(adjoint(p)), $fHat)
