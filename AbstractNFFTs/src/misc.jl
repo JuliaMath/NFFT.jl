@@ -31,12 +31,12 @@ end
 
 function reltolToParams(reltol) 
   w = ceil(Int, log(10,1/reltol)) + 1 
-  m = (w-1)÷2
+  m = (w)÷2
   return m, 2.0
 end
 
 function paramsToReltol(m::Int, σ)
-  w = 2*m + 1
+  w = 2*m 
   return 10.0^(-(w-1))
 end
 
