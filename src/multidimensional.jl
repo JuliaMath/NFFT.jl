@@ -104,7 +104,7 @@ function AbstractNFFTs.convolve!(p::NFFTPlan{T,D,1}, g::AbstractArray{Complex{T}
 end
 
 function convolve_LUT!(p::NFFTPlan{T,D,1}, g::AbstractArray{Complex{T},D}, fHat::StridedVector{U}) where {D,T,U}
-  L = Val(2*p.params.m+1)
+  L = Val(2*p.params.m)
   scale = Int(p.params.LUTSize/(p.params.m+2))
 
   @cthreads for k in 1:p.M
@@ -157,7 +157,7 @@ end
 
 function convolve_adjoint_LUT!(p::NFFTPlan{T,D,1}, fHat::AbstractVector{U}, g::StridedArray{Complex{T},D}) where {D,T,U}
   fill!(g, zero(T))
-  L = Val(2*p.params.m+1)
+  L = Val(2*p.params.m)
   scale = Int(p.params.LUTSize/(p.params.m+2))
 
   @inbounds @simd for k in 1:p.M
@@ -193,7 +193,7 @@ end
 ######## blocked multi-threading #########
 
 function convolve_LUT_MT!(p::NFFTPlan, g, fHat)
-  L = Val(2*p.params.m+1)
+  L = Val(2*p.params.m)
   _convolve_LUT_MT!(p, g, fHat, L)
 end
 
@@ -266,7 +266,7 @@ end
 ##########################
 
 function convolve_adjoint_LUT_MT!(p::NFFTPlan, fHat, g)
-  L = Val(2*p.params.m+1)
+  L = Val(2*p.params.m)
   _convolve_adjoint_LUT_MT!(p, fHat, g, L)
 end
 

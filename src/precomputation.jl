@@ -54,13 +54,13 @@ end
 ### Precomputation of the B matrix ###
 
 function precomputeB(win, x, N::NTuple{D,Int}, n::NTuple{D,Int}, m, M, σ, K, T) where D
-  I = Array{Int64,2}(undef, (2*m+1)^D, M)
-  β = (2*m+1)^D
+  I = Array{Int64,2}(undef, (2*m)^D, M)
+  β = (2*m)^D
   J = [β*k+1 for k=0:M]
-  V = Array{T,2}(undef,(2*m+1)^D, M)
-  mProd = ntuple(d-> (d==1) ? 1 : (2*m+1)^(d-1), D)
+  V = Array{T,2}(undef,(2*m)^D, M)
+  mProd = ntuple(d-> (d==1) ? 1 : (2*m)^(d-1), D)
   nProd = ntuple(d-> (d==1) ? 1 : prod(n[1:(d-1)]), D)
-  L = Val(2*m+1)
+  L = Val(2*m)
   scale = Int(K/(m+2))
 
   @cthreads for k in 1:M
@@ -100,7 +100,7 @@ end
   σ, scale, k, d, L::Val{Z}, LUTSize) where {T,D,Z}
   quote
     xscale = x[d,k] * n[d]
-    off = floor(Int, xscale) - m
+    off = floor(Int, xscale) - m + 1
     tmpIdx = @ntuple $(Z) l -> ( rem(l + off + n[d] - 1, n[d]) + 1)
 
     tmpWin = @ntuple $(Z) l -> (win( (xscale - (l-1) - off)  / n[d], n[d], m, σ) )
@@ -112,7 +112,7 @@ end
   σ, scale, k, d, L::Val{Z}, LUTSize) where {T,D,Z}
   quote
     xscale = x[d,k] * n[d]
-    off = floor(Int, xscale) - m 
+    off = floor(Int, xscale) - m + 1
     tmpIdx = @ntuple $(Z) l -> ( rem(l + off + n[d] - 1, n[d]) + 1)
 
     idx = ((xscale - off)*LUTSize)/(m+2)
@@ -392,7 +392,7 @@ function _precomputeIdxInBlock(x::Matrix{T}, n::NTuple{D,Int}, m, LUTSize, block
         @inbounds for d=1:D
           xtmp = x[d,k] # this is expensive because of cache misses
           xscale = xtmp * n[d]
-          off = unsafe_trunc(Int, xscale) - m 
+          off = unsafe_trunc(Int, xscale) - m + 1
           y = off - blockOffsets[l][d] - 1
           idx = ((xscale - off)*LUTSize)/(m+2)
           idxInBlock[l][d,i] = (y,idx)
@@ -425,7 +425,7 @@ function _precomputeWindowTensor(x::Matrix{T}, n::NTuple{D,Int}, m, σ, nodesInB
           xtmp = x[d,k] #- 0.5  # this is expensive because of cache misses
           xscale = xtmp * n[d]
           #off = unsafe_trunc(Int, xscale) - m 
-          off = floor(Int, xscale) - m
+          off = floor(Int, xscale) - m + 1
           @inbounds for k=1:(2*m+1)
             windowTensor[l][k,d,i] = win( (xscale - (k-1) - off), 1, m, σ)
           end
