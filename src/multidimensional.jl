@@ -286,7 +286,8 @@ function _convolve_adjoint_LUT_MT!(p::NFFTPlan{T,D,1}, fHat, g, L) where {D,T}
         windowTensor = p.windowTensor[l]
       end
       fillBlock!(p, fHat, p.blocks[l], p.nodesInBlock[l], p.blockOffsets[l], L, scale, p.idxInBlock[l], windowTensor)
-      isNoEdgeBlock = all(1 .< Tuple(l) .< size(p.blocks))
+      isNoEdgeBlock = all(1 .< Tuple(l) .< size(p.blocks)) && 
+                        all( ntuple(d->l[d]+ size(p.blocks[l],d), D) .<= size(p.blocks))
       lock(lk) do
         addBlock!(p, g, p.blocks[l], p.blockOffsets[l], isNoEdgeBlock)
       end
