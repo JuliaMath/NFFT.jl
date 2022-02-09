@@ -1,6 +1,13 @@
 using LinearAlgebra
 import FINUFFT
 
+#=
+General comment: FINUFFT requires dedicated plans for forward and the adjoint NFFT.
+However, it is right now not possible to cache two plans in parallel since the plan
+seem to have global state. We therefore only cache one plan and need to create a new
+one "on demand" if the other one is needed. This is the purpose of the `isAdjoint` flag.
+=#
+
 mutable struct FINUFFTPlan{T,D} <: AbstractNFFTPlan{T,D,1} 
   N::NTuple{D,Int64}
   M::Int64
@@ -9,8 +16,8 @@ mutable struct FINUFFTPlan{T,D} <: AbstractNFFTPlan{T,D,1}
   σ::T
   reltol::T
   fftflags::UInt32
-  #forwardPlan::FINUFFT.finufft_plan{T}
-  #adjointPlan::FINUFFT.finufft_plan{T}
+  plan::FINUFFT.finufft_plan{T}
+  isAdjoined::Bool
 end
 
 
@@ -33,29 +40,20 @@ function FINUFFTPlan(x::Matrix{T}, N::NTuple{D,Int};
 
   reltol = max(reltol, 1.0e-15)
 
-  #forwardPlan = FINUFFT.finufft_makeplan(2,collect(N),-1,1,reltol; 
-  #                              nthreads = Threads.nthreads(), 
-  #                              fftw = fftflags)
-
-  #adjointPlan = FINUFFT.finufft_makeplan(1,collect(N),1,1,reltol;
-  #                              nthreads = Threads.nthreads(), 
-  #                              fftw = fftflags)
-
   x_ = 2π * x 
-  #nodes = ntuple(d->vec(x_[d,:]), D)
-  #x__ = 2π * x 
-  #nodes_ = ntuple(d->vec(x__[d,:]), D)
-  #FINUFFT.finufft_setpts!(forwardPlan, nodes...)
-  #FINUFFT.finufft_setpts!(adjointPlan, nodes_...)
+  
+  plan = FINUFFT.finufft_makeplan(2,collect(N),-1,1,reltol;
+                          nthreads = Threads.nthreads(), 
+                          fftw = fftflags, upsampfac=2.0, debug=1)
 
-  p = FINUFFTPlan(N, M, x_, m, T(σ), reltol, fftflags) #, forwardPlan, adjointPlan)
+  nodes = ntuple(d->vec(x[d,:]), D)
+  FINUFFT.finufft_setpts!(plan, nodes...)
 
+  p = FINUFFTPlan(N, M, x_, m, T(σ), reltol, fftflags, plan, false)
 
-
-  #finalizer(p -> begin
-  #  FINUFFT.finufft_destroy!(p.forwardPlan)
-  #  FINUFFT.finufft_destroy!(p.adjointPlan)
-  #end, p)
+  finalizer(p -> begin
+    FINUFFT.finufft_destroy!(p.plan)
+  end, p)
 
   return p
 end
@@ -72,16 +70,18 @@ AbstractNFFTs.size_out(p::FINUFFTPlan) = (Int(p.M),)
 function LinearAlgebra.mul!(fHat::StridedArray, p::FINUFFTPlan{T,D}, f::AbstractArray;
              verbose=false, timing::Union{Nothing,TimingStats} = nothing) where {T,D}
 
-  forwardPlan = FINUFFT.finufft_makeplan(2,collect(p.N),-1,1,p.reltol;
+  if p.isAdjoined
+    FINUFFT.finufft_destroy!(p.plan)
+    p.plan = FINUFFT.finufft_makeplan(2,collect(p.N),-1,1,p.reltol;
                                         nthreads = Threads.nthreads(), 
                                         fftw = p.fftflags, upsampfac=2.0, debug=0)
 
-  nodes = ntuple(d->vec(p.x[d,:]), D)
-  FINUFFT.finufft_setpts!(forwardPlan, nodes...)
+    nodes = ntuple(d->vec(p.x[d,:]), D)
+    FINUFFT.finufft_setpts!(p.plan, nodes...)
+    p.isAdjoined = false
+  end
   
-  FINUFFT.finufft_exec!(forwardPlan, f, fHat)
-
-  FINUFFT.finufft_destroy!(forwardPlan)
+  FINUFFT.finufft_exec!(p.plan, f, fHat)
 
   return fHat
 end
@@ -90,16 +90,18 @@ function LinearAlgebra.mul!(f::StridedArray, pl::Adjoint{Complex{T},<:FINUFFTPla
                      verbose=false, timing::Union{Nothing,TimingStats} = nothing) where {T,D}
   p = pl.parent
 
-  adjointPlan = FINUFFT.finufft_makeplan(1,collect(p.N), 1, 1, p.reltol; 
-                                nthreads = Threads.nthreads(), 
-                                fftw = p.fftflags, upsampfac=2.0, debug=0)
+  if !p.isAdjoined
+    FINUFFT.finufft_destroy!(p.plan)
+    p.plan = FINUFFT.finufft_makeplan(1,collect(p.N), 1, 1, p.reltol; 
+                             nthreads = Threads.nthreads(), 
+                             fftw = p.fftflags, upsampfac=2.0, debug=0)
 
-  nodes = ntuple(d->vec(p.x[d,:]), D)
-  FINUFFT.finufft_setpts!(adjointPlan, nodes...)
+    nodes = ntuple(d->vec(p.x[d,:]), D)
+    FINUFFT.finufft_setpts!(p.plan, nodes...)
+    p.isAdjoined = true
+  end
   
-  FINUFFT.finufft_exec!(adjointPlan, fHat, f)
-
-  FINUFFT.finufft_destroy!(adjointPlan)
+  FINUFFT.finufft_exec!(p.plan, fHat, f)
 
   return f
 end

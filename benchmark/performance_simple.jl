@@ -25,7 +25,9 @@ function nfft_performance_simple(;N = 1024, M = N*N, m = 4,
   tpre = @elapsed p = ctor(x, (N,N); m, σ, window=:kaiser_bessel, precompute=pre, 
                             fftflags, storeApodizationIdx, blocking)
 
+  mul!(f, adjoint(p), fHat; timing)
   tadjoint = @elapsed mul!(f, adjoint(p), fHat; timing)
+  mul!(fHat, p, f; timing)
   ttrafo = @elapsed mul!(fHat, p, f; timing)
 
   @info tpre, ttrafo, tadjoint
