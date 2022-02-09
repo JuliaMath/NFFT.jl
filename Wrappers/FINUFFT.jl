@@ -44,7 +44,7 @@ function FINUFFTPlan(x::Matrix{T}, N::NTuple{D,Int};
   
   plan = FINUFFT.finufft_makeplan(2,collect(N),-1,1,reltol;
                           nthreads = Threads.nthreads(), 
-                          fftw = fftflags, upsampfac=2.0, debug=1)
+                          fftw = fftflags, upsampfac=2.0, debug=0)
 
   nodes = ntuple(d->vec(x[d,:]), D)
   FINUFFT.finufft_setpts!(plan, nodes...)
