@@ -10,9 +10,9 @@ We start with the accuracy. The following plot shows the relative error of a 2D 
 
 ![Accurracy](./assets/accuracy_m_D2.svg)
 
-What can be seen is that the error decreases exponentially with both parameters. For about ``m=8`` and ``\sigma = 2``, the error reaches the machine precision and the NFFT then can be considered to be exact in floating point arithmetics. 
+What can be seen is that the error decreases exponentially with ``m``. For about ``m=8`` the error reaches the machine precision and the NFFT then can be considered to be exact in floating point arithmetics. 
 
-In practice, however, one often uses `Float32` instead of `Float64` in which case both parameters can be chosen much smaller. If the values encoded in the NFFT vectors are for instance images, a value of ``m = 3`` or ``m = 4`` is often sufficient since the human eye can only discriminate about three orders of magnitude in gray values.
+In practice, however, one often uses `Float32` instead of `Float64` in which cases ``m``  can be chosen much smaller. If the values encoded in the NFFT vectors are for instance images, a value of ``m = 3`` or ``m = 4`` is often sufficient since the human eye can only discriminate about three orders of magnitude in gray values.
 
 Next we fix ``m`` and look at different oversampling parameters:
 
