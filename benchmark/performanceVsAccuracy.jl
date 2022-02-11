@@ -134,8 +134,8 @@ end
 
 
 
-#df = nfft_accuracy_comparison(Ds)
-#writedlm("performanceVsAccuracy.csv", Iterators.flatten(([names(df)], eachrow(df))), ',')
+df = nfft_accuracy_comparison(Ds)
+writedlm("performanceVsAccuracy.csv", Iterators.flatten(([names(df)], eachrow(df))), ',')
 
 data, header = readdlm("performanceVsAccuracy.csv", ',', header=true);
 df = DataFrame(data, vec(header))
