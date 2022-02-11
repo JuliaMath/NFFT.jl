@@ -216,19 +216,27 @@ function _convolve_LUT_MT!(p::NFFTPlan{T,D,1}, g, fHat, L) where {D,T}
   end
 end
 
-function toBlock!(p::NFFTPlan{T,D,1}, g, block, off, isNoEdgeBlock) where {T,D}
-  if !isNoEdgeBlock
-    for l in CartesianIndices(size(block))
-      z = ntuple(d->( ( rem(l[d] + off[d] + p.n[d], p.n[d]) + 1)  ), D) 
-      block[l] = g[z...] 
+@generated function toBlock!(p::NFFTPlan{T,D,1}, g, block, off, isNoEdgeBlock) where {T,D}
+  quote
+    if !isNoEdgeBlock
+      @nloops_ $(D)  (d->l_{d})  (d -> 1:size(block,d)) d->begin
+        # preexpr
+        idx_{d} = ( rem(l_{d}  + off[d] + p.n[d], p.n[d]) + 1)
+      end begin
+        # bodyexpr
+         (@nref $D block l) = (@nref $D g idx)
+      end
+    else
+      @nloops_ $(D)  (d->l_{d})  (d -> 1:size(block,d)) d->begin
+        # preexpr
+        idx_{d} = ( l_{d} + off[d] + 1) 
+      end begin
+        # bodyexpr
+        (@nref $D block l) = (@nref $D g idx)
+      end    
     end
-  else
-    for l in CartesianIndices(size(block))
-      z = ntuple(d->( ( l[d] + off[d] + 1) ), D) 
-      block[l] = g[z...] 
-    end
+    return
   end
-  return
 end
 
 @noinline function calcOneNode!(p::NFFTPlan{T,D,1}, fHat, nodesInBlock, block,
@@ -296,19 +304,27 @@ function _convolve_adjoint_LUT_MT!(p::NFFTPlan{T,D,1}, fHat, g, L) where {D,T}
   end
 end
 
-function addBlock!(p::NFFTPlan{T,D,1}, g, block, off, isNoEdgeBlock) where {T,D}
-  if !isNoEdgeBlock
-    for l in CartesianIndices(size(block))
-      z = ntuple(d->( ( rem(l[d] + off[d] + p.n[d], p.n[d]) + 1)  ), D) 
-      g[z...] += block[l]
+@generated function addBlock!(p::NFFTPlan{T,D,1}, g, block, off, isNoEdgeBlock) where {T,D}
+  quote
+    if !isNoEdgeBlock
+      @nloops_ $(D)  (d->l_{d})  (d -> 1:size(block,d)) d->begin
+        # preexpr
+        idx_{d} = ( rem(l_{d}  + off[d] + p.n[d], p.n[d]) + 1)
+      end begin
+        # bodyexpr
+        (@nref $D g idx) += (@nref $D block l)
+      end
+    else
+      @nloops_ $(D)  (d->l_{d})  (d -> 1:size(block,d)) d->begin
+        # preexpr
+        idx_{d} = ( l_{d} + off[d] + 1) 
+      end begin
+        # bodyexpr
+        (@nref $D g idx) += (@nref $D block l)
+      end    
     end
-  else
-    for l in CartesianIndices(size(block))
-      z = ntuple(d->( ( l[d] + off[d] + 1)  ), D) 
-      g[z...] += block[l]
-    end
+    return
   end
-  return
 end
 
 @noinline function fillBlock!(p::NFFTPlan, fHat, block, nodesInBlock, off, L, scale, idxInBlock, windowTensor)
