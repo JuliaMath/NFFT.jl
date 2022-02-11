@@ -334,12 +334,32 @@ function precomputeBlocks(x::Matrix{T}, n::NTuple{D,Int}, params, calcBlocks::Bo
   return (blocks, nodesInBlocks, blockOffsets, idxInBlock, windowTensor)
 end
 
+function _blockSize(n::NTuple{1,Int}, d)
+  return min(1024, n[d])
+end
+
+function _blockSize(n::NTuple{2,Int}, d)
+  return min(64, n[d])
+end
+
+function _blockSize(n::NTuple{D,Int}, d) where {D}
+  if d == 1
+    return min(16, n[d])
+  elseif d == 2
+    return min(16, n[d])
+  elseif d == 3
+    return min(8, n[d])
+  else
+    return 1
+  end
+end
+
 function _precomputeBlocks(x::Matrix{T}, n::NTuple{D,Int}, m, LUTSize) where {T,D}
 
   padding = ntuple(d->m, D)
   # What is the best block size?
   # Limit the block size to at maximum n
-  blockSize = ntuple(d-> min((d==1) ? 64 : 64, n[d]) , D)
+  blockSize = ntuple(d-> _blockSize(n,d) , D)
   #blockSize = ntuple(d-> n[d] , D) # just one block
   blockSizePadded = ntuple(d-> blockSize[d] + 2*padding[d] , D)
   
