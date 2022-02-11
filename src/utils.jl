@@ -31,7 +31,7 @@ end
 function checkNodes(x::Matrix{T}) where T
   @cthreads for k=1:size(x,2)
     for d=1:size(x,1)
-      if abs(x[d,k]) > 0.5
+      if !(abs(x[d,k]) <= 0.5)
         throw(ArgumentError("Nodes x need to be within the range [-1/2, 1/2) but x[$d,$k] = $(x[d,k])!"))
       end
     end

@@ -20,6 +20,8 @@ end
 
 x = [-0.6  0.9; 0.5  -0.5]
 @test_throws ArgumentError NFFTPlan(x, (2,2))
+x = [-0.3  0.3; 0.3  NaN]
+@test_throws ArgumentError NFFTPlan(x, (2,2))
 
 ## test nodes!(p, tr)
 Nx = 32
