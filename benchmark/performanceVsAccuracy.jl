@@ -94,8 +94,8 @@ function plot_accuracy(df, D=1)
   Plots.scalefontsizes()
   Plots.scalefontsizes(1.5)
   
-  titleTrafo = L"\textrm{NFFT}, D=%$D"
-  titleAdjoint = L"\textrm{NFFT}^H, D=%$D"
+  titleTrafo = L"\textrm{NFFT}, \textrm{%$(D)D}"
+  titleAdjoint = L"\textrm{NFFT}^H, \textrm{%$(D)D}"
 
   colors = [:black, :orange, :green, :brown, :gray, :blue, :purple, :yellow ]
   ls = [:solid, :dashdot, :dash, :solid, :dash, :solid, :dash, :solid]
