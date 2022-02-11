@@ -326,7 +326,10 @@ end
     @nexprs $(D) d -> ((off_d, tmpWin_d) = 
           _precomputeOneNodeShifted(p.windowLUT, scale, kLocal, d, L, idxInBlock, windowTensor) )
 
-    innerWin = @ntuple $(Z) l -> tmpWin_1[l] * fHat_
+    innerWinReal = @ntuple $(Z) l -> tmpWin_1[l] * real(fHat_)
+    innerWinImag = @ntuple $(Z) l -> tmpWin_1[l] * imag(fHat_)
+
+    blockReal = reinterpret(reshape, T, block)
 
     @nexprs 1 d -> prodWin_{$D} = one(T)
     @nloops_ $(D-1)  (d->l_{d+1})  (d -> 1:$Z) d->begin
@@ -335,9 +338,14 @@ end
       block_idx_{d+1} = off_{d+1} + l_{d+1} 
     end begin
       # bodyexpr
-      @inbounds  for l_1 = 1:$Z
-        block_idx_1 = off_1 + l_1 
-        (@nref $D block block_idx) += innerWin[l_1] * prodWin_1
+      tmpIdx = @ntuple $(D-1) d -> ( block_idx_{d+1} )
+      bb = view(blockReal, :, (off_1+1):(off_1+$Z), tmpIdx... )
+      
+      @inbounds @simd for l_1 = 1:$Z
+        #block_idx_1 = off_1 + l_1 
+        #(@nref $D block block_idx) += innerWin[l_1] * prodWin_1
+        bb[1,l_1] += innerWinReal[l_1] * prodWin_1
+        bb[2,l_1] += innerWinImag[l_1] * prodWin_1
       end
     end
     return
