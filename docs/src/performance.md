@@ -8,15 +8,31 @@ the performance characteristics of the NFFT and help choosing the parameters acc
 
 We start with the accuracy. The following plot shows the relative error of a 2D NFFT (``N=(64,64), M=64^2``) compared to the NDFT for different choices of ``m`` and ``\sigma = 2``:
 
-![Accurracy](./assets/accuracy_D2.svg)
+![Accurracy](./assets/accuracy_m_D2.svg)
 
-What can be seen is that the error decreases exponentially with both parameters. For about ``m=8`` and ``\sigma = 2``, the error reaches the machine precision and the NFFT then can be considered to be exact in floating point arithmetics.
+What can be seen is that the error decreases exponentially with both parameters. For about ``m=8`` and ``\sigma = 2``, the error reaches the machine precision and the NFFT then can be considered to be exact in floating point arithmetics. 
 
-In practice, however, one often uses `Float32` instead of `Float64` in which case both parameters can be chosen much smaller. Even when using ``\sigma = 1.25`` and ``m = 4`` one often has more than enough accuracy if the reconstructed image is considered to be an image with gray values, since the human eye can only discriminate about three orders of magnitude in gray values.
+In practice, however, one often uses `Float32` instead of `Float64` in which case both parameters can be chosen much smaller. If the values encoded in the NFFT vectors are for instance images, a value of ``m = 3`` or ``m = 4`` is often sufficient since the human eye can only discriminate about three orders of magnitude in gray values.
 
-One can also see that independent implementations reach very similar accuracy. The accuracy for FINUFFT is a little bit higher, which might be due to the different window function being used.
+Next we fix ``m`` and look at different oversampling parameters:
 
-## Performance
+![Accurracy](./assets/accuracy_sigma_D2.svg)
+
+FINUFFT is not included in this plot since it does not allow to adjust the oversampling factor freely. One can see that the accuracy improves with increasing oversampling factor. However, one needs to keep in mind that the memory consumption of the NFFT increases with ``\sigma^D`` and in turn one usually keeps it below 2. One rule of thumb is to use ``\sigma=2`` if memory consumption is no concern and switch to ``\sigma = 1.25`` with an accordingly increased ``m`` if memory consumption is a concern (e.g. for 3D transforms).
+
+
+In both figures one can see that independent implementations reach very similar accuracy. There are some smaller implementation details (different window functions, different kernel size handling) that slightly affect the accuracy. For instance NFFT3 uses a kernel size of ``(2m+2)^D`` while NFFT.jl and FINUFFT use ``(2m)^D``.
+
+## Performance 
+
+
+
+![Performance vs Accurracy 1D](./assets/performanceVsAccuracy_D1.svg)
+![Performance vs Accurracy 2D](./assets/performanceVsAccuracy_D2.svg)
+![Performance vs Accurracy 3D](./assets/performanceVsAccuracy_D3.svg)
+
+
+## Performance Multi-Threading
 
 Next, we investigate the performance of the NFFT and benchmark the following three operations:
 * pre-computation of the plan
