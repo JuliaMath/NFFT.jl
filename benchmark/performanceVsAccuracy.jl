@@ -5,18 +5,12 @@ using Plots; pgfplotsx()
 include("../Wrappers/NFFT3.jl")
 include("../Wrappers/FINUFFT.jl")
 
-
-#const packagesCtor = [NFFTPlan, NFFTPlan, NFFTPlan,  NFFT3Plan, NFFT3Plan, FINUFFTPlan]
-#const packagesStr = ["NFFT.jl/FULL", "NFFT.jl/LUT", "NFFT.jl/TENSOR", "NFFT3/LUT", "NFFT3/TENSOR", "FINUFFTPlan"]
-#const precomp = [NFFT.FULL, NFFT.LUT, NFFT.TENSOR, NFFT.LUT, NFFT.TENSOR, NFFT.LUT]
-#const blocking = [false, true, true, false, false, false, false]
-
 const packagesCtor = [NFFTPlan,  NFFT3Plan, FINUFFTPlan]
 const packagesStr = [ "NFFT.jl/TENSOR",  "NFFT3/TENSOR", "FINUFFT"]
 const precomp = [NFFT.TENSOR, NFFT.TENSOR, NFFT.LUT]
 const blocking = [true, true, true]
 
-const benchmarkTime = [3, 3]
+const benchmarkTime = [1, 1]
 
 NFFT.FFTW.set_num_threads(Threads.nthreads())
 ccall(("omp_set_num_threads",NFFT3.lib_path_nfft),Nothing,(Int64,),convert(Int64,Threads.nthreads()))
@@ -96,50 +90,43 @@ end
 
 function plot_accuracy(df, D=1)
 
-  σs = range(1.25, 4, length=12)
-
   df1_ = df[df.σ.==2.0 .&& df.D.==D,:]
-  #df2_ = df[df.m.==8 .&& df.D.==D,:]
-
   Plots.scalefontsizes()
   Plots.scalefontsizes(1.5)
   
- 
   titleTrafo = L"\textrm{NFFT}, D=%$D"
   titleAdjoint = L"\textrm{NFFT}^H, D=%$D"
-
 
   colors = [:black, :orange, :green, :brown, :gray, :blue, :purple, :yellow ]
   ls = [:solid, :dashdot, :dash, :solid, :dash, :solid, :dash, :solid]
   shape = [:xcross, :circle, :xcross, :circle, :xcross, :xcross, :circle]
 
   p1 = plot(df1_[df1_.Package.==packagesStr[1],:ErrorTrafo], 
-            df1_[df1_.Package.==packagesStr[1],:TimeTrafo], #ylims=(1e-4,1e-2),
-            yscale = :log10, xscale = :log10, label=packagesStr[1], lw=2, xlabel = "Relative Error", ylabel="Runtime / s",
+            df1_[df1_.Package.==packagesStr[1],:TimeTrafo], # yscale = :log10, #ylims=(1e-4,1e-2),
+            xscale = :log10, label=packagesStr[1], lw=2, xlabel = "Relative Error", ylabel="Runtime / s",
             legend = (:topright), title=titleTrafo, shape=:circle, c=:black)
 
   for p=2:length(packagesStr)      
     plot!(p1, df1_[df1_.Package.==packagesStr[p],:ErrorTrafo], 
-          df1_[df1_.Package.==packagesStr[p],:TimeTrafo], 
-            yscale = :log10, xscale = :log10, label=packagesStr[p], lw=2, shape=shape[p], ls=ls[p], 
+          df1_[df1_.Package.==packagesStr[p],:TimeTrafo], #yscale = :log10,
+            xscale = :log10, label=packagesStr[p], lw=2, shape=shape[p], ls=ls[p], 
             c=colors[p], msc=colors[p], mc=colors[p], ms=5, msw=2)
   end
 
   p2 = plot(df1_[df1_.Package.==packagesStr[1],:ErrorAdjoint], 
-            df1_[df1_.Package.==packagesStr[1],:TimeAdjoint], #ylims=(1e-4,1e-2),
-            yscale = :log10, xscale = :log10, label=packagesStr[1], lw=2, xlabel = "Relative Error", ylabel="Runtime / s",
+            df1_[df1_.Package.==packagesStr[1],:TimeAdjoint], #yscale = :log10, #ylims=(1e-4,1e-2),
+            xscale = :log10, label=packagesStr[1], lw=2, xlabel = "Relative Error", ylabel="Runtime / s",
             legend = (:topright), title=titleAdjoint, shape=:circle, c=:black)
 
   for p=2:length(packagesStr)      
     plot!(p2, df1_[df1_.Package.==packagesStr[p],:ErrorAdjoint], 
-          df1_[df1_.Package.==packagesStr[p],:TimeAdjoint], 
-            yscale = :log10, xscale = :log10, label=packagesStr[p], lw=2, shape=shape[p], ls=ls[p], 
+          df1_[df1_.Package.==packagesStr[p],:TimeAdjoint], # yscale = :log10,
+            xscale = :log10, label=packagesStr[p], lw=2, shape=shape[p], ls=ls[p], 
             c=colors[p], msc=colors[p], mc=colors[p], ms=5, msw=2)
   end
 
 
   p = plot(p1, p2, layout=(1,2), size=(800,300), dpi=200)
-  #p = plot(p1, layout=(1,2), size=(800,450), dpi=200)
 
   savefig(p, "../docs/src/assets/performanceVsAccuracy_D$(D).svg")
   return p
@@ -147,8 +134,8 @@ end
 
 
 
-df = nfft_accuracy_comparison(Ds)
-writedlm("performanceVsAccuracy.csv", Iterators.flatten(([names(df)], eachrow(df))), ',')
+#df = nfft_accuracy_comparison(Ds)
+#writedlm("performanceVsAccuracy.csv", Iterators.flatten(([names(df)], eachrow(df))), ',')
 
 data, header = readdlm("performanceVsAccuracy.csv", ',', header=true);
 df = DataFrame(data, vec(header))

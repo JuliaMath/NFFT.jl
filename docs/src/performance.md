@@ -25,38 +25,45 @@ In both figures one can see that independent implementations reach very similar 
 
 ## Performance 
 
+Next, we investigate the performance of the NFFT and benchmark the following three operations:
+* forward NFFT
+* adjoint NFFT
+The parameters for the benchmark are 
+* ``N_\text{1D}=(8192,), N_\text{2D}=(64,64), N_\text{3D}=(32,32,32)``
+* ``M=N^2``
+* ``m=3, \dots, 8``
+* ``\sigma = 2``
+* 1 thread
+* sorted random nodes
+All benchmarks are performed with `@belapsed` from [BenchmarkTools.jl](https://github.com/JuliaCI/BenchmarkTools.jl) which takes the minimum of several runs (10 s upper benchmark time). The benchmark is run on a computer with 2 AMD EPYC 7702 CPUs running at 2.0 GHz (256 cores in total) and a main memory of 1024 GB. The benchmark suite is described [here](https://github.com/JuliaMath/NFFT.jl/blob/master/benchmark/Project.toml).
 
+The results for ``D=1,\dots,3`` are shown in the following graphics. In these graphics we plot the performance versus the accuracy for various ``m``. This allows to account for the slight accuracy differences discussed earlier.
 
 ![Performance vs Accurracy 1D](./assets/performanceVsAccuracy_D1.svg)
 ![Performance vs Accurracy 2D](./assets/performanceVsAccuracy_D2.svg)
 ![Performance vs Accurracy 3D](./assets/performanceVsAccuracy_D3.svg)
 
+The results show that all three packages are within the same order of magnitude performance. NFFT.jl is fastest for 1D and 2D while in 3D NFFT.jl and FINUFFT are close together for the forward NFFT and FINUFFT is faster for large ``m`` and the adjoint NFFT. 
 
-## Performance Multi-Threading
+## Multi-Threading
 
-Next, we investigate the performance of the NFFT and benchmark the following three operations:
-* pre-computation of the plan
-* forward NFFT
-* adjoint NFFT
-The parameters for the benchmark are 
+Next, we we look at the multi-threading performance and this time keep ``m`` fixed but include different precomputation strategies and also look at the precomputation time.
+
+The parameters for this benchmark are 
 * ``N=(64,64)``
 * ``M=64^2``
 * ``m=4``
 * ``\sigma = 2``
-* 1, 2, 4, 8 and 16 threads
+* 1, 2, 4, 8 threads
+* precompute `NFFT.LUT` and `NFFT.TENSOR` for NFFT.jl and NFFT3
 * sorted random nodes
-All benchmarks are performed with `@belapsed` from [BenchmarkTools.jl](https://github.com/JuliaCI/BenchmarkTools.jl) which takes the minimum of several runs (10 s upper benchmark time). The benchmark is run on a computer with 2 AMD EPYC 7702 CPUs running at 2.0 GHz (256 cores in total) and a main memory of 1024 GB. The benchmark suite is described [here](https://github.com/JuliaMath/NFFT.jl/blob/master/benchmark/Project.toml).
 
-The results are shown in the following graphic
+The results are shown in the following graphic:
 
 ![Performance Multi-threaded](./assets/performance_mt_2_1024_1048576.svg)
 
-
 Observations:
-* All packages are within a factor of about three 
-* They are properly multi-threaded and scale with the number of threads
-* NFFT3 was benchmarked with LUT (parameter PRE\_PSI\_LUT in NFFT3) and TENSOR (NFFT3: PRE\_PSI), the later being the default option. This is because the one has much shorter precomputation time while the other is faster
-* NFFT.jl and FINUFFT are very close to each other.
+* All packages are within a factor of about three.
+* They are properly multi-threaded and scale with the number of threads.
+* `NFFT.TENSOR` is faster than `NFFT.LUT` but has larger precomputation time.
 
-!!! note
-    The results for FINUFFT include the precomputation time within the forward/adjoint NFFT. The reason is that it is currently not possible to create and store two independent plans with FINUFFT and in turn caching of the plan cannot be exploited in the common scenario where the forward and the adjoint NFFT are used in pairs (i.e. within iterative solvers where multiplications with ``\bm{A}^{\mathsf{H}} \bm{W} \bm{A}`` are required). 
