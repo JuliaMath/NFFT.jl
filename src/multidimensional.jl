@@ -202,7 +202,8 @@ function _convolve_LUT_MT!(p::NFFTPlan{T,D,1}, g, fHat, L) where {D,T}
 
   @cthreads for l in CartesianIndices(size(p.blocks))
     if !isempty(p.nodesInBlock[l])
-      isNoEdgeBlock = all(1 .< Tuple(l) .< size(p.blocks))
+      isNoEdgeBlock = all(1 .< Tuple(l) .< size(p.blocks)) && 
+                        all( ntuple(d->l[d]+ size(p.blocks[l],d), D) .<= size(p.blocks))
       toBlock!(p, g, p.blocks[l], p.blockOffsets[l], isNoEdgeBlock)
       if p.params.precompute == LUT
         windowTensor = nothing
