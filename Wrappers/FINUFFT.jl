@@ -16,8 +16,9 @@ mutable struct FINUFFTPlan{T,D} <: AbstractNFFTPlan{T,D,1}
   σ::T
   reltol::T
   fftflags::UInt32
-  plan::FINUFFT.finufft_plan{T}
-  isAdjoined::Bool
+  #plan::FINUFFT.finufft_plan{T}
+  timeTrafo::Float64
+  timeAdjoint::Float64
 end
 
 
@@ -42,18 +43,22 @@ function FINUFFTPlan(x::Matrix{T}, N::NTuple{D,Int};
 
   x_ = 2π * x 
   
-  plan = FINUFFT.finufft_makeplan(2,collect(N),-1,1,reltol;
-                          nthreads = Threads.nthreads(), 
-                          fftw = fftflags, upsampfac=2.0, debug=0)
+  begin # emulate timing
+    plan = FINUFFT.finufft_makeplan(1,collect(N),-1,1,reltol;
+                            nthreads = Threads.nthreads(), 
+                            fftw = fftflags, upsampfac=2.0, debug=0)
 
-  nodes = ntuple(d->vec(x[d,:]), D)
-  FINUFFT.finufft_setpts!(plan, nodes...)
+    nodes = ntuple(d->vec(x[d,:]), D)
+    FINUFFT.finufft_setpts!(plan, nodes...)
+    FINUFFT.finufft_destroy!(plan)
+  end
 
-  p = FINUFFTPlan(N, M, x_, m, T(σ), reltol, fftflags, plan, false)
+  p = FINUFFTPlan(N, M, x_, m, T(σ), reltol, fftflags, 1e19, 1e19) #, plan, isAdjoined)
 
-  finalizer(p -> begin
-    FINUFFT.finufft_destroy!(p.plan)
-  end, p)
+  #finalizer(p -> begin
+  #  println("Run FINUFFT finalizer")
+  #  FINUFFT.finufft_destroy!(p.plan)
+  #end, p)
 
   return p
 end
@@ -70,18 +75,20 @@ AbstractNFFTs.size_out(p::FINUFFTPlan) = (Int(p.M),)
 function LinearAlgebra.mul!(fHat::StridedArray, p::FINUFFTPlan{T,D}, f::AbstractArray;
              verbose=false, timing::Union{Nothing,TimingStats} = nothing) where {T,D}
 
-  if p.isAdjoined
-    FINUFFT.finufft_destroy!(p.plan)
-    p.plan = FINUFFT.finufft_makeplan(2,collect(p.N),-1,1,p.reltol;
+    
+  plan = FINUFFT.finufft_makeplan(2,collect(p.N),-1,1,p.reltol;
                                         nthreads = Threads.nthreads(), 
                                         fftw = p.fftflags, upsampfac=2.0, debug=0)
 
-    nodes = ntuple(d->vec(p.x[d,:]), D)
-    FINUFFT.finufft_setpts!(p.plan, nodes...)
-    p.isAdjoined = false
-  end
+  nodes = ntuple(d->vec(p.x[d,:]), D)
+  FINUFFT.finufft_setpts!(plan, nodes...)
+
   
-  FINUFFT.finufft_exec!(p.plan, f, fHat)
+  t = @elapsed FINUFFT.finufft_exec!(plan, f, fHat)
+
+  p.timeTrafo = min(t, p.timeTrafo)
+
+  FINUFFT.finufft_destroy!(plan)
 
   return fHat
 end
@@ -90,18 +97,18 @@ function LinearAlgebra.mul!(f::StridedArray, pl::Adjoint{Complex{T},<:FINUFFTPla
                      verbose=false, timing::Union{Nothing,TimingStats} = nothing) where {T,D}
   p = pl.parent
 
-  if !p.isAdjoined
-    FINUFFT.finufft_destroy!(p.plan)
-    p.plan = FINUFFT.finufft_makeplan(1,collect(p.N), 1, 1, p.reltol; 
+  plan = FINUFFT.finufft_makeplan(1,collect(p.N), 1, 1, p.reltol; 
                              nthreads = Threads.nthreads(), 
                              fftw = p.fftflags, upsampfac=2.0, debug=0)
 
-    nodes = ntuple(d->vec(p.x[d,:]), D)
-    FINUFFT.finufft_setpts!(p.plan, nodes...)
-    p.isAdjoined = true
-  end
-  
-  FINUFFT.finufft_exec!(p.plan, fHat, f)
+  nodes = ntuple(d->vec(p.x[d,:]), D)
+  FINUFFT.finufft_setpts!(plan, nodes...)
+
+  t = @elapsed FINUFFT.finufft_exec!(plan, fHat, f)
+
+  p.timeAdjoint = min(t, p.timeAdjoint)
+
+  FINUFFT.finufft_destroy!(plan)
 
   return f
 end

@@ -65,7 +65,13 @@ function nfft_performance_comparison(m = 4, σ = 2.0)
           BenchmarkTools.DEFAULT_PARAMETERS.seconds = benchmarkTime[3]
           b = @benchmark mul!($fHat, $p, $f)
           ttrafo = minimum(b).time / 1e9
-        
+
+          if planner == FINUFFTPlan 
+            # This extracts the raw trafo timing that the FINUFFTPlan caches internally
+            ttrafo = p.timeTrafo
+            tadjoint = p.timeAdjoint
+          end          
+
           push!(df, (packagesStr[pl], Threads.nthreads(), D, M, N[D][U], false, preString, m, σ,
                    tpre, ttrafo, tadjoint))
 
