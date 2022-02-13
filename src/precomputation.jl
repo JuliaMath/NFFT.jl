@@ -348,7 +348,7 @@ function _blockSize(n::NTuple{D,Int}, d) where {D}
   elseif d == 2
     return min(16, n[d])
   elseif d == 3
-    return min(8, n[d])
+    return min(16, n[d])
   else
     return 1
   end

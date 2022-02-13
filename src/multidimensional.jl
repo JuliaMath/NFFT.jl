@@ -202,9 +202,7 @@ function _convolve_LUT_MT!(p::NFFTPlan{T,D,1}, g, fHat, L) where {D,T}
 
   @cthreads for l in CartesianIndices(size(p.blocks))
     if !isempty(p.nodesInBlock[l])
-      isNoEdgeBlock = all(1 .< Tuple(l) .< size(p.blocks)) && 
-                        all( ntuple(d->l[d]+ size(p.blocks[l],d), D) .<= size(p.blocks))
-      toBlock!(p, g, p.blocks[l], p.blockOffsets[l], isNoEdgeBlock)
+      toBlock!(p, g, p.blocks[l], p.blockOffsets[l])
       if p.params.precompute == LUT
         windowTensor = nothing
       else
@@ -216,27 +214,44 @@ function _convolve_LUT_MT!(p::NFFTPlan{T,D,1}, g, fHat, L) where {D,T}
   end
 end
 
-@generated function toBlock!(p::NFFTPlan{T,D,1}, g, block, off, isNoEdgeBlock) where {T,D}
-  quote
-    if !isNoEdgeBlock
-      @nloops_ $(D)  (d->l_{d})  (d -> 1:size(block,d)) d->begin
-        # preexpr
-        idx_{d} = ( rem(l_{d}  + off[d] + p.n[d], p.n[d]) + 1)
-      end begin
-        # bodyexpr
-         (@nref $D block l) = (@nref $D g idx)
-      end
-    else
-      @nloops_ $(D)  (d->l_{d})  (d -> 1:size(block,d)) d->begin
-        # preexpr
-        idx_{d} = ( l_{d} + off[d] + 1) 
-      end begin
-        # bodyexpr
-        (@nref $D block l) = (@nref $D g idx)
-      end    
-    end
-    return
+@generated function toBlock!(p::NFFTPlan{T,D,1}, g, block, off) where {T,D}
+quote
+  if off[1] + 2 < 1
+    LA = -(off[1] + 2) + 1 
+    offA = size(g,1) - LA 
+    offB = -LA
+  else
+    LA = 0
+    offB = off[1] + 1
   end
+
+  if offB + size(block,1) > size(g,1)
+    LB = size(g,1) - (offB )  
+    offC = -LB
+  else
+    LB = size(block,1)
+  end
+  
+  @nloops_ $(D-1)  (d->l_{d+1})  (d -> 1:size(block,d+1)) d->begin
+    # preexpr
+    idx_{d+1} = ( rem(l_{d+1}  + off[d+1] + p.n[d+1], p.n[d+1]) + 1)
+  end begin
+    # bodyexpr
+    @inbounds for l_1 = 1:LA
+      idx_1 = l_1 + offA
+      (@nref $D block l) = (@nref $D g idx)
+    end
+    @inbounds for l_1 = (LA+1):LB 
+      idx_1 = l_1 + offB
+      (@nref $D block l) = (@nref $D g idx)
+    end
+    @inbounds for l_1 = (LB+1):size(block,1) 
+      idx_1 = l_1 + offC
+      (@nref $D block l) = (@nref $D g idx)
+    end
+  end
+  return
+ end
 end
 
 @noinline function calcOneNode!(p::NFFTPlan{T,D,1}, fHat, nodesInBlock, block,
@@ -272,6 +287,7 @@ end
   end
 end
 
+
 ##########################
 
 function convolve_adjoint_LUT_MT!(p::NFFTPlan, fHat, g)
@@ -295,44 +311,81 @@ function _convolve_adjoint_LUT_MT!(p::NFFTPlan{T,D,1}, fHat, g, L) where {D,T}
         windowTensor = p.windowTensor[l]
       end
       fillBlock!(p, fHat, p.blocks[l], p.nodesInBlock[l], p.blockOffsets[l], L, scale, p.idxInBlock[l], windowTensor)
-      isNoEdgeBlock = all(1 .< Tuple(l) .< size(p.blocks)) && 
-                        all( ntuple(d->l[d]+ size(p.blocks[l],d), D) .<= size(p.blocks))
+ 
       lock(lk) do
-        addBlock!(p, g, p.blocks[l], p.blockOffsets[l], isNoEdgeBlock)
+        addBlock!(p, g, p.blocks[l], p.blockOffsets[l])
       end
     end
   end
 end
 
-@generated function addBlock!(p::NFFTPlan{T,D,1}, g, block, off, isNoEdgeBlock) where {T,D}
+@generated function addBlock!(p::NFFTPlan{T,D,1}, g, block, off) where {T,D}
   quote
-    if !isNoEdgeBlock
-      @nloops_ $(D)  (d->l_{d})  (d -> 1:size(block,d)) d->begin
-        # preexpr
-        idx_{d} = ( rem(l_{d}  + off[d] + p.n[d], p.n[d]) + 1)
-      end begin
-        # bodyexpr
+    # addBlock! needs to wrap indices. The easies is to apply a modulo operation (rem)
+    # but doing so for each index is slow. We thus only do this for the outer dimensions
+    # For the inner dimension we determine the indices where a wrap occurs. This can happen
+    # 0 time, 1 time, or 2 times. The last is an extreme case where the block size matches
+    # the dimension of g.
+    #
+    # The following code divides the range 1:size(block,1) into up to three parts and then
+    # applies three dedicated for loops. The wrap indices are LA and LB.
+
+    if off[1] + 2 < 1
+      # negative indices: first wrapping
+      LA = -(off[1] + 2) + 1 
+      offA = size(g,1) - LA 
+      offB = -LA
+    else
+      # no negative indices: skip first sum
+      LA = 0
+      offB = off[1] + 1
+    end
+
+    if offB + size(block,1) > size(g,1)
+      # out of bounds indices: second (or first) wrapping
+      LB = size(g,1) - (offB )  
+      offC = -LB
+    else
+      # no out of bounds indices
+      LB = size(block,1)
+    end
+    
+    @nloops_ $(D-1)  (d->l_{d+1})  (d -> 1:size(block,d+1)) d->begin
+      # preexpr
+      idx_{d+1} = ( rem(l_{d+1}  + off[d+1] + p.n[d+1], p.n[d+1]) + 1)
+    end begin
+      # bodyexpr
+      @inbounds for l_1 = 1:LA
+        idx_1 = l_1 + offA
         (@nref $D g idx) += (@nref $D block l)
       end
-    else
-      @nloops_ $(D)  (d->l_{d})  (d -> 1:size(block,d)) d->begin
-        # preexpr
-        idx_{d} = ( l_{d} + off[d] + 1) 
-      end begin
-        # bodyexpr
+      @inbounds for l_1 = (LA+1):LB 
+        idx_1 = l_1 + offB
         (@nref $D g idx) += (@nref $D block l)
-      end    
+      end
+      @inbounds for l_1 = (LB+1):size(block,1) 
+        idx_1 = l_1 + offC
+        (@nref $D g idx) += (@nref $D block l)
+      end
     end
     return
   end
 end
 
-@noinline function fillBlock!(p::NFFTPlan, fHat, block, nodesInBlock, off, L, scale, idxInBlock, windowTensor)
-  for (kLocal,k) in enumerate(nodesInBlock)
-    fillOneNode!(p, fHat, block, off, L, scale, k, kLocal, idxInBlock, windowTensor)
+@noinline function fillBlock!(p::NFFTPlan{T,D,1}, fHat, block, nodesInBlock, off, L::Val{Z}, scale, idxInBlock, windowTensor) where {T,D,Z}
+  if (D >= 3 && Z >= 10) || (D == 2 && Z >= 16) # magic
+    for (kLocal,k) in enumerate(nodesInBlock)
+      fillOneNodeReal!(p, fHat, block, off, L, scale, k, kLocal, idxInBlock, windowTensor)
+    end
+  else
+    for (kLocal,k) in enumerate(nodesInBlock)
+      fillOneNode!(p, fHat, block, off, L, scale, k, kLocal, idxInBlock, windowTensor)
+    end
   end
   return
 end
+
+
 
 @generated function fillOneNode!(p::NFFTPlan{T,D,1}, fHat, block,
                           off, L::Val{Z}, scale, k, kLocal, idxInBlock, windowTensor) where {D,T,Z}
@@ -360,3 +413,43 @@ end
   end
 end
 
+
+@generated function fillOneNodeReal!(p::NFFTPlan{T,D,1}, fHat, block,
+                          off, L::Val{Z}, scale, k, kLocal, idxInBlock, windowTensor) where {D,T,Z}
+  quote
+    fHat_ = fHat[k]
+
+    @nexprs $(D) d -> ((off_d, tmpWin_d) = 
+          _precomputeOneNodeShifted(p.windowLUT, scale, kLocal, d, L, idxInBlock, windowTensor) )
+
+    innerWin = Vector{Float64}(undef,$(2*Z)) # Probably cache me somewhere
+    for l=1:$Z
+      innerWin[2*(l-1)+1] = tmpWin_1[l] * real(fHat_)
+      innerWin[2*(l-1)+2] = tmpWin_1[l] * imag(fHat_)
+    end
+    #innerWin = @ntuple $(2*Z) l -> isodd(l) ? tmpWin_1[(l-1)÷2+1] * real(fHat_) : tmpWin_1[(l-1)÷2+1] * imag(fHat_)
+
+    # Convert to real
+    # We use unsafe_wrap here because reinterpret(T, block) is much slower
+    # and reinterpret(T, reshape, block) is slightly slower than unsafe_wrap
+    # In fact the conversion to real only pays off when using unsafe_wrap, 
+    # otherwise sticking with complex is faster
+    U = @ntuple $(D) d -> d==1 ? 2*size(block,1) : size(block,d)
+    blockReal = unsafe_wrap(Array,reinterpret(Ptr{T},pointer(block)), U)
+    off_1 *= 2
+
+    @nexprs 1 d -> prodWin_{$D} = one(T)
+    @nloops_ $(D-1)  (d->l_{d+1})  (d -> 1:$Z) d->begin
+      # preexpr
+      prodWin_{d} = prodWin_{d+1} * tmpWin_{d+1}[l_{d+1}]
+      block_idx_{d+1} = off_{d+1} + l_{d+1} 
+    end begin
+      # bodyexpr
+      @inbounds @simd for l_1 = 1:$(2*Z)
+        block_idx_1 = off_1 + l_1 
+        (@nref $(D) blockReal block_idx) += innerWin[l_1] * prodWin_1
+      end
+    end
+    return
+  end
+end
