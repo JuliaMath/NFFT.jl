@@ -101,27 +101,30 @@ function plot_accuracy(df, D=1)
   ls = [:solid, :dashdot, :dash, :solid, :dash, :solid, :dash, :solid]
   shape = [:xcross, :circle, :xcross, :circle, :xcross, :xcross, :circle]
 
+  maxTimeTrafo = maximum(df1_[:,:TimeTrafo])
+  maxTimeAdjoint = maximum(df1_[:,:TimeAdjoint])
+
   p1 = plot(df1_[df1_.Package.==packagesStr[1],:ErrorTrafo], 
-            df1_[df1_.Package.==packagesStr[1],:TimeTrafo], # yscale = :log10, #ylims=(1e-4,1e-2),
+            df1_[df1_.Package.==packagesStr[1],:TimeTrafo], ylims=(0.0,maxTimeTrafo),
             xscale = :log10, label=packagesStr[1], lw=2, xlabel = "Relative Error", ylabel="Runtime / s",
             legend = (:topright), title=titleTrafo, shape=:circle, c=:black)
 
   for p=2:length(packagesStr)      
     plot!(p1, df1_[df1_.Package.==packagesStr[p],:ErrorTrafo], 
-          df1_[df1_.Package.==packagesStr[p],:TimeTrafo], #yscale = :log10,
+          df1_[df1_.Package.==packagesStr[p],:TimeTrafo], 
             xscale = :log10, label=packagesStr[p], lw=2, shape=shape[p], ls=ls[p], 
             c=colors[p], msc=colors[p], mc=colors[p], ms=5, msw=2)
   end
 
   p2 = plot(df1_[df1_.Package.==packagesStr[1],:ErrorAdjoint], 
-            df1_[df1_.Package.==packagesStr[1],:TimeAdjoint], #yscale = :log10, #ylims=(1e-4,1e-2),
-            xscale = :log10, label=packagesStr[1], lw=2, xlabel = "Relative Error", ylabel="Runtime / s",
-            legend = (:topright), title=titleAdjoint, shape=:circle, c=:black)
+            df1_[df1_.Package.==packagesStr[1],:TimeAdjoint], ylims=(0.0,maxTimeAdjoint),
+            xscale = :log10,  lw=2, xlabel = "Relative Error", ylabel="Runtime / s", #label=packagesStr[1],
+            legend = nothing, title=titleAdjoint, shape=:circle, c=:black)
 
   for p=2:length(packagesStr)      
     plot!(p2, df1_[df1_.Package.==packagesStr[p],:ErrorAdjoint], 
-          df1_[df1_.Package.==packagesStr[p],:TimeAdjoint], # yscale = :log10,
-            xscale = :log10, label=packagesStr[p], lw=2, shape=shape[p], ls=ls[p], 
+          df1_[df1_.Package.==packagesStr[p],:TimeAdjoint], 
+            xscale = :log10,  lw=2, shape=shape[p], ls=ls[p], #label=packagesStr[p],
             c=colors[p], msc=colors[p], mc=colors[p], ms=5, msw=2)
   end
 
