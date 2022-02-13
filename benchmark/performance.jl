@@ -16,7 +16,7 @@ const preString = "LUT"
 const precomp = [NFFT.LUT, NFFT.TENSOR, NFFT.LUT, NFFT.LUT, NFFT.TENSOR]
 const packagesCtor = [NFFTPlan, NFFTPlan, FINUFFTPlan, NFFT3Plan, NFFT3Plan]
 const packagesStr = ["NFFT.jl/LUT", "NFFT.jl/TENSOR", "FINUFFT", "NFFT3/LUT", "NFFT3/TENSOR"]
-const benchmarkTime = [2, 5, 5]
+const benchmarkTime = [2, 15, 15]
 
 NFFT.FFTW.set_num_threads(Threads.nthreads())
 ccall(("omp_set_num_threads",NFFT3.lib_path_nfft),Nothing,(Int64,),convert(Int64,Threads.nthreads()))
