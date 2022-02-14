@@ -143,11 +143,7 @@ function LinearAlgebra.mul!(fHat::StridedArray, p::NFFTPlan{T,D,R}, f::AbstractA
 
     fill!(p.tmpVec, zero(Complex{T}))
     t1 = @elapsed @inbounds apodization!(p, f, p.tmpVec)
-    #if nprocs() == 1
-        t2 = @elapsed p.forwardFFT * p.tmpVec # fft!(p.tmpVec) or fft!(p.tmpVec, dim)
-    #else
-    #    t2 = @elapsed dim(p) == 0 ? fft!(p.tmpVec) : fft!(p.tmpVec, dim(p))
-    #end
+    t2 = @elapsed p.forwardFFT * p.tmpVec 
     t3 = @elapsed @inbounds convolve!(p, p.tmpVec, fHat)
     if verbose
         @info "Timing: apod=$t1 fft=$t2 conv=$t3"
@@ -168,11 +164,7 @@ function LinearAlgebra.mul!(f::StridedArray, pl::Adjoint{Complex{T},<:NFFTPlan{T
     consistencyCheck(p, f, fHat)    
 
     t1 = @elapsed @inbounds convolve_adjoint!(p, fHat, p.tmpVec)
-    #if nprocs() == 1
-        t2 = @elapsed p.backwardFFT * p.tmpVec # bfft!(p.tmpVec) or bfft!(p.tmpVec, dim)
-    #else
-    #    t2 = @elapsed dim(p) == 0 ? bfft!(p.tmpVec) : bfft!(p.tmpVec, dim(p))
-    #end
+    t2 = @elapsed p.backwardFFT * p.tmpVec
     t3 = @elapsed @inbounds apodization_adjoint!(p, p.tmpVec, f)
     if verbose
         @info "Timing: conv=$t1 fft=$t2 apod=$t3"
