@@ -55,7 +55,7 @@ function CuNFFTPlan(x::Matrix{T}, N::NTuple{D,Int}; dims::Union{Integer,UnitRang
     winHatInvLUT = CuArray(Complex{T}.(windowHatInvLUT[1])) 
     B_ = CuSparseMatrixCSC(Complex{T}.(B))
 
-    CuNFFTPlan(N, NOut, M, x, n, dims_, params, FP, BP, tmpVec, tmpVecHat, 
+    CuNFFTPlan{T,D}(N, NOut, M, x, n, dims_, params, FP, BP, tmpVec, tmpVecHat, 
                apodIdx, windowLUT, winHatInvLUT, B_)
 end
 
@@ -63,38 +63,62 @@ AbstractNFFTs.size_in(p::CuNFFTPlan) = p.N
 AbstractNFFTs.size_out(p::CuNFFTPlan) = p.NOut
 
 """  in-place NFFT on the GPU"""
-function LinearAlgebra.mul!(fHat::CuArray, p::CuNFFTPlan{T,D}, f::CuArray) where {T,D} 
+function LinearAlgebra.mul!(fHat::CuArray, p::CuNFFTPlan{T,D}, f::CuArray; 
+                          verbose=false, timing::Union{Nothing,TimingStats} = nothing) where {T,D} 
   NFFT.consistencyCheck(p, f, fHat)
 
   # apodization
   fill!(p.tmpVec, zero(Complex{T}))
-  p.tmpVecHat[:] .= vec(f).*p.windowHatInvLUT
-  p.tmpVec[p.apodizationIdx] = p.tmpVecHat
+  t1 = @elapsed begin
+    p.tmpVecHat[:] .= vec(f).*p.windowHatInvLUT
+    p.tmpVec[p.apodizationIdx] = p.tmpVecHat
+  end
 
   # FFT
-  p.forwardFFT * p.tmpVec # equivalent to fft!(p.tmpVec)
+  t2 = @elapsed p.forwardFFT * p.tmpVec 
 
   # convolution
-  mul!(fHat, transpose(p.B), vec(p.tmpVec)) 
+  t3 = @elapsed mul!(fHat, transpose(p.B), vec(p.tmpVec)) 
+
+  if verbose
+    @info "Timing: apod=$t1 fft=$t2 conv=$t3"
+  end
+  if timing != nothing
+    timing.conv = t3
+    timing.fft = t2
+    timing.apod = t1
+  end
 
   return fHat
 end
 
 """  in-place adjoint NFFT on the GPU"""
-function LinearAlgebra.mul!(f::CuArray, pl::Adjoint{Complex{T},<:CuNFFTPlan{T,D}}, fHat::CuArray) where {T,D}
+function LinearAlgebra.mul!(f::CuArray, pl::Adjoint{Complex{T},<:CuNFFTPlan{T,D}}, fHat::CuArray;
+                       verbose=false, timing::Union{Nothing,TimingStats} = nothing) where {T,D}
   p = pl.parent
   
   NFFT.consistencyCheck(p, f, fHat)
 
   # adjoint convolution
-  mul!(vec(p.tmpVec), p.B, fHat)
+  t1 = @elapsed mul!(vec(p.tmpVec), p.B, fHat)
 
   # FFT
-  p.backwardFFT * p.tmpVec # bfft!(p.tmpVec)
+  t2 = @elapsed p.backwardFFT * p.tmpVec 
 
   # adjoint apodization
-  p.tmpVecHat[:] = p.tmpVec[p.apodizationIdx]
-  f[:] .= vec(p.tmpVecHat) .* p.windowHatInvLUT
-  
+  t3 = @elapsed begin
+    p.tmpVecHat[:] = p.tmpVec[p.apodizationIdx]
+    f[:] .= vec(p.tmpVecHat) .* p.windowHatInvLUT
+  end
+
+  if verbose
+    @info "Timing: conv=$t1 fft=$t2 apod=$t3"
+  end
+  if timing != nothing
+    timing.conv_adjoint = t1
+    timing.fft_adjoint = t2
+    timing.apod_adjoint = t3
+  end
+
   return f
 end

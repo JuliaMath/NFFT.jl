@@ -1,4 +1,4 @@
-using NFFT, LinearAlgebra
+using NFFT, LinearAlgebra, CuNFFT
 
 include("../Wrappers/NFFT3.jl")
 include("../Wrappers/FINUFFT.jl")
@@ -18,6 +18,11 @@ function nfft_performance_simple(;N = (1024,1024), M = prod(N), m = 4,
   
   fHat = randn(Complex{T}, M)
   f = randn(Complex{T}, N)
+
+  if ctor == CuNFFT.CuNFFTPlan
+    fHat = CuNFFT.CuArray(fHat)
+    f = CuNFFT.CuArray(f)
+  end
 
   NFFT._use_threads[] = threading
   NFFT.FFTW.set_num_threads( threading ? Threads.nthreads() : 1)
