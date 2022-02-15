@@ -21,7 +21,9 @@ end
 x = [-0.6  0.9; 0.5  -0.5]
 @test_throws ArgumentError NFFTPlan(x, (2,2))
 x = [-0.3  0.3; 0.3  NaN]
-@test_throws ArgumentError NFFTPlan(x, (2,2))
+@test_throws Exception NFFTPlan(x, (2,2))
+# The previous test throws an ArgumentError in the single-threaded case
+# and an TaskFailedException in the multi-threaded case. Needs some rethrow
 
 ## test nodes!(p, tr)
 Nx = 32

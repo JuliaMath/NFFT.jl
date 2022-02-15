@@ -367,14 +367,14 @@ function _precomputeBlocks(x::Matrix{T}, n::NTuple{D,Int}, m, LUTSize) where {T,
 
   nodesInBlock = [ Int[] for l in CartesianIndices(numBlocks) ]
   numNodesInBlock = zeros(Int, numBlocks)
-  @cthreads  for k=1:size(x,2)
+  for k=1:size(x,2) # @cthreads 
     idx = ntuple(d->unsafe_trunc(Int, x[d,k]*n[d])÷blockSize[d]+1, D)
     numNodesInBlock[idx...] += 1
   end
   @cthreads  for l in CartesianIndices(numBlocks)
     sizehint!(nodesInBlock[l], numNodesInBlock[l])
   end
-  @cthreads  for k=1:size(x,2)
+  for k=1:size(x,2) # @cthreads  
     idx = ntuple(d->unsafe_trunc(Int, x[d,k]*n[d])÷blockSize[d]+1, D)
     push!(nodesInBlock[idx...], k)
   end
