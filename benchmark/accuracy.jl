@@ -1,4 +1,4 @@
-using NFFT, DataFrames, LinearAlgebra, LaTeXStrings, DelimitedFiles
+using NFFT, DataFrames, LinearAlgebra, LaTeXStrings, DelimitedFiles, CuNFFT
 using Plots; pgfplotsx()
 
 include("../Wrappers/NFFT3.jl")
@@ -11,11 +11,11 @@ include("../Wrappers/FINUFFT.jl")
 #const precomp = [NFFT.FULL, NFFT.LUT, NFFT.TENSOR, NFFT.LUT, NFFT.TENSOR, NFFT.LUT]
 #const blocking = [false, true, true, false, false, false, false]
 
-const packagesCtor = [NFFTPlan,  NFFT3Plan, FINUFFTPlan]
-const packagesStr = ["NFFT.jl",  "NFFT3", "FINUFFT"]
-const packagesNoFinufft = ["NFFT.jl",  "NFFT3"]
-const precomp = [NFFT.TENSOR,  NFFT.TENSOR, NFFT.LUT]
-const blocking = [true, true, true]
+const packagesCtor = [NFFTPlan, CuNFFT.CuNFFTPlan, NFFT3Plan, FINUFFTPlan ]
+const packagesStr = ["NFFT.jl", "CuNFFT.jl", "NFFT3", "FINUFFT", ]
+const packagesNoFinufft = ["NFFT.jl", "CuNFFT.jl", "NFFT3",  ]
+const precomp = [NFFT.TENSOR,  NFFT.FULL, NFFT.TENSOR, NFFT.LUT, ]
+const blocking = [true, true, true, false]
 
 
 const σs = range(1.25, 4, length=12)
@@ -49,10 +49,18 @@ function nfft_accuracy_comparison(Ds, σs, ms)
             if planner != FINUFFT || σ == 2.0 # FINUFFT is not included in sigma sweep
               p = planner(x, N; m, σ, precompute=precomp[pl], blocking=blocking[pl])
 
-              fApprox = adjoint(p) * fHat
+              if planner == CuNFFT.CuNFFTPlan
+               @info "Moin Cuda" 
+                fApprox = Array(adjoint(p) * CuNFFT.CuArray(fHat))
+                gHatApprox = Array(p * CuNFFT.CuArray(f))
+              else
+                fApprox = adjoint(p) * fHat
+                gHatApprox = p * f
+              end
+
               eadjoint = norm(f[:] - fApprox[:]) / norm(f[:])
 
-              gHatApprox = p * f
+
               etrafo = norm(gHat[:] - gHatApprox[:]) / norm(gHat[:])
               
               push!(df, (packagesStr[pl], D, M, N[D], m, σ, etrafo, eadjoint))
@@ -117,9 +125,9 @@ function plot_accuracy_sigma(df, D=1)
   Plots.scalefontsizes(1.5)
   
 
-  colors = [:black, :orange, :green, :brown, :gray, :blue, :purple, :yellow ]
-  ls = [:solid, :dashdot, :dash, :solid, :dash, :solid, :dash, :solid]
-  shape = [:xcross, :circle, :xcross, :circle, :xcross, :xcross, :circle]
+  colors = [:black, :orange, :green, :blue, :gray, :blue, :purple, :yellow ]
+  ls = [:solid, :dash, :dashdot, :solid, :dash, :solid, :dash, :solid]
+  shape = [:xcross, :circle, :xcross, :cross, :xcross, :xcross, :circle]
 
   p1 = plot(σs, df1_[df1_.Package.==packagesNoFinufft[1],:ErrorTrafo], 
             yscale = :log10, label=packagesNoFinufft[1], lw=2, xlabel = L"\sigma", ylabel="Relative Error",
