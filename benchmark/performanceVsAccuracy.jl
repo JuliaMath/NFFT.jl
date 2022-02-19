@@ -71,12 +71,6 @@ function nfft_accuracy_comparison(Ds=1:3)
           b = @benchmark mul!($gHatApprox, $p, $f)
           ttrafo = minimum(b).time / 1e9
 
-          if planner == FINUFFTPlan 
-            # This extracts the raw trafo timing that the FINUFFTPlan caches internally
-            ttrafo = p.timeTrafo
-            tadjoint = p.timeAdjoint
-          end
-
           push!(df, (packagesStr[pl], D, M, N[D], m, σ, etrafo, eadjoint, ttrafo, tadjoint))
 
         end
