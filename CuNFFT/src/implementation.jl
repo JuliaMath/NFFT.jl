@@ -11,7 +11,7 @@ mutable struct CuNFFTPlan{T,D} <: AbstractNFFTPlan{T,D,1}
   tmpVec::CuArray{Complex{T},D}
   tmpVecHat::CuArray{Complex{T},D}
   apodizationIdx::CuArray{Int64,1}
-  windowLUT::Vector{Vector{T}}
+  windowLUT::Matrix{T}
   windowHatInvLUT::CuArray{Complex{T}} # ::Vector{Vector{T}}
   B::CuSparseMatrixCSC{Complex{T}} # ::SparseMatrixCSC{T,Int64}
 end

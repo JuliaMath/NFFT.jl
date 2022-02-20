@@ -108,7 +108,7 @@ end
   end
 end
 
-@generated function _precomputeOneNode(windowLUT::Vector, x::AbstractMatrix{T}, n::NTuple{D,Int}, m, 
+@generated function _precomputeOneNode(windowLUT::Array, x::AbstractMatrix{T}, n::NTuple{D,Int}, m, 
   σ, scale, k, d, L::Val{Z}, LUTSize) where {T,D,Z}
   quote
     xscale = x[d,k] * n[d]
@@ -116,7 +116,11 @@ end
     tmpIdx = @ntuple $(Z) l -> ( rem(l + off + n[d] - 1, n[d]) + 1)
 
     idx = ((xscale - off)*LUTSize)/(m+2)
-    tmpWin =  _precomputeShiftedWindowEntries(windowLUT, idx, scale, d, L)
+    if size(windowLUT,2) == 1 # LUT
+      tmpWin =  _precomputeShiftedWindowEntriesLinear(windowLUT, idx, scale, d, L)
+    else # POLYNOMIAL
+      tmpWin =  _precomputeShiftedWindowEntriesPolynomial(windowLUT, idx, scale, d, L)
+    end
 
     return (tmpIdx, tmpWin)
   end
@@ -127,13 +131,16 @@ end
                                               windowTensor::Nothing) where {Z}
   quote
     y, idx = idxInBlock[d,k]
-    tmpWin =  _precomputeShiftedWindowEntries(windowLUT, idx, scale, d, L)
-
+    if size(windowLUT,2) == 1 # LUT
+      tmpWin =  _precomputeShiftedWindowEntriesLinear(windowLUT, idx, scale, d, L)
+    else # POLYNOMIAL
+      tmpWin =  _precomputeShiftedWindowEntriesPolynomial(windowLUT, idx, scale, d, L)
+    end
     return (y, tmpWin)
   end
 end
 
-@generated  function _precomputeShiftedWindowEntries(windowLUT::Vector, idx, scale, d, L::Val{Z}) where {Z}
+@generated  function _precomputeShiftedWindowEntriesLinear(windowLUT::Array, idx, scale, d, L::Val{Z}) where {Z}
   quote
     idxL = floor(Int,idx) 
     idxInt = Int(idxL)
@@ -152,7 +159,25 @@ end
       idxInt1 = abs( idxInt - (l-1)*scale ) +1 
       idxInt2 = abs( idxInt - (l-1)*scale +1) +1
 
-      (windowLUT[idxInt1] + α * (windowLUT[idxInt2] - windowLUT[idxInt1])) 
+      (windowLUT[idxInt1,1] + α * (windowLUT[idxInt2,1] - windowLUT[idxInt1,1])) 
+    end
+    return tmpWin
+  end
+end
+
+
+@generated  function _precomputeShiftedWindowEntriesPolynomial(windowLUT::Array, idx, scale, d, L::Val{Z}) where {Z}
+  quote
+    idxL = floor(Int,idx) 
+    idxInt = Int(idxL)
+    α = ( idx-idxL )
+
+    tmpWin = @ntuple $(Z) l -> begin
+
+      idxInt1 = abs( idxInt - (l-1)*scale ) +1 
+      idxInt2 = abs( idxInt - (l-1)*scale +1) +1
+
+      (windowLUT[idxInt1,1] + α * (windowLUT[idxInt2,1] - windowLUT[idxInt1,1])) 
     end
     return tmpWin
   end
@@ -197,7 +222,7 @@ Remarks:
   an error while the later variant would silently error.
 """
 function precomputeLUT(win, n, m, σ, K, T)
-  windowLUT = Vector{T}(undef, K+1)
+  windowLUT = Matrix{T}(undef, K+1, 1)
 
   step = (m+2) / (K)
   @cthreads for l = 1:(K+1)
@@ -241,15 +266,15 @@ function precomputation(x::Union{Matrix{T},Vector{T}}, N::NTuple{D,Int}, n, para
     windowLUT = precomputeLUT(win, n, m, σ, LUTSize, T)
     B = sparse([],[],T[])
   elseif precompute == FULL
-    windowLUT = Vector{T}(undef, 0)
+    windowLUT = Matrix{T}(undef, 0, 0)
     B = precomputeB(win, x, N, n, m, M, σ, LUTSize, T)
     #windowLUT = precomputeLUT(win, windowLUT, n, m, σ, LUTSize, T) # These versions are for debugging
     #B = precomputeB(windowLUT, x, N, n, m, M, σ, LUTSize, T)
   elseif precompute == TENSOR
-    windowLUT = Vector{T}(undef, 0)
+    windowLUT = Matrix{T}(undef, 0, 0)
     B = sparse([],[],T[])
   else 
-    windowLUT = Vector{T}(undef, 0)
+    windowLUT = Matrix{T}(undef, 0, 0)
     B = sparse([],[],T[])
     error("precompute = $precompute not supported by NFFT.jl!")
   end

@@ -3,6 +3,7 @@
   LUT = 1
   FULL = 2
   TENSOR = 3
+  POLYNOMIAL = 4
 end
 
 # Timing functions that allow for timing parts of an NFFT
