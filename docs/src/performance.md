@@ -23,6 +23,10 @@ FINUFFT is not included in this plot since it does not allow to adjust the overs
 
 In both figures one can see that independent implementations reach very similar accuracy. There are some smaller implementation details (different window functions, different kernel size handling) that slightly affect the accuracy. For instance NFFT3 uses a kernel size of ``(2m+2)^D`` while NFFT.jl and FINUFFT use ``(2m)^D``.
 
+Finally, we want to look at different precomputation methods. While FULL and TENSOR are exact methods, that just cache the window function, LINEAR and POLYNOMIAL apply an approximation. However, by proper selection of the approximation parameters it is possible to keep the approximation error smaller than the error introduced by cutting of the window function. This can be verified in the following error plot.
+
+![Accurracy](./assets/accuracy_m_pre_D2.svg)
+
 ## Performance 
 
 Next, we investigate the performance of the NFFT and benchmark the following three operations:

@@ -10,7 +10,7 @@ const packagesStr = [ "NFFT.jl/TENSOR", "NFFT.jl/POLY", "NFFT.jl/LINEAR", "NFFT3
 const precomp = [NFFT.TENSOR, NFFT.POLYNOMIAL, NFFT.LINEAR, NFFT.TENSOR, NFFT.LINEAR]
 const blocking = [true, true, true, true, true]
 
-const benchmarkTime = [1, 1]
+const benchmarkTime = [4, 4]
 
 NFFT.FFTW.set_num_threads(Threads.nthreads())
 ccall(("omp_set_num_threads",NFFT3.lib_path_nfft),Nothing,(Int64,),convert(Int64,Threads.nthreads()))

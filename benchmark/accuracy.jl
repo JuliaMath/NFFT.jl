@@ -7,19 +7,17 @@ include("../Wrappers/FINUFFT.jl")
 
 const packagesCtor = [NFFTPlan, NFFTPlan, NFFTPlan, NFFTPlan,  NFFT3Plan, NFFT3Plan, FINUFFTPlan]
 const packagesStr = ["NFFT.jl/FULL", "NFFT.jl/LINEAR", "NFFT.jl/TENSOR", "NFFT.jl/POLY", "NFFT3/LINEAR", "NFFT3/TENSOR", "FINUFFT"]
-const packagesNoFinufft = ["NFFT.jl/FULL", "NFFT.jl/LINEAR", "NFFT.jl/TENSOR", "NFFT.jl/POLY", "NFFT3/LINEAR", "NFFT3/TENSOR"]
 const precomp = [NFFT.FULL, NFFT.LINEAR, NFFT.TENSOR, NFFT.POLYNOMIAL, NFFT.LINEAR, NFFT.TENSOR, NFFT.LINEAR]
 const blocking = [false, true, true, true, false, false, false]
 
 #const packagesCtor = [NFFTPlan, CuNFFT.CuNFFTPlan, NFFT3Plan, FINUFFTPlan ]
 #const packagesStr = ["NFFT.jl", "CuNFFT.jl", "NFFT3", "FINUFFT", ]
-#const packagesNoFinufft = ["NFFT.jl", "CuNFFT.jl", "NFFT3",  ]
 #const precomp = [NFFT.TENSOR,  NFFT.FULL, NFFT.TENSOR, NFFT.LINEAR, ]
 #const blocking = [true, true, true, false]
 
 
 const σs = range(1.25, 4, length=12)
-const ms = 3:8#10
+const ms = 3:10
 const NBase = [4096, 64, 16]
 const Ds = 1:3
 
@@ -71,7 +69,7 @@ function nfft_accuracy_comparison(Ds, σs, ms)
   return df
 end
 
-function plot_accuracy_m(df, D=1)
+function plot_accuracy_m(df, packagesStr, filename, D=1)
 
   σs = range(1.25, 4, length=12)
 
@@ -97,24 +95,24 @@ function plot_accuracy_m(df, D=1)
   end
 
   p2 = plot(ms, df1_[df1_.Package.==packagesStr[1],:ErrorAdjoint], 
-            yscale = :log10, label=packagesStr[1], lw=2, xlabel = "m", ylabel="Relative Error",
-            legend = (:topright), title=L"\textrm{NFFT}^H", shape=:circle, c=:black)
+            yscale = :log10, lw=2, xlabel = "m", ylabel="Relative Error",
+            legend = nothing, title=L"\textrm{NFFT}^H", shape=:circle, c=:black)
 
   for p=2:length(packagesStr)      
     plot!(p2, ms, df1_[df1_.Package.==packagesStr[p],:ErrorAdjoint], 
-            yscale = :log10, label=packagesStr[p], lw=2, shape=shape[p], ls=ls[p], 
+            yscale = :log10, lw=2, shape=shape[p], ls=ls[p], 
             c=colors[p], msc=colors[p], mc=colors[p], ms=5, msw=2)
   end
 
   p = plot(p1, p2, layout=(1,2), size=(800,300), dpi=200)
   #p = plot(p1, layout=(1,2), size=(800,450), dpi=200)
 
-  savefig(p, "../docs/src/assets/accuracy_m_D$(D).svg")
+  savefig(p, joinpath("../docs/src/assets/", filename))
   return p
 end
 
 
-function plot_accuracy_sigma(df, D=1)
+function plot_accuracy_sigma(df, packagesStr, filename,  D=1)
 
   σs = range(1.25, 4, length=12)
 
@@ -128,47 +126,38 @@ function plot_accuracy_sigma(df, D=1)
   ls = [:solid, :dashdot, :dash, :dashdotdot, :solid, :dash, :solid, :dash, :solid]
   shape = [:xcross, :circle, :xcross, :cross, :circle, :xcross, :xcross, :circle]
 
-  p1 = plot(σs, df1_[df1_.Package.==packagesNoFinufft[1],:ErrorTrafo], 
-            yscale = :log10, label=packagesNoFinufft[1], lw=2, xlabel = L"\sigma", ylabel="Relative Error",
+  p1 = plot(σs, df1_[df1_.Package.==packagesStr[1],:ErrorTrafo], 
+            yscale = :log10, label=packagesStr[1], lw=2, xlabel = L"\sigma", ylabel="Relative Error",
             legend = (:topright), title=L"\textrm{NFFT}", shape=:circle, c=:black)
 
-  for p=2:length(packagesNoFinufft)      
-    plot!(p1, σs, df1_[df1_.Package.==packagesNoFinufft[p],:ErrorTrafo], 
-            yscale = :log10, label=packagesNoFinufft[p], lw=2, shape=shape[p], ls=ls[p], 
-            c=colors[p], msc=colors[p], mc=colors[p], ms=5, msw=2)
+  for p=2:length(packagesStr)      
+    plot!(p1, σs, df1_[df1_.Package.==packagesStr[p],:ErrorTrafo], 
+            yscale = :log10, label=packagesStr[p], lw=2, shape=shape[p], ls=ls[p], 
+            c=colors[p], msc=colors[p], mc=colors[p]) #ms=5, msw=2
   end
 
-  p2 = plot(σs, df1_[df1_.Package.==packagesNoFinufft[1],:ErrorAdjoint], 
-            yscale = :log10, label=packagesNoFinufft[1], lw=2, xlabel = L"\sigma", ylabel="Relative Error",
-            legend = (:topright), title=L"\textrm{NFFT}^H", shape=:circle, c=:black)
+  p2 = plot(σs, df1_[df1_.Package.==packagesStr[1],:ErrorAdjoint], 
+            yscale = :log10, lw=2, xlabel = L"\sigma", ylabel="Relative Error",
+            legend = nothing, title=L"\textrm{NFFT}^H", shape=:circle, c=:black)
 
-  for p=2:length(packagesNoFinufft)      
-    plot!(p2, σs, df1_[df1_.Package.==packagesNoFinufft[p],:ErrorAdjoint], 
-            yscale = :log10, label=packagesNoFinufft[p], lw=2, shape=shape[p], ls=ls[p], 
-            c=colors[p], msc=colors[p], mc=colors[p], ms=5, msw=2)
+  for p=2:length(packagesStr)      
+    plot!(p2, σs, df1_[df1_.Package.==packagesStr[p],:ErrorAdjoint], 
+            yscale = :log10, lw=2, shape=shape[p], ls=ls[p], 
+            c=colors[p], msc=colors[p], mc=colors[p]) #ms=5, msw=2
   end
-
-
-  #=p2 = plot(σs, df2_[df2_.Package.=="NFFT.jl",:ErrorTrafo], 
-        yscale = :log10, label="NFFT.jl", lw=2, xlabel = L"\sigma",  ylabel="Relative Error",
-        legend = :none, title=L"m = 8",shape=:circle, c=:black)
-  plot!(p2, σs, df2_[df2_.Package.=="NFFT3",:ErrorTrafo], 
-    yscale = :log10, label="NFFT3", lw=2, shape=:xcross, ls=:solid, 
-    c=:gray, msc=:gray, mc=:gray, ms=6, msw=3)=#
-
 
   p = plot(p1, p2, layout=(1,2), size=(800,300), dpi=200)
 
-  savefig(p, "../docs/src/assets/accuracy_sigma_D$(D).svg")
+  savefig(p, joinpath("../docs/src/assets/",filename))
   return p
 end
 
 
-dfm = nfft_accuracy_comparison(2, [2.0], ms)
-dfσ = nfft_accuracy_comparison(2, σs, [4])
+#dfm = nfft_accuracy_comparison(2, [2.0], ms)
+#dfσ = nfft_accuracy_comparison(2, σs, [4])
 
-writedlm("accuracy_m.csv", Iterators.flatten(([names(dfm)], eachrow(dfm))), ',')
-writedlm("accuracy_sigma.csv", Iterators.flatten(([names(dfσ)], eachrow(dfσ))), ',')
+#writedlm("accuracy_m.csv", Iterators.flatten(([names(dfm)], eachrow(dfm))), ',')
+#writedlm("accuracy_sigma.csv", Iterators.flatten(([names(dfσ)], eachrow(dfσ))), ',')
 
 data, header = readdlm("accuracy_m.csv", ',', header=true);
 dfm = DataFrame(data, vec(header))
@@ -176,8 +165,11 @@ data, header = readdlm("accuracy_sigma.csv", ',', header=true);
 dfσ = DataFrame(data, vec(header))
 
 
-plot_accuracy_m(dfm, 2)
-plot_accuracy_sigma(dfσ, 2)
+
+
+plot_accuracy_m(dfm, ["NFFT.jl/TENSOR", "NFFT3/TENSOR", "FINUFFT"], "accuracy_m_D2.svg", 2)
+plot_accuracy_m(dfm, ["NFFT.jl/FULL", "NFFT.jl/LINEAR", "NFFT.jl/TENSOR", "NFFT.jl/POLY"], "accuracy_m_pre_D2.svg", 2)
+plot_accuracy_sigma(dfσ, ["NFFT.jl/TENSOR", "NFFT3/TENSOR"], "accuracy_sigma_D2.svg", 2)
 
 
 
