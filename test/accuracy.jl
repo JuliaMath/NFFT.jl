@@ -40,7 +40,7 @@ end
 
 @testset "NFFT in multiple dimensions" begin
     for (u,N) in enumerate([(256,), (30,32), (10,12,14), (6,6,6,6)])
-      for (pre, storeApod, blocking) in zip([NFFT.LUT, NFFT.FULL, NFFT.LUT, NFFT.LUT, NFFT.TENSOR, NFFT.POLYNOMIAL],
+      for (pre, storeApod, blocking) in zip([NFFT.LINEAR, NFFT.FULL, NFFT.LINEAR, NFFT.LINEAR, NFFT.TENSOR, NFFT.POLYNOMIAL],
                                            [false, false, true, false, false, false],
                                            [true, false, true, false, true, true])
         eps = [1e-7, 1e-7, 1e-3, 1e-6, 1e-4]

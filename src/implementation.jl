@@ -1,18 +1,4 @@
-#=
-Some internal documentation (especially for people familiar with the nfft)
 
-- The window is precomputed during construction of the NFFT plan
-  When performing the nfft convolution, the LUT of the window is used to
-  perform linear interpolation. This approach is reasonable fast and does not
-  require too much memory. There are, however alternatives known that are either
-  faster or require no extra memory at all.
-
-The non-exported functions apodization and convolve are implemented
-using Cartesian macros, that may not be very readable.
-This is a conscious decision where performance has outweighed readability.
-More readable versions can be (and have been) written using the CartesianRange approach,
-but at the time of writing this approach require *a lot* of memory.
-=#
 
 Base.@kwdef mutable struct NFFTParams{T}
   m::Int = 4
@@ -20,7 +6,7 @@ Base.@kwdef mutable struct NFFTParams{T}
   reltol::T = 1e-9
   window::Symbol = :kaiser_bessel
   LUTSize::Int64 = 0
-  precompute::PrecomputeFlags = LUT
+  precompute::PrecomputeFlags = POLYNOMIAL
   sortNodes::Bool = false
   storeApodizationIdx::Bool = false
   blocking::Bool = true
@@ -49,7 +35,7 @@ mutable struct NFFTPlan{T,D,R} <: AbstractNFFTPlan{T,D,R}
     blocks::Array{Array{Complex{T},D},D}
     nodesInBlock::Array{Vector{Int64},D}
     blockOffsets::Array{NTuple{D,Int64},D}
-    idxInBlock::Array{Matrix{Tuple{Int,Float64}},D} # Why not T?
+    idxInBlock::Array{Matrix{Tuple{Int,T}},D}
     windowTensor::Array{Array{T,3},D}
     # Cache for precompute = FULL
     B::SparseMatrixCSC{T,Int64}
@@ -90,13 +76,17 @@ function NFFTPlan(x::Matrix{T}, N::NTuple{D,Int}; dims::Union{Integer,UnitRange{
 
     params, N, NOut, M, n, dims_ = initParams(x, N, dims; kwargs...)
     
+    if length(NOut) > 1
+      params.precompute = LINEAR
+    end 
+
     tmpVec = Array{Complex{T},D}(undef, n)
 
     fftflags_ = (fftflags != nothing) ? (flags=fftflags,) : NamedTuple()
     FP = plan_fft!(tmpVec, dims_; fftflags_...)
     BP = plan_bfft!(tmpVec, dims_; fftflags_...)
 
-    calcBlocks = (params.precompute == LUT || 
+    calcBlocks = (params.precompute == LINEAR || 
                   params.precompute == TENSOR ||
                   params.precompute == POLYNOMIAL ) && 
                      params.blocking && length(dims_) == D

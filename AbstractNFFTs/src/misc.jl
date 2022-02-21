@@ -1,8 +1,8 @@
 # Precompute flags for the B matrix
 @enum PrecomputeFlags begin
-  LUT = 1
-  FULL = 2
-  TENSOR = 3
+  FULL = 1
+  TENSOR = 2
+  LINEAR = 3
   POLYNOMIAL = 4
 end
 

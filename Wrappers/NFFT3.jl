@@ -11,7 +11,7 @@ end
 
 function NFFT3Plan(x::Matrix{T}, N::NTuple{D,Int}; 
               dims::Union{Integer,UnitRange{Int64}}=1:D,
-              precompute::PrecomputeFlags=LUT, sortNodes=false, 
+              precompute::PrecomputeFlags=TENSOR, sortNodes=false, 
               fftflags=UInt32(NFFT3.FFTW_ESTIMATE), 
               kwargs...) where {D,T}
 
@@ -21,7 +21,7 @@ function NFFT3Plan(x::Matrix{T}, N::NTuple{D,Int};
 
   m, σ, reltol = accuracyParams(; kwargs...)
 
-  if precompute == AbstractNFFTs.LUT
+  if precompute == AbstractNFFTs.LINEAR
     prePsi =  NFFT3.PRE_LIN_PSI 
   elseif precompute == AbstractNFFTs.FULL
     prePsi = NFFT3.PRE_FULL_PSI

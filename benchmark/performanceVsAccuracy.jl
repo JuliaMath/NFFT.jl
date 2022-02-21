@@ -5,10 +5,10 @@ using Plots; pgfplotsx()
 include("../Wrappers/NFFT3.jl")
 include("../Wrappers/FINUFFT.jl")
 
-const packagesCtor = [NFFTPlan, NFFTPlan, NFFT3Plan, FINUFFTPlan]
-const packagesStr = [ "NFFT.jl/TENSOR", "NFFT.jl/POLY", "NFFT3/TENSOR", "FINUFFT"]
-const precomp = [NFFT.TENSOR, NFFT.POLYNOMIAL, NFFT.TENSOR, NFFT.LUT]
-const blocking = [true, true, true, true]
+const packagesCtor = [NFFTPlan, NFFTPlan, NFFTPlan, NFFT3Plan, FINUFFTPlan]
+const packagesStr = [ "NFFT.jl/TENSOR", "NFFT.jl/POLY", "NFFT.jl/LINEAR", "NFFT3/TENSOR", "FINUFFT"]
+const precomp = [NFFT.TENSOR, NFFT.POLYNOMIAL, NFFT.LINEAR, NFFT.TENSOR, NFFT.LINEAR]
+const blocking = [true, true, true, true, true]
 
 const benchmarkTime = [1, 1]
 
@@ -91,9 +91,9 @@ function plot_accuracy(df, D=1)
   titleTrafo = L"\textrm{NFFT}, \textrm{%$(D)D}"
   titleAdjoint = L"\textrm{NFFT}^H, \textrm{%$(D)D}"
 
-  colors = [:black, :orange, :green, :brown, :gray, :blue, :purple, :yellow ]
-  ls = [:solid, :dashdot, :solid, :solid, :dash, :solid, :dash, :solid]
-  shape = [:circle, :circle, :xcross, :circle, :xcross, :xcross, :circle]
+  colors = [:black, :orange, :blue, :green, :brown, :gray, :blue, :purple, :yellow ]
+  ls = [:solid, :dashdot, :solid, :solid, :solid, :dash, :solid, :dash, :solid]
+  shape = [:circle, :circle, :circle, :xcross, :circle, :xcross, :xcross, :circle]
 
   maxTimeTrafo = maximum(df1_[:,:TimeTrafo])
   maxTimeAdjoint = maximum(df1_[:,:TimeAdjoint])
@@ -131,8 +131,8 @@ end
 
 
 
-#df = nfft_accuracy_comparison(Ds)
-#writedlm("performanceVsAccuracy.csv", Iterators.flatten(([names(df)], eachrow(df))), ',')
+df = nfft_accuracy_comparison(Ds)
+writedlm("performanceVsAccuracy.csv", Iterators.flatten(([names(df)], eachrow(df))), ',')
 
 data, header = readdlm("performanceVsAccuracy.csv", ',', header=true);
 df = DataFrame(data, vec(header))

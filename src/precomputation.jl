@@ -122,7 +122,7 @@ end
   end
 end
 
-# precompute = LUT
+# precompute = LINEAR
 
 function _precomputeOneNodeShifted(winLin, winTensor::Nothing, winPoly::Nothing, 
                                     scale, k, d, L, idxInBlock::Matrix)
@@ -316,7 +316,7 @@ function precomputation(x::Union{Matrix{T},Vector{T}}, N::NTuple{D,Int}, n, para
     apodizationIdx = Array{Int64,1}(undef, 0)
   end
 
-  if precompute == LUT
+  if precompute == LINEAR
     windowLinInterp = precomputeLinInterp(win, m, σ, LUTSize, T)
     windowPolyInterp = Matrix{T}(undef, 0, 0)
     B = sparse([],[],T[])
@@ -414,7 +414,7 @@ function precomputeBlocks(x::Matrix{T}, n::NTuple{D,Int}, params, calcBlocks::Bo
     blocks = Array{Array{Complex{T},D},D}(undef,ntuple(d->0,D))
     nodesInBlocks = Array{Vector{Int64},D}(undef,ntuple(d->0,D))
     blockOffsets = Array{NTuple{D,Int64},D}(undef,ntuple(d->0,D))
-    idxInBlock = Array{Matrix{Tuple{Int,Float64}},D}(undef, ntuple(d->0,D))
+    idxInBlock = Array{Matrix{Tuple{Int,T}},D}(undef, ntuple(d->0,D))
     windowTensor = Array{Array{T,3},D}(undef, ntuple(d->0,D))
   end
   
@@ -488,13 +488,13 @@ function _precomputeIdxInBlock(x::Matrix{T}, n::NTuple{D,Int}, m, precompute, LU
 
   numBlocks = size(nodesInBlock)
 
-  idxInBlock = Array{Matrix{Tuple{Int,Float64}},D}(undef, numBlocks)
+  idxInBlock = Array{Matrix{Tuple{Int,T}},D}(undef, numBlocks)
 
   @cthreads for l in CartesianIndices(numBlocks)
     if !isempty(nodesInBlock[l])
 
       # precompute idxInBlock
-      idxInBlock[l] = Matrix{Tuple{Int,Float64}}(undef, D, length(nodesInBlock[l]))
+      idxInBlock[l] = Matrix{Tuple{Int,T}}(undef, D, length(nodesInBlock[l]))
       @inbounds for (i,k) in enumerate(nodesInBlock[l])
         @inbounds for d=1:D
           xtmp = x[d,k] # this is expensive because of cache misses
@@ -502,7 +502,7 @@ function _precomputeIdxInBlock(x::Matrix{T}, n::NTuple{D,Int}, m, precompute, LU
           off = unsafe_trunc(Int, xscale) - m + 1
           y = off - blockOffsets[l][d] - 1
 
-          if precompute == LUT
+          if precompute == LINEAR
             idx = (xscale - off)*(LUTSize÷(m+2))
           else
             idx = (xscale - off - m + 1 -0.5 )
@@ -534,7 +534,7 @@ function _precomputeWindowTensor(x::Matrix{T}, n::NTuple{D,Int}, m, σ, nodesInB
       windowTensor[l] = Array{T,3}(undef, 2*m+1, D, length(nodesInBlock[l]))
       @inbounds for (i,k) in enumerate(nodesInBlock[l])
         @inbounds for d=1:D
-          xtmp = x[d,k] #- 0.5  # this is expensive because of cache misses
+          xtmp = x[d,k]  # this is expensive because of cache misses
           xscale = xtmp * n[d]
           #off = unsafe_trunc(Int, xscale) - m 
           off = floor(Int, xscale) - m + 1

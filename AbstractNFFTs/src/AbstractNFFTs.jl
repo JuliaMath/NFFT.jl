@@ -16,7 +16,7 @@ export nfft, nfft_adjoint, ndft, ndft_adjoint
 
 # misc
 export TimingStats, accuracyParams, reltolToParams, paramsToReltol, 
-       PrecomputeFlags, LUT, FULL, TENSOR, POLYNOMIAL
+       PrecomputeFlags, LINEAR, FULL, TENSOR, POLYNOMIAL
    
 
 include("misc.jl")

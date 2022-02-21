@@ -93,9 +93,9 @@ end
 function AbstractNFFTs.convolve!(p::NFFTPlan{T,D,1}, g::AbstractArray{Complex{T},D}, fHat::StridedVector{U}) where {D,T,U}
   if isempty(p.B)
     if p.params.blocking
-      convolve_LUT_MT!(p, g, fHat)
+      convolve_blocking!(p, g, fHat)
     else
-      convolve_LUT!(p, g, fHat)
+      convolve_nonblocking!(p, g, fHat)
     end
   else
     convolve_sparse_matrix!(p, g, fHat)
@@ -103,12 +103,12 @@ function AbstractNFFTs.convolve!(p::NFFTPlan{T,D,1}, g::AbstractArray{Complex{T}
   return
 end
 
-function convolve_LUT!(p::NFFTPlan{T,D,1}, g::AbstractArray{Complex{T},D}, fHat::StridedVector{U}) where {D,T,U}
+function convolve_nonblocking!(p::NFFTPlan{T,D,1}, g::AbstractArray{Complex{T},D}, fHat::StridedVector{U}) where {D,T,U}
   L = Val(2*p.params.m)
   scale = Int(p.params.LUTSize/(p.params.m+2))
 
   @cthreads for k in 1:p.M
-      fHat[k] = _convolve_LUT(p, g, L, scale, k)
+      fHat[k] = _convolve_nonblocking(p, g, L, scale, k)
   end
 end
 
@@ -117,7 +117,7 @@ function _precomputeOneNode(p::NFFTPlan{T,D,1}, scale, k, d, L::Val{Z}) where {T
                     p.params.m, p.params.σ, scale, k, d, L, p.params.LUTSize) 
 end
 
-@generated function _convolve_LUT(p::NFFTPlan{T,D,1}, g::AbstractArray{Complex{T},D}, L::Val{Z}, scale, k) where {D,T,Z}
+@generated function _convolve_nonblocking(p::NFFTPlan{T,D,1}, g::AbstractArray{Complex{T},D}, L::Val{Z}, scale, k) where {D,T,Z}
   quote
     @nexprs $(D) d -> ((tmpIdx_d, tmpWin_d) = _precomputeOneNode(p, scale, k, d, L) )
   
@@ -146,9 +146,9 @@ end
 function AbstractNFFTs.convolve_adjoint!(p::NFFTPlan{T,D,1}, fHat::AbstractVector{U}, g::StridedArray{Complex{T},D}) where {D,T,U}
   if isempty(p.B)
     if p.params.blocking
-      convolve_adjoint_LUT_MT!(p, fHat, g)
+      convolve_adjoint_blocking!(p, fHat, g)
     else
-      convolve_adjoint_LUT!(p, fHat, g)
+      convolve_adjoint_nonblocking!(p, fHat, g)
     end
   else
     convolve_adjoint_sparse_matrix!(p, fHat, g)
@@ -156,17 +156,17 @@ function AbstractNFFTs.convolve_adjoint!(p::NFFTPlan{T,D,1}, fHat::AbstractVecto
 end
 
 
-function convolve_adjoint_LUT!(p::NFFTPlan{T,D,1}, fHat::AbstractVector{U}, g::StridedArray{Complex{T},D}) where {D,T,U}
+function convolve_adjoint_nonblocking!(p::NFFTPlan{T,D,1}, fHat::AbstractVector{U}, g::StridedArray{Complex{T},D}) where {D,T,U}
   fill!(g, zero(T))
   L = Val(2*p.params.m)
   scale = Int(p.params.LUTSize/(p.params.m+2))
 
   @inbounds @simd for k in 1:p.M
-    _convolve_adjoint_LUT!(p, fHat, g, L, scale, k)
+    _convolve_adjoint_nonblocking!(p, fHat, g, L, scale, k)
   end
 end
 
-@generated function _convolve_adjoint_LUT!(p::NFFTPlan{T,D,1}, fHat::AbstractVector{U}, g::StridedArray{Complex{T},D}, L::Val{Z}, scale, k) where {D,T,U,Z}
+@generated function _convolve_adjoint_nonblocking!(p::NFFTPlan{T,D,1}, fHat::AbstractVector{U}, g::StridedArray{Complex{T},D}, L::Val{Z}, scale, k) where {D,T,U,Z}
   quote
     @nexprs $(D) d -> ((tmpIdx_d, tmpWin_d) = _precomputeOneNode(p, scale, k, d, L) )
 
@@ -203,13 +203,13 @@ function makePolyArrayStatic(p::NFFTPlan)
   end
 end
 
-function convolve_LUT_MT!(p::NFFTPlan, g, fHat)
+function convolve_blocking!(p::NFFTPlan, g, fHat)
   L = Val(2*p.params.m)
   winPoly = makePolyArrayStatic(p)
-  _convolve_LUT_MT!(p, g, fHat, L, winPoly)
+  _convolve_blocking!(p, g, fHat, L, winPoly)
 end
 
-function _convolve_LUT_MT!(p::NFFTPlan{T,D,1}, g, fHat, L, winPoly) where {D,T}
+function _convolve_blocking!(p::NFFTPlan{T,D,1}, g, fHat, L, winPoly) where {D,T}
   scale = Int(p.params.LUTSize/(p.params.m+2))
 
   @cthreads for l in CartesianIndices(size(p.blocks))
@@ -265,13 +265,13 @@ end
 @noinline function calcOneNode!(p::NFFTPlan{T,D,1}, fHat, nodesInBlock, block,
          off, L, scale, idxInBlock, winTensor, winPoly) where {D,T}
   for (kLocal,k) in enumerate(nodesInBlock)
-    fHat[k] = _convolve_LUT_MT(p, block, off, L, scale, k, kLocal, 
+    fHat[k] = _convolve_nonblocking_MT(p, block, off, L, scale, k, kLocal, 
                                idxInBlock, winTensor, winPoly)
   end
   return
 end
 
-@generated function _convolve_LUT_MT(p::NFFTPlan{T,D,1}, block, off, L::Val{Z}, scale, 
+@generated function _convolve_nonblocking_MT(p::NFFTPlan{T,D,1}, block, off, L::Val{Z}, scale, 
                    k, kLocal, idxInBlock, winTensor, winPoly) where {D,T,Z}
   quote
     @nexprs $(D) d -> ((off_d, tmpWin_d) =  _precomputeOneNodeShifted(p.windowLinInterp, winTensor, winPoly, scale, 
@@ -299,13 +299,13 @@ end
 
 ##########################
 
-function convolve_adjoint_LUT_MT!(p::NFFTPlan, fHat, g)
+function convolve_adjoint_blocking!(p::NFFTPlan, fHat, g)
   L = Val(2*p.params.m)
   winPoly = makePolyArrayStatic(p)
-  _convolve_adjoint_LUT_MT!(p, fHat, g, L, winPoly)
+  _convolve_adjoint_blocking!(p, fHat, g, L, winPoly)
 end
 
-function _convolve_adjoint_LUT_MT!(p::NFFTPlan{T,D,1}, fHat, g, L, winPoly) where {D,T}
+function _convolve_adjoint_blocking!(p::NFFTPlan{T,D,1}, fHat, g, L, winPoly) where {D,T}
   #g .= zero(T)
   ccall(:memset, Ptr{Cvoid}, (Ptr{Cvoid}, Cint, Csize_t), g, 0, sizeof(g))
   scale = Int(p.params.LUTSize/(p.params.m+2))

@@ -12,10 +12,10 @@ include("../Wrappers/FINUFFT.jl")
 
 
 const threads = [1,2,4,8]
-const preString = "LUT"
-const precomp = [NFFT.LUT, NFFT.TENSOR, NFFT.LUT, NFFT.LUT, NFFT.TENSOR]
+const preString = "LINEAR"
+const precomp = [NFFT.LINEAR, NFFT.TENSOR, NFFT.LINEAR, NFFT.LINEAR, NFFT.TENSOR]
 const packagesCtor = [NFFTPlan, NFFTPlan, FINUFFTPlan, NFFT3Plan, NFFT3Plan]
-const packagesStr = ["NFFT.jl/LUT", "NFFT.jl/TENSOR", "FINUFFT", "NFFT3/LUT", "NFFT3/TENSOR"]
+const packagesStr = ["NFFT.jl/LINEAR", "NFFT.jl/TENSOR", "FINUFFT", "NFFT3/LINEAR", "NFFT3/TENSOR"]
 const benchmarkTime = [2, 15, 15]
 
 NFFT.FFTW.set_num_threads(Threads.nthreads())
@@ -154,7 +154,7 @@ else
   delete!(ENV, "NFFT_PERF")
 
   plot_performance(df, N=1024, M=1024*1024)
-  #plot_performance(df, pre="LUT", N=1024, M=1024*1024*4)
+  #plot_performance(df, pre="LINEAR", N=1024, M=1024*1024*4)
   #plot_performance(df, pre="FULL") 
   #plot_performance_serial(df)
 end
@@ -174,52 +174,5 @@ end
 
 
 
-
-
-
-
-
-function plot_performance_serial(df)
-
-  Plots.scalefontsizes()
-  Plots.scalefontsizes(1.5)
-
-  tNFFTjl = zeros(2,3)
-  tNFFT3 = zeros(2,3)
-
-  for (j,pre) in enumerate(["LUT", "FULL"])
-    tNFFTjl[j,1] = df[df.Package.=="NFFT.jl" .&& df.Pre.==pre .&& df.Threads.==1,:TimePre][1]
-    tNFFTjl[j,2] = df[df.Package.=="NFFT.jl" .&& df.Pre.==pre .&& df.Threads.==1,:TimeTrafo][1]
-    tNFFTjl[j,3] = df[df.Package.=="NFFT.jl" .&& df.Pre.==pre .&& df.Threads.==1,:TimeAdjoint][1]
-    
-    tNFFT3[j,1] = df[df.Package.=="NFFT3" .&& df.Pre.==pre .&& df.Threads.==1,:TimePre ][1]
-    tNFFT3[j,2] = df[df.Package.=="NFFT3" .&& df.Pre.==pre .&& df.Threads.==1,:TimeTrafo][1]
-    tNFFT3[j,3] = df[df.Package.=="NFFT3" .&& df.Pre.==pre .&& df.Threads.==1,:TimeAdjoint][1]
-  end
-   
-  labelsA = ["Precompute", "NFFT", "adjoint NFFT"]
-  labelsB = [L"\textrm{LUT}", L"\textrm{FULL}"]
-
-  
-  ctg = CategoricalArray(repeat(labelsA, inner = 2))
-  levels!(ctg, labelsA)
-  name = CategoricalArray(repeat(labelsB, outer = 3))
-  levels!(name, labelsB)
-  
-  tmax = max(maximum(tNFFTjl),maximum(tNFFT3))
-  
-  p1 = groupedbar(name, tNFFTjl, ylabel = "time / s",  group = ctg,
-          bar_width = 0.67, title = "NFFT.jl", legend = :none,
-          lw = 0,  size=(800,600), framestyle = :box, ylim=(0,tmax))
-          
-  p2 = groupedbar(name, tNFFT3, ylabel = "time / s",  group = ctg,
-          bar_width = 0.67, title = "NFFT3",
-          lw = 0,  size=(800,600), framestyle = :box, ylim=(0,tmax))
-  
-  p = plot(p1, p2, layout=(1,2), size=(800,600), dpi=200)
-  
-  savefig(p, "../docs/src/assets/performance_serial.svg")
-  return p
-end
 
 

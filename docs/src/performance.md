@@ -55,7 +55,7 @@ The parameters for this benchmark are
 * ``m=4``
 * ``\sigma = 2``
 * 1, 2, 4, 8 threads
-* precompute `NFFT.LUT` and `NFFT.TENSOR` for NFFT.jl and NFFT3
+* precompute `NFFT.LINEAR` and `NFFT.TENSOR` for NFFT.jl and NFFT3
 * sorted random nodes
 
 The results are shown in the following graphic:
@@ -65,5 +65,5 @@ The results are shown in the following graphic:
 Observations:
 * All packages are within a factor of about three.
 * They are properly multi-threaded and scale with the number of threads.
-* `NFFT.TENSOR` is faster than `NFFT.LUT` but has larger precomputation time.
+* `NFFT.TENSOR` is faster than `NFFT.LINEAR` but has larger precomputation time.
 

@@ -14,7 +14,7 @@ function nfft_performance_1()
   let m = 3, σ = 2.0
     @info "NFFT Performance Test 1D"
     let N = 2^19, M = N, x = rand(M) .- 0.5, fHat = rand(M)*1im
-      for pre in [NFFT.LUT, NFFT.FULL]
+      for pre in [NFFT.LINEAR, NFFT.FULL]
         @info "* precomputation = $pre"
         p = plan_nfft(x, N; m, σ, precompute=pre, timing)
         fApprox = *(adjoint(p), fHat; timing)
@@ -26,7 +26,7 @@ function nfft_performance_1()
 
     @info "NFFT Performance Test 2D"
     let N = 1024, M = N*N, x2 = rand(2,M) .- 0.5, fHat = rand(M)*1im
-      for pre in [NFFT.LUT, NFFT.FULL]
+      for pre in [NFFT.LINEAR, NFFT.FULL]
         @info "* precomputation = $pre"
         p = plan_nfft(x2, (N,N); m, σ, precompute=pre, timing)
         fApprox = *(adjoint(p), fHat; timing)
@@ -38,7 +38,7 @@ function nfft_performance_1()
 
     @info "NFFT Performance Test 3D"
     let N = 32, M = N*N*N, x3 = rand(3,M) .- 0.5, fHat = rand(M)*1im
-      for pre in [NFFT.LUT, NFFT.FULL]
+      for pre in [NFFT.LINEAR, NFFT.FULL]
         @info "* precomputation = $pre"
         p = plan_nfft(x3, (N,N,N); m, σ, precompute=pre, timing)
         fApprox = *(adjoint(p), fHat; timing)
@@ -62,7 +62,7 @@ function nfft_performance_2(N = 64, M = N*N*N)
 
   let x = Float32.(rand(3,M) .- 0.5), fHat = ComplexF32.(rand(M)*1im)
 
-    for pre in [NFFT.LUT, NFFT.FULL] 
+    for pre in [NFFT.LINEAR, NFFT.FULL] 
       for threading in [true, false]
         NFFT._use_threads[] = threading
 

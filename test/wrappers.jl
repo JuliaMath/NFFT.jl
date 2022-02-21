@@ -79,7 +79,7 @@ include("../Wrappers/NFFT3.jl")
   σ = 2.0
 
   for (u,N) in enumerate([(256,), (30,32), (10,12,14), (6,6,6,6)])
-    for pre in [NFFT.LUT, NFFT.FULL]
+    for pre in [NFFT.LINEAR, NFFT.FULL]
       eps = 1e-7
       
       D = length(N)

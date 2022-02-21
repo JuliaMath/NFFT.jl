@@ -9,7 +9,7 @@ ccall(("omp_set_num_threads",NFFT3.lib_path_nfft),Nothing,(Int64,),convert(Int64
 NFFT._use_threads[] = (Threads.nthreads() > 1)
 
 function nfft_performance_simple(;N = (1024,1024), M = prod(N), m = 4, 
-  σ = 2.0, threading=false, pre=NFFT.LUT, T=Float64, blocking=true,
+  σ = 2.0, threading=false, pre=NFFT.LINEAR, T=Float64, blocking=true,
   storeApodizationIdx=false, fftflags=NFFT.FFTW.MEASURE, ctor=NFFTPlan)
 
   timing = TimingStats()

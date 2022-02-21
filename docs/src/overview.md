@@ -96,7 +96,7 @@ The NFFT has the following parameters that can be passed as a keyword argument t
 | `m`      | Kernel size parameter. The convolution matrix has `2m+1` non-zero entries around each sampling node in each dimension.  |  `m` $\in \{2,\dots,8\}$      |
 | `σ`     | Oversampling factor. The inner FFT is of size `σN` | `σ` $\in [1.25, 2.0]$      |
 | `window`   | Convolution window: Available are `:gauss`,  `:spline`, `:kaiser_bessel_rev`, `:kaiser_bessel`.    | `:kaiser_bessel` |
-| `precompute`        | Flag indicating the precomputation strategy for the convolution matrix         | `LUT`      |
+| `precompute`        | Flag indicating the precomputation strategy for the convolution matrix         | `TENSOR`      |
 | `sortNodes`        | Flag if the nodes should be sorted in a lexicographic way         | `false`      |
 | `storeApodizationIdx`        | Flag if the apodization indices should be stored. Currently this option is necessary on the GPU       | `false`      |
 | `fftflags`        | flags passed to the inner `AbstractFFT` as `flags`. This can for instance be `FFTW.MEASURE` in order to optimize the inner FFT    | `FFTW.ESTIMATE`      |
@@ -117,13 +117,13 @@ independently of the chosen window.
 
 ## Precomputation
 
-There are different pre-computation strategies available. Again you don't need to change this parameter since the default `NFFT.LUT` is the best choice in most situations. However, our GPU implementation requires `NFFT.FULL` and thus there sometimes is need to change this value. In addition, it allows NFFT researchers to enforce a certain precomputation strategy, which can be mandatory when comparing different implementations in benchmarks.
+There are different pre-computation strategies available. Again you don't need to change this parameter since the default `NFFT.LINEAR` is the best choice in most situations. However, our GPU implementation requires `NFFT.FULL` and thus there sometimes is need to change this value. In addition, it allows NFFT researchers to enforce a certain precomputation strategy, which can be mandatory when comparing different implementations in benchmarks.
 
 | Value                          | Description      | 
 | :--------------------------------- | :--------------- | 
-| `NFFT.LUT`      | This option uses a look-up table to first sample the window function and later use linear interpolation during the actual convolution. |  
+| `NFFT.LINEAR`      | This option uses a look-up table to first sample the window function and later use linear interpolation during the actual convolution. |  
 | `NFFT.FULL`      | This option precomputes the entire convolution matrix and stores it as a `SparseMatrixCSC`. This option requires more memory and the longest precomputation time. This allows simple GPU implementations see CuNFFT.  | 
-| `NFFT.TENSOR`      | This option calculates the window on demand but exploits the tensor structure for multi-dimensional plans. Hence, this option makes no approximation but reaches a similar performance as `NFFT.LUT`. This option is right now only available in the NFFT3 backend.  | 
+| `NFFT.TENSOR`      | This option calculates the window on demand but exploits the tensor structure for multi-dimensional plans. Hence, this option makes no approximation but reaches a similar performance as `NFFT.LINEAR`. This option is right now only available in the NFFT3 backend.  | 
 
 ## Multi-Threading
 
@@ -133,7 +133,7 @@ julia -t T
 ```
 where `T` it the number of desired threads. NFFT.jl will use all threads that are specified. 
 
-Currently, the NFFT.LUT is fully multi-threaded while NFFT.LUT is multi-threaded in the precomputation
+Currently, the NFFT.LINEAR is fully multi-threaded while NFFT.LINEAR is multi-threaded in the precomputation
 and forward transformation, while the adjoint is not yet multi-threaded.
 
 ## Directional

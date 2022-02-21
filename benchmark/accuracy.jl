@@ -6,15 +6,15 @@ include("../Wrappers/FINUFFT.jl")
 
 
 const packagesCtor = [NFFTPlan, NFFTPlan, NFFTPlan, NFFTPlan,  NFFT3Plan, NFFT3Plan, FINUFFTPlan]
-const packagesStr = ["NFFT.jl/FULL", "NFFT.jl/LUT", "NFFT.jl/TENSOR", "NFFT.jl/POLY", "NFFT3/LUT", "NFFT3/TENSOR", "FINUFFT"]
-const packagesNoFinufft = ["NFFT.jl/FULL", "NFFT.jl/LUT", "NFFT.jl/TENSOR", "NFFT.jl/POLY", "NFFT3/LUT", "NFFT3/TENSOR"]
-const precomp = [NFFT.FULL, NFFT.LUT, NFFT.TENSOR, NFFT.POLYNOMIAL, NFFT.LUT, NFFT.TENSOR, NFFT.LUT]
+const packagesStr = ["NFFT.jl/FULL", "NFFT.jl/LINEAR", "NFFT.jl/TENSOR", "NFFT.jl/POLY", "NFFT3/LINEAR", "NFFT3/TENSOR", "FINUFFT"]
+const packagesNoFinufft = ["NFFT.jl/FULL", "NFFT.jl/LINEAR", "NFFT.jl/TENSOR", "NFFT.jl/POLY", "NFFT3/LINEAR", "NFFT3/TENSOR"]
+const precomp = [NFFT.FULL, NFFT.LINEAR, NFFT.TENSOR, NFFT.POLYNOMIAL, NFFT.LINEAR, NFFT.TENSOR, NFFT.LINEAR]
 const blocking = [false, true, true, true, false, false, false]
 
 #const packagesCtor = [NFFTPlan, CuNFFT.CuNFFTPlan, NFFT3Plan, FINUFFTPlan ]
 #const packagesStr = ["NFFT.jl", "CuNFFT.jl", "NFFT3", "FINUFFT", ]
 #const packagesNoFinufft = ["NFFT.jl", "CuNFFT.jl", "NFFT3",  ]
-#const precomp = [NFFT.TENSOR,  NFFT.FULL, NFFT.TENSOR, NFFT.LUT, ]
+#const precomp = [NFFT.TENSOR,  NFFT.FULL, NFFT.TENSOR, NFFT.LINEAR, ]
 #const blocking = [true, true, true, false]
 
 
