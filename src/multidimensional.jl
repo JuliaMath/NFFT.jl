@@ -265,13 +265,13 @@ end
 @noinline function calcOneNode!(p::NFFTPlan{T,D,1}, fHat, nodesInBlock, block,
          off, L, scale, idxInBlock, winTensor, winPoly) where {D,T}
   for (kLocal,k) in enumerate(nodesInBlock)
-    fHat[k] = _convolve_nonblocking_MT(p, block, off, L, scale, k, kLocal, 
+    fHat[k] = _convolve_nonblocking(p, block, off, L, scale, k, kLocal, 
                                idxInBlock, winTensor, winPoly)
   end
   return
 end
 
-@generated function _convolve_nonblocking_MT(p::NFFTPlan{T,D,1}, block, off, L::Val{Z}, scale, 
+@generated function _convolve_nonblocking(p::NFFTPlan{T,D,1}, block, off, L::Val{Z}, scale, 
                    k, kLocal, idxInBlock, winTensor, winPoly) where {D,T,Z}
   quote
     @nexprs $(D) d -> ((off_d, tmpWin_d) =  _precomputeOneNodeShifted(p.windowLinInterp, winTensor, winPoly, scale, 
