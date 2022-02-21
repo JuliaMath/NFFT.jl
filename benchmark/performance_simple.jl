@@ -19,10 +19,10 @@ function nfft_performance_simple(;N = (1024,1024), M = prod(N), m = 4,
   fHat = randn(Complex{T}, M)
   f = randn(Complex{T}, N)
 
-  if ctor == CuNFFT.CuNFFTPlan
+  #=if ctor == CuNFFT.CuNFFTPlan
     fHat = CuNFFT.CuArray(fHat)
     f = CuNFFT.CuArray(f)
-  end
+  end=#
 
   NFFT._use_threads[] = threading
   NFFT.FFTW.set_num_threads( threading ? Threads.nthreads() : 1)
@@ -32,12 +32,6 @@ function nfft_performance_simple(;N = (1024,1024), M = prod(N), m = 4,
 
   tadjoint = @elapsed mul!(f, adjoint(p), fHat; timing)
   ttrafo = @elapsed mul!(fHat, p, f; timing)
-
-  if ctor == FINUFFTPlan 
-    # This extracts the raw trafo timing that the FINUFFTPlan caches internally
-    ttrafo = p.timeTrafo
-    tadjoint = p.timeAdjoint
-  end
 
   @info tpre, ttrafo, tadjoint
 

@@ -5,21 +5,21 @@ include("../Wrappers/NFFT3.jl")
 include("../Wrappers/FINUFFT.jl")
 
 
-#const packagesCtor = [NFFTPlan, NFFTPlan, NFFTPlan,  NFFT3Plan, NFFT3Plan, FINUFFTPlan]
-#const packagesStr = ["NFFT.jl/FULL", "NFFT.jl/LUT", "NFFT.jl/TENSOR", "NFFT3/LUT", "NFFT3/TENSOR", "FINUFFT"]
-#const packagesNoFinufft = ["NFFT.jl/FULL", "NFFT.jl/LUT", "NFFT.jl/TENSOR", "NFFT3/LUT", "NFFT3/TENSOR"]
-#const precomp = [NFFT.FULL, NFFT.LUT, NFFT.TENSOR, NFFT.LUT, NFFT.TENSOR, NFFT.LUT]
-#const blocking = [false, true, true, false, false, false, false]
+const packagesCtor = [NFFTPlan, NFFTPlan, NFFTPlan, NFFTPlan,  NFFT3Plan, NFFT3Plan, FINUFFTPlan]
+const packagesStr = ["NFFT.jl/FULL", "NFFT.jl/LUT", "NFFT.jl/TENSOR", "NFFT.jl/POLY", "NFFT3/LUT", "NFFT3/TENSOR", "FINUFFT"]
+const packagesNoFinufft = ["NFFT.jl/FULL", "NFFT.jl/LUT", "NFFT.jl/TENSOR", "NFFT.jl/POLY", "NFFT3/LUT", "NFFT3/TENSOR"]
+const precomp = [NFFT.FULL, NFFT.LUT, NFFT.TENSOR, NFFT.POLYNOMIAL, NFFT.LUT, NFFT.TENSOR, NFFT.LUT]
+const blocking = [false, true, true, true, false, false, false]
 
-const packagesCtor = [NFFTPlan, CuNFFT.CuNFFTPlan, NFFT3Plan, FINUFFTPlan ]
-const packagesStr = ["NFFT.jl", "CuNFFT.jl", "NFFT3", "FINUFFT", ]
-const packagesNoFinufft = ["NFFT.jl", "CuNFFT.jl", "NFFT3",  ]
-const precomp = [NFFT.TENSOR,  NFFT.FULL, NFFT.TENSOR, NFFT.LUT, ]
-const blocking = [true, true, true, false]
+#const packagesCtor = [NFFTPlan, CuNFFT.CuNFFTPlan, NFFT3Plan, FINUFFTPlan ]
+#const packagesStr = ["NFFT.jl", "CuNFFT.jl", "NFFT3", "FINUFFT", ]
+#const packagesNoFinufft = ["NFFT.jl", "CuNFFT.jl", "NFFT3",  ]
+#const precomp = [NFFT.TENSOR,  NFFT.FULL, NFFT.TENSOR, NFFT.LUT, ]
+#const blocking = [true, true, true, false]
 
 
 const σs = range(1.25, 4, length=12)
-const ms = 3:10
+const ms = 3:8#10
 const NBase = [4096, 64, 16]
 const Ds = 1:3
 
@@ -49,14 +49,13 @@ function nfft_accuracy_comparison(Ds, σs, ms)
             if planner != FINUFFT || σ == 2.0 # FINUFFT is not included in sigma sweep
               p = planner(x, N; m, σ, precompute=precomp[pl], blocking=blocking[pl])
 
-              if planner == CuNFFT.CuNFFTPlan
-               @info "Moin Cuda" 
-                fApprox = Array(adjoint(p) * CuNFFT.CuArray(fHat))
-                gHatApprox = Array(p * CuNFFT.CuArray(f))
-              else
+              #if planner == CuNFFT.CuNFFTPlan
+              #  fApprox = Array(adjoint(p) * CuNFFT.CuArray(fHat))
+              #  gHatApprox = Array(p * CuNFFT.CuArray(f))
+              #else
                 fApprox = adjoint(p) * fHat
                 gHatApprox = p * f
-              end
+              #end
 
               eadjoint = norm(f[:] - fApprox[:]) / norm(f[:])
 
@@ -83,9 +82,9 @@ function plot_accuracy_m(df, D=1)
   Plots.scalefontsizes(1.5)
   
 
-  colors = [:black, :orange, :green, :brown, :gray, :blue, :purple, :yellow ]
-  ls = [:solid, :dashdot, :dash, :solid, :dash, :solid, :dash, :solid]
-  shape = [:xcross, :circle, :xcross, :circle, :xcross, :xcross, :circle]
+  colors = [:black, :orange, :green, :gray, :brown,  :blue, :purple, :yellow ]
+  ls = [:solid, :dashdot, :dash, :dashdotdot, :solid, :dash, :solid, :dash, :solid]
+  shape = [:xcross, :circle, :xcross, :cross, :circle, :xcross, :xcross, :circle]
 
   p1 = plot(ms, df1_[df1_.Package.==packagesStr[1],:ErrorTrafo], 
             yscale = :log10, label=packagesStr[1], lw=2, xlabel = "m", ylabel="Relative Error",
@@ -125,9 +124,9 @@ function plot_accuracy_sigma(df, D=1)
   Plots.scalefontsizes(1.5)
   
 
-  colors = [:black, :orange, :green, :blue, :gray, :blue, :purple, :yellow ]
-  ls = [:solid, :dash, :dashdot, :solid, :dash, :solid, :dash, :solid]
-  shape = [:xcross, :circle, :xcross, :cross, :xcross, :xcross, :circle]
+  colors = [:black, :orange, :green, :gray, :brown,  :blue, :purple, :yellow ]
+  ls = [:solid, :dashdot, :dash, :dashdotdot, :solid, :dash, :solid, :dash, :solid]
+  shape = [:xcross, :circle, :xcross, :cross, :circle, :xcross, :xcross, :circle]
 
   p1 = plot(σs, df1_[df1_.Package.==packagesNoFinufft[1],:ErrorTrafo], 
             yscale = :log10, label=packagesNoFinufft[1], lw=2, xlabel = L"\sigma", ylabel="Relative Error",

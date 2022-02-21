@@ -113,7 +113,8 @@ function convolve_LUT!(p::NFFTPlan{T,D,1}, g::AbstractArray{Complex{T},D}, fHat:
 end
 
 function _precomputeOneNode(p::NFFTPlan{T,D,1}, scale, k, d, L::Val{Z}) where {T,D,Z}
-    return _precomputeOneNode(p.windowLUT, p.x, p.n, p.params.m, p.params.σ, scale, k, d, L, p.params.LUTSize) 
+    return _precomputeOneNode(p.windowLinInterp, p.x, p.n, 
+                    p.params.m, p.params.σ, scale, k, d, L, p.params.LUTSize) 
 end
 
 @generated function _convolve_LUT(p::NFFTPlan{T,D,1}, g::AbstractArray{Complex{T},D}, L::Val{Z}, scale, k) where {D,T,Z}
@@ -192,24 +193,31 @@ end
 
 ######## blocked multi-threading #########
 
-function convolve_LUT_MT!(p::NFFTPlan, g, fHat)
-  L = Val(2*p.params.m)
-  _convolve_LUT_MT!(p, g, fHat, L)
+
+function makePolyArrayStatic(p::NFFTPlan)
+  if p.params.precompute == POLYNOMIAL
+    P = p.windowPolyInterp
+    return ntuple(d-> ntuple(g-> P[g,d], size(P,1)), size(P,2))
+  else
+    return nothing
+  end
 end
 
-function _convolve_LUT_MT!(p::NFFTPlan{T,D,1}, g, fHat, L) where {D,T}
+function convolve_LUT_MT!(p::NFFTPlan, g, fHat)
+  L = Val(2*p.params.m)
+  winPoly = makePolyArrayStatic(p)
+  _convolve_LUT_MT!(p, g, fHat, L, winPoly)
+end
+
+function _convolve_LUT_MT!(p::NFFTPlan{T,D,1}, g, fHat, L, winPoly) where {D,T}
   scale = Int(p.params.LUTSize/(p.params.m+2))
 
   @cthreads for l in CartesianIndices(size(p.blocks))
     if !isempty(p.nodesInBlock[l])
       toBlock!(p, g, p.blocks[l], p.blockOffsets[l])
-      if p.params.precompute == LUT
-        windowTensor = nothing
-      else
-        windowTensor = p.windowTensor[l]
-      end
+      winTensor = (p.params.precompute == TENSOR) ? p.windowTensor[l] : nothing
       calcOneNode!(p, fHat, p.nodesInBlock[l], p.blocks[l], p.blockOffsets[l], L, 
-                   scale, p.idxInBlock[l], windowTensor)
+                   scale, p.idxInBlock[l], winTensor, winPoly)
     end
   end
 end
@@ -255,18 +263,19 @@ quote
 end
 
 @noinline function calcOneNode!(p::NFFTPlan{T,D,1}, fHat, nodesInBlock, block,
-         off, L::Val{Z}, scale, idxInBlock, windowTensor) where {D,T,Z}
+         off, L, scale, idxInBlock, winTensor, winPoly) where {D,T}
   for (kLocal,k) in enumerate(nodesInBlock)
-    fHat[k] = _convolve_LUT_MT(p, block, off, L, scale, k, kLocal, idxInBlock, windowTensor)
+    fHat[k] = _convolve_LUT_MT(p, block, off, L, scale, k, kLocal, 
+                               idxInBlock, winTensor, winPoly)
   end
   return
 end
 
-@generated function _convolve_LUT_MT(p::NFFTPlan{T,D,1}, block,
-                          off, L::Val{Z}, scale, k, kLocal, idxInBlock, windowTensor) where {D,T,Z}
+@generated function _convolve_LUT_MT(p::NFFTPlan{T,D,1}, block, off, L::Val{Z}, scale, 
+                   k, kLocal, idxInBlock, winTensor, winPoly) where {D,T,Z}
   quote
-    @nexprs $(D) d -> ((off_d, tmpWin_d) = 
-       _precomputeOneNodeShifted(p.windowLUT, scale, kLocal, d, L, idxInBlock, windowTensor) )
+    @nexprs $(D) d -> ((off_d, tmpWin_d) =  _precomputeOneNodeShifted(p.windowLinInterp, winTensor, winPoly, scale, 
+                      kLocal, d, L, idxInBlock) )
 
     fHat = zero(Complex{T})
 
@@ -292,10 +301,11 @@ end
 
 function convolve_adjoint_LUT_MT!(p::NFFTPlan, fHat, g)
   L = Val(2*p.params.m)
-  _convolve_adjoint_LUT_MT!(p, fHat, g, L)
+  winPoly = makePolyArrayStatic(p)
+  _convolve_adjoint_LUT_MT!(p, fHat, g, L, winPoly)
 end
 
-function _convolve_adjoint_LUT_MT!(p::NFFTPlan{T,D,1}, fHat, g, L) where {D,T}
+function _convolve_adjoint_LUT_MT!(p::NFFTPlan{T,D,1}, fHat, g, L, winPoly) where {D,T}
   #g .= zero(T)
   ccall(:memset, Ptr{Cvoid}, (Ptr{Cvoid}, Cint, Csize_t), g, 0, sizeof(g))
   scale = Int(p.params.LUTSize/(p.params.m+2))
@@ -305,12 +315,10 @@ function _convolve_adjoint_LUT_MT!(p::NFFTPlan{T,D,1}, fHat, g, L) where {D,T}
     if !isempty(p.nodesInBlock[l])
       # p.blocks[l] .= zero(T)
       ccall(:memset, Ptr{Cvoid}, (Ptr{Cvoid}, Cint, Csize_t), p.blocks[l], 0, sizeof(p.blocks[l]))
-      if p.params.precompute == LUT
-        windowTensor = nothing
-      else
-        windowTensor = p.windowTensor[l]
-      end
-      fillBlock!(p, fHat, p.blocks[l], p.nodesInBlock[l], p.blockOffsets[l], L, scale, p.idxInBlock[l], windowTensor)
+
+      winTensor = (p.params.precompute == TENSOR) ? p.windowTensor[l] : nothing
+      fillBlock!(p, fHat, p.blocks[l], p.nodesInBlock[l], p.blockOffsets[l], L, scale, 
+                 p.idxInBlock[l], winTensor, winPoly)
  
       lock(lk) do
         addBlock!(p, g, p.blocks[l], p.blockOffsets[l])
@@ -372,28 +380,28 @@ end
   end
 end
 
-@noinline function fillBlock!(p::NFFTPlan{T,D,1}, fHat, block, nodesInBlock, off, L::Val{Z}, scale, idxInBlock, windowTensor) where {T,D,Z}
+@noinline function fillBlock!(p::NFFTPlan{T,D,1}, fHat, block, nodesInBlock, off, L::Val{Z}, scale, 
+                              idxInBlock, winTensor, winPoly) where {T,D,Z}
   if (D >= 3 && Z >= 10) || (D == 2 && Z >= 16) # magic
     for (kLocal,k) in enumerate(nodesInBlock)
-      fillOneNodeReal!(p, fHat, block, off, L, scale, k, kLocal, idxInBlock, windowTensor)
+      fillOneNodeReal!(p, fHat, block, off, L, scale, k, kLocal, idxInBlock, winTensor, winPoly)
     end
   else
     for (kLocal,k) in enumerate(nodesInBlock)
-      fillOneNode!(p, fHat, block, off, L, scale, k, kLocal, idxInBlock, windowTensor)
+      fillOneNode!(p, fHat, block, off, L, scale, k, kLocal, idxInBlock, winTensor, winPoly)
     end
   end
   return
 end
 
 
-
-@generated function fillOneNode!(p::NFFTPlan{T,D,1}, fHat, block,
-                          off, L::Val{Z}, scale, k, kLocal, idxInBlock, windowTensor) where {D,T,Z}
+@generated function fillOneNode!(p::NFFTPlan{T,D,1}, fHat, block, off, L::Val{Z}, scale, 
+              k, kLocal, idxInBlock, winTensor, winPoly) where {D,T,Z}
   quote
     fHat_ = fHat[k]
 
-    @nexprs $(D) d -> ((off_d, tmpWin_d) = 
-          _precomputeOneNodeShifted(p.windowLUT, scale, kLocal, d, L, idxInBlock, windowTensor) )
+    @nexprs $(D) d -> ((off_d, tmpWin_d) = _precomputeOneNodeShifted(p.windowLinInterp, winTensor, winPoly, scale, kLocal, d, L,
+                                             idxInBlock) )
 
     innerWin = @ntuple $(Z) l -> tmpWin_1[l] * fHat_
 
@@ -414,13 +422,13 @@ end
 end
 
 
-@generated function fillOneNodeReal!(p::NFFTPlan{T,D,1}, fHat, block,
-                          off, L::Val{Z}, scale, k, kLocal, idxInBlock, windowTensor) where {D,T,Z}
+@generated function fillOneNodeReal!(p::NFFTPlan{T,D,1}, fHat, block, off, L::Val{Z}, scale, k, 
+                kLocal, idxInBlock, winTensor, winPoly) where {D,T,Z}
   quote
     fHat_ = fHat[k]
 
-    @nexprs $(D) d -> ((off_d, tmpWin_d) = 
-          _precomputeOneNodeShifted(p.windowLUT, scale, kLocal, d, L, idxInBlock, windowTensor) )
+    @nexprs $(D) d -> ((off_d, tmpWin_d) =  _precomputeOneNodeShifted(p.windowLinInterp, winTensor, winPoly, scale, kLocal, 
+                                              d, L, idxInBlock) )
 
     innerWin = Vector{Float64}(undef,$(2*Z)) # Probably cache me somewhere
     for l=1:$Z

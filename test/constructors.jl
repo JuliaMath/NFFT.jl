@@ -43,7 +43,8 @@ NFFT.nodes!(p2, trj1)
 for n in fieldnames(typeof(p1.params))
   @test getfield(p1.params,n) == getfield(p2.params,n)
 end
-@test p1.windowLUT == p2.windowLUT
+@test p1.windowLinInterp == p2.windowLinInterp
+@test p1.windowPolyInterp == p2.windowPolyInterp
 @test p1.windowHatInvLUT == p2.windowHatInvLUT
 @test p1.B == p2.B
 

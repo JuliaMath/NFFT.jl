@@ -4,7 +4,7 @@ function sdc(p::AbstractNFFTPlan{T,D,1}; iters=20) where {T,D}
     # Uses method of Pipe & Menon, 1999. Mag Reson Med, 186, 179.
     weights = ones(Complex{T}, p.M)
     weights_tmp = similar(weights)
-    scaling_factor = !isempty(p.B) ? maximum(p.B)^2 :  maximum(maximum(p.windowLUT))^2
+    scaling_factor = !isempty(p.B) ? maximum(p.B)^2 : maximum(maximum(p.windowLinInterp))^2
     # Pre-weighting to correct non-uniform sample density
     for i in 1:iters
         convolve_adjoint!(p, weights, p.tmpVec)

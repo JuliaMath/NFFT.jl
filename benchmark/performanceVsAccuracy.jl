@@ -5,12 +5,12 @@ using Plots; pgfplotsx()
 include("../Wrappers/NFFT3.jl")
 include("../Wrappers/FINUFFT.jl")
 
-const packagesCtor = [NFFTPlan,  NFFT3Plan, FINUFFTPlan]
-const packagesStr = [ "NFFT.jl/TENSOR",  "NFFT3/TENSOR", "FINUFFT"]
-const precomp = [NFFT.TENSOR, NFFT.TENSOR, NFFT.LUT]
-const blocking = [true, true, true]
+const packagesCtor = [NFFTPlan, NFFTPlan, NFFT3Plan, FINUFFTPlan]
+const packagesStr = [ "NFFT.jl/TENSOR", "NFFT.jl/POLY", "NFFT3/TENSOR", "FINUFFT"]
+const precomp = [NFFT.TENSOR, NFFT.POLYNOMIAL, NFFT.TENSOR, NFFT.LUT]
+const blocking = [true, true, true, true]
 
-const benchmarkTime = [4, 5]
+const benchmarkTime = [1, 1]
 
 NFFT.FFTW.set_num_threads(Threads.nthreads())
 ccall(("omp_set_num_threads",NFFT3.lib_path_nfft),Nothing,(Int64,),convert(Int64,Threads.nthreads()))
@@ -31,24 +31,25 @@ function nfft_accuracy_comparison(Ds=1:3)
                    TimeTrafo=Float64[], TimeAdjoint=Float64[] )  
 
   for D in Ds
+    @info "### Dimension D=$D ###"
     N = ntuple(d->NBase[D], D)
     M = prod(N)
     
+    x = rand(D,M) .- 0.5
+    fHat = randn(ComplexF64, M)
+    fApprox = randn(ComplexF64, N)
+    gHatApprox = randn(ComplexF64, M)
+
+    # ground truth (numerical)
+    pNDFT = NDFTPlan(x, N)
+    f = adjoint(pNDFT) * fHat
+    gHat = pNDFT * f
+
     for σ in σs
       for m in ms
         @info "m=$m D=$D σ=$σ "
-        x = rand(D,M) .- 0.5
-        fHat = randn(ComplexF64, M)
-        fApprox = randn(ComplexF64, N)
-        gHatApprox = randn(ComplexF64, M)
-
-        # ground truth (numerical)
-        pNDFT = NDFTPlan(x, N)
-        f = adjoint(pNDFT) * fHat
-        gHat = pNDFT * f
 
         for pl = 1:length(packagesStr)
-
           planner = packagesCtor[pl]
           p = planner(x, N; m, σ, precompute=precomp[pl], blocking=blocking[pl])
 
@@ -64,7 +65,6 @@ function nfft_accuracy_comparison(Ds=1:3)
           @info "Trafo accuracy: $(packagesStr[pl])"
           mul!(gHatApprox, p, f)
           etrafo = norm(gHat[:] - gHatApprox[:]) / norm(gHat[:])
-
 
           @info "Trafo benchmark: $(packagesStr[pl])"
           BenchmarkTools.DEFAULT_PARAMETERS.seconds = benchmarkTime[2]
@@ -92,8 +92,8 @@ function plot_accuracy(df, D=1)
   titleAdjoint = L"\textrm{NFFT}^H, \textrm{%$(D)D}"
 
   colors = [:black, :orange, :green, :brown, :gray, :blue, :purple, :yellow ]
-  ls = [:solid, :dashdot, :dash, :solid, :dash, :solid, :dash, :solid]
-  shape = [:xcross, :circle, :xcross, :circle, :xcross, :xcross, :circle]
+  ls = [:solid, :dashdot, :solid, :solid, :dash, :solid, :dash, :solid]
+  shape = [:circle, :circle, :xcross, :circle, :xcross, :xcross, :circle]
 
   maxTimeTrafo = maximum(df1_[:,:TimeTrafo])
   maxTimeAdjoint = maximum(df1_[:,:TimeAdjoint])
@@ -107,7 +107,7 @@ function plot_accuracy(df, D=1)
     plot!(p1, df1_[df1_.Package.==packagesStr[p],:ErrorTrafo], 
           df1_[df1_.Package.==packagesStr[p],:TimeTrafo], 
             xscale = :log10, label=packagesStr[p], lw=2, shape=shape[p], ls=ls[p], 
-            c=colors[p], msc=colors[p], mc=colors[p], ms=5, msw=2)
+            c=colors[p], msc=colors[p], mc=colors[p], ms=4, msw=2)
   end
 
   p2 = plot(df1_[df1_.Package.==packagesStr[1],:ErrorAdjoint], 
@@ -119,7 +119,7 @@ function plot_accuracy(df, D=1)
     plot!(p2, df1_[df1_.Package.==packagesStr[p],:ErrorAdjoint], 
           df1_[df1_.Package.==packagesStr[p],:TimeAdjoint], 
             xscale = :log10,  lw=2, shape=shape[p], ls=ls[p], #label=packagesStr[p],
-            c=colors[p], msc=colors[p], mc=colors[p], ms=5, msw=2)
+            c=colors[p], msc=colors[p], mc=colors[p], ms=4, msw=2)
   end
 
 
@@ -131,8 +131,8 @@ end
 
 
 
-df = nfft_accuracy_comparison(Ds)
-writedlm("performanceVsAccuracy.csv", Iterators.flatten(([names(df)], eachrow(df))), ',')
+#df = nfft_accuracy_comparison(Ds)
+#writedlm("performanceVsAccuracy.csv", Iterators.flatten(([names(df)], eachrow(df))), ',')
 
 data, header = readdlm("performanceVsAccuracy.csv", ',', header=true);
 df = DataFrame(data, vec(header))

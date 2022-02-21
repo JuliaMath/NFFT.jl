@@ -11,7 +11,7 @@ mutable struct CuNFFTPlan{T,D} <: AbstractNFFTPlan{T,D,1}
   tmpVec::CuArray{Complex{T},D}
   tmpVecHat::CuArray{Complex{T},D}
   apodizationIdx::CuArray{Int64,1}
-  windowLUT::Matrix{T}
+  windowLinInterp::Vector{T}
   windowHatInvLUT::CuArray{Complex{T}} # ::Vector{Vector{T}}
   B::CuSparseMatrixCSC{Complex{T}} # ::SparseMatrixCSC{T,Int64}
 end
@@ -46,7 +46,7 @@ function CuNFFTPlan(x::Matrix{T}, N::NTuple{D,Int}; dims::Union{Integer,UnitRang
     FP = plan_fft!(tmpVec, dims_)
     BP = plan_bfft!(tmpVec, dims_)
 
-    windowLUT, windowHatInvLUT, apodizationIdx, B = NFFT.precomputation(x, N[dims_], n[dims_], params)
+    windowLinInterp, windowHatInvLUT, apodizationIdx, B = NFFT.precomputation(x, N[dims_], n[dims_], params)
     
     U = params.storeApodizationIdx ? N : ntuple(d->0,D)
     tmpVecHat = CuArray{Complex{T},D}(undef, U)
@@ -56,7 +56,7 @@ function CuNFFTPlan(x::Matrix{T}, N::NTuple{D,Int}; dims::Union{Integer,UnitRang
     B_ = CuSparseMatrixCSC(Complex{T}.(B))
 
     CuNFFTPlan{T,D}(N, NOut, M, x, n, dims_, params, FP, BP, tmpVec, tmpVecHat, 
-               apodIdx, windowLUT, winHatInvLUT, B_)
+               apodIdx, windowLinInterp, winHatInvLUT, B_)
 end
 
 AbstractNFFTs.size_in(p::CuNFFTPlan) = p.N
