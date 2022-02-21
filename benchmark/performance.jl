@@ -12,10 +12,9 @@ include("../Wrappers/FINUFFT.jl")
 
 
 const threads = [1,2,4,8]
-const preString = "LINEAR"
-const precomp = [NFFT.LINEAR, NFFT.TENSOR, NFFT.LINEAR, NFFT.LINEAR, NFFT.TENSOR]
-const packagesCtor = [NFFTPlan, NFFTPlan, FINUFFTPlan, NFFT3Plan, NFFT3Plan]
-const packagesStr = ["NFFT.jl/LINEAR", "NFFT.jl/TENSOR", "FINUFFT", "NFFT3/LINEAR", "NFFT3/TENSOR"]
+const precomp = [NFFT.LINEAR, NFFT.POLYNOMIAL, NFFT.TENSOR, NFFT.LINEAR, NFFT.LINEAR, NFFT.TENSOR]
+const packagesCtor = [NFFTPlan, NFFTPlan, NFFTPlan, FINUFFTPlan, NFFT3Plan, NFFT3Plan]
+const packagesStr = ["NFFT.jl/LINEAR", "NFFT.jl/POLY", "NFFT.jl/TENSOR", "FINUFFT", "NFFT3/LINEAR", "NFFT3/TENSOR"]
 const benchmarkTime = [2, 15, 15]
 
 NFFT.FFTW.set_num_threads(Threads.nthreads())
@@ -27,7 +26,7 @@ function nfft_performance_comparison(m = 4, σ = 2.0)
   println("\n\n ##### nfft_performance ##### \n\n")
 
   df = DataFrame(Package=String[], Threads=Int[], D=Int[], M=Int[], N=Int[], 
-                   Undersampled=Bool[], Pre=String[], m = Int[], σ=Float64[],
+                   Undersampled=Bool[], m = Int[], σ=Float64[],
                    TimePre=Float64[], TimeTrafo=Float64[], TimeAdjoint=Float64[] )  
 
 
@@ -66,7 +65,7 @@ function nfft_performance_comparison(m = 4, σ = 2.0)
           b = @benchmark mul!($fHat, $p, $f)
           ttrafo = minimum(b).time / 1e9      
 
-          push!(df, (packagesStr[pl], Threads.nthreads(), D, M, N[D][U], false, preString, m, σ,
+          push!(df, (packagesStr[pl], Threads.nthreads(), D, M, N[D][U], false, m, σ,
                    tpre, ttrafo, tadjoint))
 
       end
