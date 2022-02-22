@@ -75,7 +75,7 @@ end
                      σ, scale, I, J, V, mProd, nProd, L::Val{Z}, k, LUTSize) where {T, D, Z}
   quote
 
-    @nexprs $(D) d -> ((tmpIdx_d, tmpWin_d) = _precomputeOneNode(win, x, n, m, σ, scale, k, d, L, LUTSize) )
+    @nexprs $(D) d -> ((tmpIdx_d, tmpWin_d) = precomputeOneNode(win, x, n, m, σ, scale, k, d, L, LUTSize) )
 
     @nexprs 1 d -> κ_{$D} = 1 # This is a hack, I actually want to write κ_$D = 1
     @nexprs 1 d -> ζ_{$D} = 1
@@ -96,7 +96,7 @@ end
 
 ### precomputation of the window and the indices required during convolution ###
 
-@generated function _precomputeOneNode(win::Function, x::AbstractMatrix{T}, n::NTuple{D,Int}, m, 
+@generated function precomputeOneNode(win::Function, x::AbstractMatrix{T}, n::NTuple{D,Int}, m, 
   σ, scale, k, d, L::Val{Z}, LUTSize) where {T,D,Z}
   quote
     xscale = x[d,k] * n[d]
@@ -108,7 +108,7 @@ end
   end
 end
 
-@generated function _precomputeOneNode(windowLinInterp::Array, x::AbstractMatrix{T}, n::NTuple{D,Int}, m, 
+@generated function precomputeOneNode(windowLinInterp::Array, x::AbstractMatrix{T}, n::NTuple{D,Int}, m, 
   σ, scale, k, d, L::Val{Z}, LUTSize) where {T,D,Z}
   quote
     xscale = x[d,k] * n[d]
@@ -116,7 +116,7 @@ end
     tmpIdx = @ntuple $(Z) l -> ( rem(l + off + n[d] - 1, n[d]) + 1)
 
     idx = ((xscale - off)*LUTSize)/(m+2)
-    tmpWin =  _precomputeShiftedWindowEntries(windowLinInterp, idx, scale, d, L)
+    tmpWin =  shiftedWindowEntries(windowLinInterp, idx, scale, d, L)
 
     return (tmpIdx, tmpWin)
   end
@@ -124,16 +124,16 @@ end
 
 # precompute = LINEAR
 
-function _precomputeOneNodeShifted(winLin, winTensor::Nothing, winPoly::Nothing, 
+function precomputeOneNodeBlocking(winLin, winTensor::Nothing, winPoly::Nothing, 
                                     scale, k, d, L, idxInBlock::Matrix)
 
   y, idx = idxInBlock[d,k]
-  tmpWin =  _precomputeShiftedWindowEntries(winLin, idx, scale, d, L)
+  tmpWin =  shiftedWindowEntries(winLin, idx, scale, d, L)
 
   return (y, tmpWin)
 end
 
-@generated function _precomputeShiftedWindowEntries(winLin::Vector, idx, scale, d, L::Val{Z}) where {Z}
+@generated function shiftedWindowEntries(winLin::Vector, idx, scale, d, L::Val{Z}) where {Z}
   quote
     idxL = floor(Int,idx) 
     idxInt = Int(idxL)
@@ -160,53 +160,66 @@ end
 
 # precompute = POLYNOMIAL
 
-function _precomputeOneNodeShifted(winLin, winTensor::Nothing, winPoly::NTuple{Z, NTuple{X,T}}, scale, 
+function precomputeOneNodeBlocking(winLin, winTensor::Nothing, winPoly::NTuple{Z, NTuple{X,T}}, scale, 
                                    k, d, L, idxInBlock::Matrix) where {T,Z,X}
 
   y, x = idxInBlock[d,k]
-  tmpWin =  _precomputeShiftedWindowEntries(winPoly, x, scale, d, L)
+  tmpWin =  shiftedWindowEntries(winPoly, x, scale, d, L)
 
   return (y, tmpWin)
 end
 
 
-@generated function _precomputeShiftedWindowEntries(winPoly::NTuple{Z, NTuple{X,T}}, x::T, scale, d, L::Val{Z}) where {T,Z,X}
+@generated function shiftedWindowEntries(winPoly::NTuple{Z, NTuple{X,T}}, x::T, scale, d, L::Val{Z}) where {T,Z,X}
   quote
-
-    #=xx = @ntuple $(X) h -> begin
-      x^(h-1)
-    end=#
-
-    #=tmp = zeros(T, $(Z))
-    @inbounds @simd for l=1:$(Z)
-      tmp[l] = @evalpoly(x, winPoly[l]...)
-    end=#
-
     tmpWin = @ntuple $(Z) l -> begin
-      #=res = zero(T)
-      for h = 1:X
-        res += Y[l][h] * xx[h]   #windowPolyInterp[h,l] * xx[h]
-      end
-      res=#
       evalpoly(x, winPoly[l])
-      #tmp[l]
     end
     return tmpWin
   end
 end
 
+#= Static Array version. Not faster
+function precomputeOneNodeBlocking(winLin, winTensor::Nothing, winPoly::SMatrix{X,Z,T}, scale, 
+  k, d, L, idxInBlock::Matrix) where {T,Z,X}
+
+  y, x = idxInBlock[d,k]
+  tmpWin =  shiftedWindowEntries(winPoly, x, scale, d, L)
+
+  return (y, tmpWin)
+end
+
+@generated function shiftedWindowEntries(winPoly::SMatrix{X,Z,T}, x::T, scale, d, L::Val{Z}) where {T,Z,X}
+  quote
+
+    x_1 = one(T)
+    @nexprs $(X-1) h->(x_{h+1} = x_h * x)
+
+    xx = @ntuple $(X) h -> begin
+      x_{h} 
+    end
+
+    xs = SVector(xx...)
+
+    tmpWin = transpose(winPoly) * xs
+
+    return tmpWin
+  end
+end
+=#
+
 # precompute = TENSOR
 
-function _precomputeOneNodeShifted(winLin, winTensor::Array, winPoly::Nothing, scale, 
+function precomputeOneNodeBlocking(winLin, winTensor::Array, winPoly::Nothing, scale, 
                                    k, d, L, idxInBlock::Matrix)
   y, idx = idxInBlock[d,k]
-  tmpWin =  _precomputeShiftedWindowEntriesTensor(winTensor, k, d, L)
+  tmpWin =  shiftedWindowEntriesTensor(winTensor, k, d, L)
 
   return (y, tmpWin)
 end
 
 
-@generated function _precomputeShiftedWindowEntriesTensor(winTensor, k, d, L::Val{Z}) where {Z}
+@generated function shiftedWindowEntriesTensor(winTensor, k, d, L::Val{Z}) where {Z}
   quote
     tmpWin = @ntuple $(Z) l -> begin
       winTensor[l, d, k]
@@ -256,7 +269,7 @@ function precomputePolyInterp(win, m, σ, T)
     V[r,:] .= V[r-1,:] .* x
   end
 
-  for l = 1:K #@cthreads 
+  for l = 1:K 
       y = (-(l-0.5) + m) .+ x
       samples = win.(y, 1, m, σ)
       windowPolyInterp[:,l] .= V' \ samples

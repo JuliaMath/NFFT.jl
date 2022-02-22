@@ -112,14 +112,14 @@ function convolve_nonblocking!(p::NFFTPlan{T,D,1}, g::AbstractArray{Complex{T},D
   end
 end
 
-function _precomputeOneNode(p::NFFTPlan{T,D,1}, scale, k, d, L::Val{Z}) where {T,D,Z}
-    return _precomputeOneNode(p.windowLinInterp, p.x, p.n, 
+function precomputeOneNode(p::NFFTPlan{T,D,1}, scale, k, d, L::Val{Z}) where {T,D,Z}
+    return precomputeOneNode(p.windowLinInterp, p.x, p.n, 
                     p.params.m, p.params.σ, scale, k, d, L, p.params.LUTSize) 
 end
 
 @generated function _convolve_nonblocking(p::NFFTPlan{T,D,1}, g::AbstractArray{Complex{T},D}, L::Val{Z}, scale, k) where {D,T,Z}
   quote
-    @nexprs $(D) d -> ((tmpIdx_d, tmpWin_d) = _precomputeOneNode(p, scale, k, d, L) )
+    @nexprs $(D) d -> ((tmpIdx_d, tmpWin_d) = precomputeOneNode(p, scale, k, d, L) )
   
     fHat = zero(Complex{T})
 
@@ -168,7 +168,7 @@ end
 
 @generated function _convolve_adjoint_nonblocking!(p::NFFTPlan{T,D,1}, fHat::AbstractVector{U}, g::StridedArray{Complex{T},D}, L::Val{Z}, scale, k) where {D,T,U,Z}
   quote
-    @nexprs $(D) d -> ((tmpIdx_d, tmpWin_d) = _precomputeOneNode(p, scale, k, d, L) )
+    @nexprs $(D) d -> ((tmpIdx_d, tmpWin_d) = precomputeOneNode(p, scale, k, d, L) )
 
     @nexprs 1 d -> prodWin_{$D} = one(T)
     @nloops_ $D l d -> 1:$Z d->begin
@@ -198,6 +198,7 @@ function makePolyArrayStatic(p::NFFTPlan)
   if p.params.precompute == POLYNOMIAL
     P = p.windowPolyInterp
     return ntuple(d-> ntuple(g-> P[g,d], size(P,1)), size(P,2))
+    #return SArray{Tuple{12,12}}(P) # Static Array Version
   else
     return nothing
   end
@@ -274,7 +275,7 @@ end
 @generated function _convolve_nonblocking(p::NFFTPlan{T,D,1}, block, off, L::Val{Z}, scale, 
                    k, kLocal, idxInBlock, winTensor, winPoly) where {D,T,Z}
   quote
-    @nexprs $(D) d -> ((off_d, tmpWin_d) =  _precomputeOneNodeShifted(p.windowLinInterp, winTensor, winPoly, scale, 
+    @nexprs $(D) d -> ((off_d, tmpWin_d) =  precomputeOneNodeBlocking(p.windowLinInterp, winTensor, winPoly, scale, 
                       kLocal, d, L, idxInBlock) )
 
     fHat = zero(Complex{T})
@@ -400,7 +401,7 @@ end
   quote
     fHat_ = fHat[k]
 
-    @nexprs $(D) d -> ((off_d, tmpWin_d) = _precomputeOneNodeShifted(p.windowLinInterp, winTensor, winPoly, scale, kLocal, d, L,
+    @nexprs $(D) d -> ((off_d, tmpWin_d) = precomputeOneNodeBlocking(p.windowLinInterp, winTensor, winPoly, scale, kLocal, d, L,
                                              idxInBlock) )
 
     innerWin = @ntuple $(Z) l -> tmpWin_1[l] * fHat_
@@ -427,7 +428,7 @@ end
   quote
     fHat_ = fHat[k]
 
-    @nexprs $(D) d -> ((off_d, tmpWin_d) =  _precomputeOneNodeShifted(p.windowLinInterp, winTensor, winPoly, scale, kLocal, 
+    @nexprs $(D) d -> ((off_d, tmpWin_d) =  precomputeOneNodeBlocking(p.windowLinInterp, winTensor, winPoly, scale, kLocal, 
                                               d, L, idxInBlock) )
 
     innerWin = Vector{Float64}(undef,$(2*Z)) # Probably cache me somewhere
