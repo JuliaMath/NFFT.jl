@@ -51,9 +51,9 @@ function NFFT3Plan(x::Matrix{T}, N::NTuple{D,Int};
   f2 = UInt32(fftflags | NFFT3.FFTW_DESTROY_INPUT)
 
   n = ntuple(d -> (ceil(Int,σ*N[d])÷2)*2, D) # ensure that n is an even integer 
-  σ = n[1] / N[1]
+  #σ = n[1] / N[1]
 
-  parent = NFFT3.NFFT(Int32.(reverse(N)), size(x,2), Int32.(n), Int32(m), f1, f2)
+  parent = NFFT3.NFFT(Int32.(reverse(N)), size(x,2), Int32.(reverse(n)), Int32(m), f1, f2)
 
   xx = Float64.(reverse(x, dims=1))
   parent.x = D == 1 ? vec(xx) : xx
@@ -99,9 +99,9 @@ function NFCT3Plan(x::Matrix{T}, N::NTuple{D,Int};
   f2 = UInt32(fftflags | NFFT3.FFTW_DESTROY_INPUT)
 
   n = ntuple(d -> (ceil(Int,σ*N[d])÷2)*2, D) # ensure that n is an even integer 
-  σ = n[1] / N[1]
+  #σ = n[1] / N[1]
 
-  parent = NFFT3.NFCT(Int32.(reverse(N)), size(x,2), Int32.(n), Int32(m), f1, f2)
+  parent = NFFT3.NFCT(Int32.(reverse(N)), size(x,2), Int32.(reverse(n)), Int32(m), f1, f2)
 
   xx = Float64.(reverse(x, dims=1))
   parent.x = D == 1 ? vec(xx) : xx
@@ -133,6 +133,19 @@ function LinearAlgebra.mul!(fHat::StridedArray, p::NFFT3Plan{D}, f::AbstractArra
   fHat[:] .= p.parent.f  
 
   return fHat
+end
+
+function LinearAlgebra.mul!(f::StridedArray, pl::Adjoint{Complex{T},<:NFFT3Plan{T}}, fHat::AbstractArray;
+                     verbose=false, timing::Union{Nothing,TimingStats} = nothing) where T
+  #consistencyCheck(p, f, fHat)
+  p = pl.parent
+
+  p.parent.f = vec(fHat)
+  p.parent.fhat = vec(f)
+  tadjoint = fApprox = NFFT3.nfft_adjoint(p.parent)
+  f[:] .= p.parent.fhat
+
+  return f
 end
 
 function LinearAlgebra.mul!(fHat::StridedArray, p::NFCT3Plan{D}, f::AbstractArray;

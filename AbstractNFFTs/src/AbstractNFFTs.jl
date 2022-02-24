@@ -12,7 +12,7 @@ export AnyNFFTPlan, AbstractNFFTPlan, AbstractNFCTPlan, AbstractNNFFTPlan,
 export apodization!, apodization_adjoint!, convolve!, convolve_adjoint!
 
 # derived
-export nfft, nfft_adjoint, ndft, ndft_adjoint, nfct, nfct_transposed
+export nfft, nfft_adjoint, ndft, ndft_adjoint, nfct, nfct_transposed, ndct, ndct_transposed
 
 # misc
 export TimingStats, accuracyParams, reltolToParams, paramsToReltol, 
