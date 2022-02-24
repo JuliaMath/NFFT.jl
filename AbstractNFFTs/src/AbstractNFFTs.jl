@@ -5,14 +5,14 @@ using LinearAlgebra
 using Printf
 
 # interface
-export AnyNFFTPlan, AbstractNFFTPlan, AbstractNNFFTPlan, 
-       plan_nfft, mul!, size_in, size_out, nodes!
+export AnyNFFTPlan, AbstractNFFTPlan, AbstractNFCTPlan, AbstractNNFFTPlan, 
+       plan_nfft, plan_nfct, mul!, size_in, size_out, nodes!
 
 # optional
 export apodization!, apodization_adjoint!, convolve!, convolve_adjoint!
 
 # derived
-export nfft, nfft_adjoint, ndft, ndft_adjoint
+export nfft, nfft_adjoint, ndft, ndft_adjoint, nfct, nfct_transposed
 
 # misc
 export TimingStats, accuracyParams, reltolToParams, paramsToReltol, 
