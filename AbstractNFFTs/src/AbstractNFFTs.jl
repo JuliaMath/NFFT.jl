@@ -7,7 +7,7 @@ using Printf
 # interface
 export AnyNFFTPlan, AnyRealNFFTPlan, AnyComplexNFFTPlan,
        AbstractNFFTPlan, AbstractNFCTPlan, AbstractNFSTPlan, AbstractNNFFTPlan, 
-       plan_nfft, plan_nfct, mul!, size_in, size_out, nodes!
+       plan_nfft, plan_nfct, plan_nfst, mul!, size_in, size_out, nodes!
 
 # optional
 export apodization!, apodization_adjoint!, convolve!, convolve_adjoint!

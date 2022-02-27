@@ -23,7 +23,7 @@ mutable struct NDSTPlan{T,D} <: AbstractNFSTPlan{T,D,1}
   x::Matrix{T}
 end
 
-AbstractNFFTs.size_in(p::NDSTPlan) = p.N
+AbstractNFFTs.size_in(p::NDSTPlan) = p.N .- 1
 AbstractNFFTs.size_out(p::NDSTPlan) = (p.M,)
 
 mutable struct NNDFTPlan{T} <: AbstractNNFFTPlan{T,1,1}
@@ -58,6 +58,17 @@ function NDCTPlan(x::Matrix{T}, N::NTuple{D,Int}; kwargs...) where {T,D}
   M = size(x, 2)
 
   return NDCTPlan{T,D}(N, M, x)
+end
+
+function NDSTPlan(x::Matrix{T}, N::NTuple{D,Int}; kwargs...) where {T,D}
+
+  if D != size(x,1)
+    throw(ArgumentError("Nodes x have dimension $(size(x,1)) != $D"))
+  end
+
+  M = size(x, 2)
+
+  return NDSTPlan{T,D}(N, M, x)
 end
 
 function NNDFTPlan(x::Matrix{T}, y::Matrix{T}; kwargs...) where {T}
@@ -135,22 +146,22 @@ function LinearAlgebra.mul!(g::AbstractArray{Tg,D}, pl::Adjoint{Complex{Tp},<:ND
   return g
 end
 
-function LinearAlgebra.mul!(g::AbstractArray{Tg}, plan::NDCTPlan{Tp,D}, f::AbstractArray{T,D}) where {D,Tp,T,Tg}
+function LinearAlgebra.mul!(g::AbstractArray{Tg}, p::NDCTPlan{Tp,D}, f::AbstractArray{T,D}) where {D,Tp,T,Tg}
 
-    plan.N == size(f) ||
+    p.N == size(f) ||
         throw(DimensionMismatch("Data f is not consistent with NDCTPlan"))
-    plan.M == length(g) ||
+    p.M == length(g) ||
         throw(DimensionMismatch("Output g is inconsistent with NDCTPlan"))
 
     g .= zero(Tg)
 
-    for l=1:prod(plan.N)
-        idx = CartesianIndices(plan.N)[l]
+    for l=1:prod(p.N)
+        idx = CartesianIndices(p.N)[l]
 
-        for k=1:plan.M
+        for k=1:p.M
             arg = one(T)
             for d=1:D
-                arg *= cos( 2 * pi * plan.x[d,k] * ( idx[d] - 1 ) )
+                arg *= cos( 2 * pi * p.x[d,k] * ( idx[d] - 1 ) )
             end
             g[k] += f[l] * arg
         end
@@ -176,7 +187,7 @@ function LinearAlgebra.mul!(g::AbstractArray{Tg,D}, pl::Transpose{Tp,<:NDCTPlan{
       for k=1:p.M
           arg = one(T)
           for d=1:D
-              arg *= cos( 2 * pi * plan.x[d,k] * ( idx[d] - 1 ) )
+              arg *= cos( 2 * pi * p.x[d,k] * ( idx[d] - 1 ) )
           end
           g[l] += fHat[k] * arg
       end
@@ -186,22 +197,22 @@ function LinearAlgebra.mul!(g::AbstractArray{Tg,D}, pl::Transpose{Tp,<:NDCTPlan{
 end
 
 
-function LinearAlgebra.mul!(g::AbstractArray{Tg}, plan::NDSTPlan{Tp,D}, f::AbstractArray{T,D}) where {D,Tp,T,Tg}
+function LinearAlgebra.mul!(g::AbstractArray{Tg}, p::NDSTPlan{Tp,D}, f::AbstractArray{T,D}) where {D,Tp,T,Tg}
 
-    plan.N == size(f) .- 1 ||
+    p.N == size(f) .+ 1 ||
         throw(DimensionMismatch("Data f is not consistent with NDSTPlan"))
-    plan.M == length(g) ||
+    p.M == length(g) ||
         throw(DimensionMismatch("Output g is inconsistent with NDSTPlan"))
 
     g .= zero(Tg)
 
-    for l=1:prod(plan.N .- 1)
-        idx = CartesianIndices(plan.N)[l]
+    for l=1:prod(p.N .- 1)
+        idx = CartesianIndices(p.N .- 1)[l]
 
-        for k=1:plan.M
+        for k=1:p.M
             arg = one(T)
             for d=1:D
-                arg *= sin( 2 * pi * plan.x[d,k] * ( idx[d] ) )
+                arg *= sin( 2 * pi * p.x[d,k] * ( idx[d] ) )
             end
             g[k] += f[l] * arg
         end
@@ -216,18 +227,18 @@ function LinearAlgebra.mul!(g::AbstractArray{Tg,D}, pl::Transpose{Tp,<:NDSTPlan{
 
   p.M == length(fHat) ||
       throw(DimensionMismatch("Data f inconsistent with NDSTPlan"))
-  p.N == size(g) .- 1 ||
+  p.N == size(g) .+ 1 ||
       throw(DimensionMismatch("Output g inconsistent with NDSTPlan"))
 
   g .= zero(Tg)
 
   for l=1:prod(p.N .- 1)
-      idx = CartesianIndices(p.N)[l]
+      idx = CartesianIndices(p.N .- 1)[l]
 
       for k=1:p.M
           arg = one(T)
           for d=1:D
-              arg *= sin( 2 * pi * plan.x[d,k] * ( idx[d] ) )
+              arg *= sin( 2 * pi * p.x[d,k] * ( idx[d] ) )
           end
           g[l] += fHat[k] * arg
       end
@@ -237,15 +248,15 @@ function LinearAlgebra.mul!(g::AbstractArray{Tg,D}, pl::Transpose{Tp,<:NDSTPlan{
 end
 
 
-function LinearAlgebra.mul!(g::AbstractArray{Tg}, plan::NNDFTPlan{Tp}, f::AbstractArray{T}) where {Tp,T,Tg}
+function LinearAlgebra.mul!(g::AbstractArray{Tg}, p::NNDFTPlan{Tp}, f::AbstractArray{T}) where {Tp,T,Tg}
 
   g .= zero(Tg)
 
-  for l=1:plan.N
-      for k=1:plan.M
+  for l=1:p.N
+      for k=1:p.M
           arg = zero(T)
-          for d=1:size(plan.x,1)
-              arg += plan.x[d,k] * plan.y[d,l]
+          for d=1:size(p.x,1)
+              arg += p.x[d,k] * p.y[d,l]
           end
           g[k] += f[l] * cis(-2*pi*arg)
       end

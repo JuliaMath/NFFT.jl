@@ -4,7 +4,7 @@
 ##########################
 
 
-for op in [:nfft, :nfct]
+for op in [:nfft, :nfct, :nfst]
 planfunc = Symbol("plan_"*"$op")
 @eval begin 
 
@@ -40,8 +40,8 @@ plan_nnfft(Q::Type, x::AbstractVector, y::AbstractVector, rest...; kwargs...) wh
 # Allocating trafo functions with plan creation
 ###############################################
 
-for (op,trans) in zip([:nfft, :nfct],
-                      [:adjoint, :transpose])
+for (op,trans) in zip([:nfft, :nfct, :nfst],
+                      [:adjoint, :transpose, :transpose])
 planfunc = Symbol("plan_$(op)")
 tfunc = Symbol("$(op)_$(trans)")
 @eval begin 
