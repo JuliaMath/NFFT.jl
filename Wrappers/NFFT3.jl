@@ -123,6 +123,17 @@ AbstractNFFTs.size_out(p::NFFT3Plan) = (Int(p.parent.M),)
 AbstractNFFTs.size_in(p::NFCT3Plan) = reverse(Int.(p.parent.N))
 AbstractNFFTs.size_out(p::NFCT3Plan) = (Int(p.parent.M),)
 
+function AbstractNFFTs.plan_nfft(::Type{<:Array}, x::Matrix{T}, N::NTuple{D,Int}, rest...;
+                   timing::Union{Nothing,TimingStats} = nothing, kargs...) where {T,D}
+  t = @elapsed begin
+    p = NFFT3Plan(x, N, rest...; kargs...)
+  end
+  if timing != nothing
+    timing.pre = t
+  end
+  return p
+end
+
 function LinearAlgebra.mul!(fHat::StridedArray, p::NFFT3Plan{D}, f::AbstractArray;
              verbose=false, timing::Union{Nothing,TimingStats} = nothing) where {D}
   #consistencyCheck(p, f, fHat)
@@ -177,17 +188,6 @@ function AbstractNFFTs.plan_nfct(::Type{<:Array}, x::Matrix{T}, N::NTuple{D,Int}
                    timing::Union{Nothing,TimingStats} = nothing, kargs...) where {T,D}
   t = @elapsed begin
     p = NFCT3Plan(x, N, rest...; kargs...)
-  end
-  if timing != nothing
-    timing.pre = t
-  end
-  return p
-end
-
-function AbstractNFFTs.plan_nfft(::Type{<:Array}, x::Matrix{T}, N::NTuple{D,Int}, rest...;
-                   timing::Union{Nothing,TimingStats} = nothing, kargs...) where {T,D}
-  t = @elapsed begin
-    p = NFFT3Plan(x, N, rest...; kargs...)
   end
   if timing != nothing
     timing.pre = t

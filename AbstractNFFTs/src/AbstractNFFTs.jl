@@ -5,7 +5,8 @@ using LinearAlgebra
 using Printf
 
 # interface
-export AnyNFFTPlan, AbstractNFFTPlan, AbstractNFCTPlan, AbstractNNFFTPlan, 
+export AnyNFFTPlan, AnyRealNFFTPlan, AnyComplexNFFTPlan,
+       AbstractNFFTPlan, AbstractNFCTPlan, AbstractNFSTPlan, AbstractNNFFTPlan, 
        plan_nfft, plan_nfct, mul!, size_in, size_out, nodes!
 
 # optional
