@@ -5,7 +5,7 @@ using LinearAlgebra
 using Printf
 
 # interface
-export AnyNFFTPlan, AnyRealNFFTPlan, AnyComplexNFFTPlan,
+export AbstractFTPlan, AbstractRealFTPlan, AbstractComplexFTPlan,
        AbstractNFFTPlan, AbstractNFCTPlan, AbstractNFSTPlan, AbstractNNFFTPlan, 
        plan_nfft, plan_nfct, plan_nfst, mul!, size_in, size_out, nodes!
 
@@ -13,7 +13,9 @@ export AnyNFFTPlan, AnyRealNFFTPlan, AnyComplexNFFTPlan,
 export deconvolve!, deconvolve_transpose!, convolve!, convolve_transpose!
 
 # derived
-export nfft, nfft_adjoint, ndft, ndft_adjoint, nfct, nfct_transposed, ndct, ndct_transposed
+export nfft, nfft_adjoint, ndft, ndft_adjoint, 
+       nfct, nfct_transpose, ndct, ndct_transpose,
+       nfst, nfst_transpose
 
 # misc
 export TimingStats, accuracyParams, reltolToParams, paramsToReltol, 

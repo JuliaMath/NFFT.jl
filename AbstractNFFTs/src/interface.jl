@@ -1,32 +1,32 @@
 """
-  AnyNFFTPlan{T,D,R}
+  AbstractFTPlan{T,D,R}
 
 Abstract type for any NFFT-like plan (NFFT, NFFT, NFCT, NFST).
 * T is the element type (Float32/Float64)
 * D is the number of dimensions of the input array.
 * R is the number of dimensions of the output array.
 """
-abstract type AnyNFFTPlan{T,D,R} end
+abstract type AbstractFTPlan{T,D,R} end
 
 """
-  AnyRealNFFTPlan{T,D,R}
+  AbstractRealFTPlan{T,D,R}
 
 Abstract type for either an NFCT plan or an NFST plan.
 * T is the element type (Float32/Float64)
 * D is the number of dimensions of the input array.
 * R is the number of dimensions of the output array.
 """
-abstract type AnyRealNFFTPlan{T,D,R} <: AnyNFFTPlan{T,D,R} end
+abstract type AbstractRealFTPlan{T,D,R} <: AbstractFTPlan{T,D,R} end
 
 """
-  AnyComplexNFFTPlan{T,D,R}
+  AbstractComplexFTPlan{T,D,R}
 
 Abstract type for either an NFFT plan or an NNFFT plan.
 * T is the element type (Float32/Float64)
 * D is the number of dimensions of the input array.
 * R is the number of dimensions of the output array.
 """
-abstract type AnyComplexNFFTPlan{T,D,R} <: AnyNFFTPlan{T,D,R} end
+abstract type AbstractComplexFTPlan{T,D,R} <: AbstractFTPlan{T,D,R} end
 
 
 """
@@ -37,7 +37,7 @@ Abstract type for an NFFT plan.
 * D is the number of dimensions of the input array.
 * R is the number of dimensions of the output array.
 """
-abstract type AbstractNFFTPlan{T,D,R} <: AnyComplexNFFTPlan{T,D,R} end
+abstract type AbstractNFFTPlan{T,D,R} <: AbstractComplexFTPlan{T,D,R} end
 
 """
   AbstractNFCTPlan{T,D,R}
@@ -47,7 +47,7 @@ Abstract type for an NFCT plan.
 * D is the number of dimensions of the input array.
 * R is the number of dimensions of the output array.
 """
-abstract type AbstractNFCTPlan{T,D,R} <: AnyRealNFFTPlan{T,D,R} end
+abstract type AbstractNFCTPlan{T,D,R} <: AbstractRealFTPlan{T,D,R} end
 
 """
   AbstractNFSTPlan{T,D,R}
@@ -57,7 +57,7 @@ Abstract type for an NFST plan.
 * D is the number of dimensions of the input array.
 * R is the number of dimensions of the output array.
 """
-abstract type AbstractNFSTPlan{T,D,R} <: AnyRealNFFTPlan{T,D,R} end
+abstract type AbstractNFSTPlan{T,D,R} <: AbstractRealFTPlan{T,D,R} end
 
 """
   AbstractNNFFTPlan{T,D,R}
@@ -67,34 +67,34 @@ Abstract type for an NNFFT plan.
 * D is the number of dimensions of the input array.
 * R is the number of dimensions of the output array.
 """
-abstract type AbstractNNFFTPlan{T,D,R} <: AnyComplexNFFTPlan{T,D,R} end
+abstract type AbstractNNFFTPlan{T,D,R} <: AbstractComplexFTPlan{T,D,R} end
 
 #####################
-# Function needed to make AnyNFFTPlan an operator 
+# Function needed to make AbstractFTPlan an operator 
 #####################
 
-Base.eltype(p::AnyComplexNFFTPlan{T}) where T = Complex{T}
-Base.eltype(p::AnyRealNFFTPlan{T}) where T = T
+Base.eltype(p::AbstractComplexFTPlan{T}) where T = Complex{T}
+Base.eltype(p::AbstractRealFTPlan{T}) where T = T
 
-Base.size(p::AnyNFFTPlan) = (prod(size_out(p)), prod(size_in(p)))
+Base.size(p::AbstractFTPlan) = (prod(size_out(p)), prod(size_in(p)))
 
-Base.size(p::Adjoint{Complex{T}, U}) where {T, U<:AnyComplexNFFTPlan{T}} = 
+Base.size(p::Adjoint{Complex{T}, U}) where {T, U<:AbstractComplexFTPlan{T}} = 
   (prod(size_in(p.parent)), prod(size_out(p.parent)))
 
-Base.size(p::Transpose{T, U}) where {T, U<:AnyRealNFFTPlan{T}} = 
+Base.size(p::Transpose{T, U}) where {T, U<:AbstractRealFTPlan{T}} = 
   (prod(size_in(p.parent)), prod(size_out(p.parent)))
 
-LinearAlgebra.adjoint(p::AnyComplexNFFTPlan{T,D,R}) where {T,D,R} = 
+LinearAlgebra.adjoint(p::AbstractComplexFTPlan{T,D,R}) where {T,D,R} = 
   Adjoint{Complex{T}, typeof(p)}(p)
 
-LinearAlgebra.transpose(p::AnyRealNFFTPlan{T,D,R}) where {T,D,R} = 
+LinearAlgebra.transpose(p::AbstractRealFTPlan{T,D,R}) where {T,D,R} = 
   Transpose{T, typeof(p)}(p)
 
-size_in(p::Adjoint{Complex{T},<:AnyComplexNFFTPlan{T,D,R}}) where {T,D,R} = size_out(p.parent)
-size_out(p::Adjoint{Complex{T},<:AnyComplexNFFTPlan{T,D,R}}) where {T,D,R} = size_in(p.parent)
+size_in(p::Adjoint{Complex{T},<:AbstractComplexFTPlan{T,D,R}}) where {T,D,R} = size_out(p.parent)
+size_out(p::Adjoint{Complex{T},<:AbstractComplexFTPlan{T,D,R}}) where {T,D,R} = size_in(p.parent)
 
-size_in(p::Transpose{T,<:AnyRealNFFTPlan{T,D,R}}) where {T,D,R} = size_out(p.parent)
-size_out(p::Transpose{T,<:AnyRealNFFTPlan{T,D,R}}) where {T,D,R} = size_in(p.parent)
+size_in(p::Transpose{T,<:AbstractRealFTPlan{T,D,R}}) where {T,D,R} = size_out(p.parent)
+size_out(p::Transpose{T,<:AbstractRealFTPlan{T,D,R}}) where {T,D,R} = size_in(p.parent)
 
 #####################
 # define interface
@@ -107,7 +107,7 @@ size_out(p::Transpose{T,<:AnyRealNFFTPlan{T,D,R}}) where {T,D,R} = size_in(p.par
 Inplace NFFT/NFCT/NFST/NNFFT transforming the `D` dimensional array `f` to the `R` dimensional array `fHat`.
 The transformation is applied along `D-R+1` dimensions specified in the plan `p`.
 """
-@mustimplement LinearAlgebra.mul!( fHat::AbstractArray, p::AnyNFFTPlan{T}, f::AbstractArray) where {T}
+@mustimplement LinearAlgebra.mul!( fHat::AbstractArray, p::AbstractFTPlan{T}, f::AbstractArray) where {T}
 
 """
     mul!(f, p, fHat) -> f
@@ -115,7 +115,7 @@ The transformation is applied along `D-R+1` dimensions specified in the plan `p`
 Inplace adjoint NFFT/NNFFT transforming the `R` dimensional array `fHat` to the `D` dimensional array `f`.
 The transformation is applied along `D-R+1` dimensions specified in the plan `p`.
 """
-@mustimplement LinearAlgebra.mul!(f::AbstractArray, p::Adjoint{Complex{T},<:AnyComplexNFFTPlan{T}}, fHat::AbstractArray) where {T}
+@mustimplement LinearAlgebra.mul!(f::AbstractArray, p::Adjoint{Complex{T},<:AbstractComplexFTPlan{T}}, fHat::AbstractArray) where {T}
 
 """
     mul!(f, p, fHat) -> f
@@ -123,7 +123,7 @@ The transformation is applied along `D-R+1` dimensions specified in the plan `p`
 Inplace transposed NFCT/NFST transforming the `R` dimensional array `fHat` to the `D` dimensional array `f`.
 The transformation is applied along `D-R+1` dimensions specified in the plan `p`.
 """
-@mustimplement LinearAlgebra.mul!(f::AbstractArray, p::Transpose{T,<:AnyRealNFFTPlan{T}}, fHat::AbstractArray) where {T}
+@mustimplement LinearAlgebra.mul!(f::AbstractArray, p::Transpose{T,<:AbstractRealFTPlan{T}}, fHat::AbstractArray) where {T}
 
 """
     size_in(p)
@@ -132,7 +132,7 @@ Size of the input array for the plan p (NFFT/NFCT/NFST/NNFFT).
 The returned tuple has `R` entries. 
 Note that this will be the output size for the transposed / adjoint operator.
 """
-@mustimplement size_in(p::AnyNFFTPlan{T,D,R}) where {T,D,R}
+@mustimplement size_in(p::AbstractFTPlan{T,D,R}) where {T,D,R}
 
 """
     size_out(p)
@@ -141,14 +141,14 @@ Size of the output array for the plan p (NFFT/NFCT/NFST/NNFFT).
 The returned tuple has `R` entries. 
 Note that this will be the input size for the transposed / adjoint operator.
 """
-@mustimplement size_out(p::AnyNFFTPlan{T,D,R}) where {T,D,R}
+@mustimplement size_out(p::AbstractFTPlan{T,D,R}) where {T,D,R}
 
 """
     nodes!(p, x) -> p
 
 Change nodes `x` in the plan `p` operation and return the plan.
 """
-@mustimplement nodes!(p::AnyNFFTPlan{T}, x::Matrix{T}) where {T}
+@mustimplement nodes!(p::AbstractFTPlan{T}, x::Matrix{T}) where {T}
 
 
 ## Optional Interface ##

@@ -87,14 +87,14 @@ For a **directional** `D` dimensional plan `p` both `f` and `fHat` are `D`
 dimensional arrays, and the dimension specified in the plan creation is
 affected.
 """
-function Base.:*(p::AnyComplexNFFTPlan{T}, f::AbstractArray{Complex{U},D}; kargs...) where {T,U,D}
+function Base.:*(p::AbstractComplexFTPlan{T}, f::AbstractArray{Complex{U},D}; kargs...) where {T,U,D}
   fHat = similar(f, Complex{T}, size_out(p))
   mul!(fHat, p, f; kargs...)
   return fHat
 end
 
 """
-        *(p::Adjoint{T,<:AnyNFFTPlan{T}}, fHat) -> f
+        *(p::Adjoint{T,<:AbstractFTPlan{T}}, fHat) -> f
 
 For a **non**-directional `D` dimensional plan `p` this calculates the adjoint NFFT/NNFFT of a length `M` vector `fHat`
 `f` is a `D` dimensional array of size `N`.
@@ -105,19 +105,19 @@ dimensional arrays, and the dimension specified in the plan creation is
 affected.
 """
 
-function Base.:*(p::Adjoint{Complex{T},<:AnyComplexNFFTPlan{T}}, fHat::AbstractArray{Complex{U},D}; kargs...) where {T,U,D}
+function Base.:*(p::Adjoint{Complex{T},<:AbstractComplexFTPlan{T}}, fHat::AbstractArray{Complex{U},D}; kargs...) where {T,U,D}
   f = similar(fHat, Complex{T}, size_out(p))
   mul!(f, p, fHat; kargs...)
   return f
 end
 
 # The following two methods are redundant but need to be defined because of a method ambiguity with Julia Base
-function Base.:*(p::Adjoint{Complex{T},<:AnyComplexNFFTPlan{T}}, fHat::AbstractVector{Complex{U}}; kargs...) where {T,U}
+function Base.:*(p::Adjoint{Complex{T},<:AbstractComplexFTPlan{T}}, fHat::AbstractVector{Complex{U}}; kargs...) where {T,U}
   f = similar(fHat, Complex{T}, size_out(p))
   mul!(f, p, fHat; kargs...)
   return f
 end
-function Base.:*(p::Adjoint{Complex{T},<:AnyComplexNFFTPlan{T}}, fHat::AbstractArray{Complex{U},2}; kargs...) where {T,U}
+function Base.:*(p::Adjoint{Complex{T},<:AbstractComplexFTPlan{T}}, fHat::AbstractArray{Complex{U},2}; kargs...) where {T,U}
   f = similar(fHat, Complex{T}, size_out(p))
   mul!(f, p, fHat; kargs...)
   return f
@@ -136,14 +136,14 @@ For a **directional** `D` dimensional plan `p` both `f` and `fHat` are `D`
 dimensional arrays, and the dimension specified in the plan creation is
 affected.
 """
-function Base.:*(p::AnyRealNFFTPlan{T}, f::AbstractArray{U,D}; kargs...) where {T,U,D}
+function Base.:*(p::AbstractRealFTPlan{T}, f::AbstractArray{U,D}; kargs...) where {T,U,D}
   fHat = similar(f, T, size_out(p))
   mul!(fHat, p, f; kargs...)
   return fHat
 end
 
 """
-        *(p::Transpose{T,AnyRealNFFTPlan{T}}, fHat) -> f
+        *(p::Transpose{T,AbstractRealFTPlan{T}}, fHat) -> f
 
 For a **non**-directional `D` dimensional plan `p` this calculates the adjoint NFCT/NFST of a length `M` vector `fHat`
 `f` is a `D` dimensional array of size `N`.
@@ -154,19 +154,19 @@ dimensional arrays, and the dimension specified in the plan creation is
 affected.
 """
 
-function Base.:*(p::Transpose{T,<:AnyRealNFFTPlan{T}}, fHat::AbstractArray{U,D}; kargs...) where {T,U,D}
+function Base.:*(p::Transpose{T,<:AbstractRealFTPlan{T}}, fHat::AbstractArray{U,D}; kargs...) where {T,U,D}
   f = similar(fHat, T, size_out(p))
   mul!(f, p, fHat; kargs...)
   return f
 end
 
 # The following two methods are redundant but need to be defined because of a method ambiguity with Julia Base
-function Base.:*(p::Transpose{T,<:AnyRealNFFTPlan{T}}, fHat::AbstractVector{U}; kargs...) where {T,U}
+function Base.:*(p::Transpose{T,<:AbstractRealFTPlan{T}}, fHat::AbstractVector{U}; kargs...) where {T,U}
   f = similar(fHat, T, size_out(p))
   mul!(f, p, fHat; kargs...)
   return f
 end
-function Base.:*(p::Transpose{T,<:AnyRealNFFTPlan{T}}, fHat::AbstractArray{U,2}; kargs...) where {T,U}
+function Base.:*(p::Transpose{T,<:AbstractRealFTPlan{T}}, fHat::AbstractArray{U,2}; kargs...) where {T,U}
   f = similar(fHat, T, size_out(p))
   mul!(f, p, fHat; kargs...)
   return f
