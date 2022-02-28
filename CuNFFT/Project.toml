@@ -1,7 +1,7 @@
 name = "CuNFFT"
 uuid = "a9291f20-7f4c-4d50-b30d-4e07b13252e1"
 author = ["Tobias Knopp <tobias@knoppweb.de>"]
-version = "0.3.1"
+version = "0.3.2"
 
 [deps]
 AbstractFFTs = "621f4979-c628-5d54-868e-fcf4e3e8185c" 
@@ -14,7 +14,7 @@ Reexport = "189a3867-3050-52da-a836-e630ba90ab69"
 [compat]
 julia = "1.6"
 AbstractFFTs = "1.0"
-AbstractNFFTs = "0.7"
+AbstractNFFTs = "0.6, 0.7"
 CUDA = "1.3.3, 2.3, 3.1"
-NFFT = "0.12"
+NFFT = "0.11, 0.12"
 Reexport = "1.0"
