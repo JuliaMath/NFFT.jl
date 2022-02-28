@@ -106,3 +106,68 @@ include("../Wrappers/NFFT3.jl")
     end
   end
 end
+
+
+
+@testset "NFFT3 Wrapper NFCT" begin
+
+  m = 5
+  σ = 2.0
+
+  for (u,N) in enumerate([(256,), (30,32), (10,12,14), (6,6,6,6)])
+    eps = 1e-7
+    
+    D = length(N)
+    @info "Testing in $D dimensions"
+
+    M = prod(N)
+    x = 0.5.*rand(Float64,D,M) 
+    p = NFCT3Plan(x, N; m, σ)
+    pNDCT = NDCTPlan(x, N)
+
+    fHat = rand(Float64,M) 
+    f = transpose(pNDCT) * fHat
+    fApprox = transpose(p) * fHat
+    e = norm(f[:] - fApprox[:]) / norm(f[:])
+    @debug "error transpose nfct "  e
+    @test e < eps
+
+    gHat = pNDCT * f
+    gHatApprox = p * f
+    e = norm(gHat[:] - gHatApprox[:]) / norm(gHat[:])
+    @debug "error ndct "  e
+    @test e < eps
+  end
+end
+
+
+@testset "NFFT3 Wrapper NFST" begin
+
+  m = 5
+  σ = 2.0
+
+  for (u,N) in enumerate([(256,), (8,8), (10,12,14), (6,6,6,6)])
+    eps = 1e-7
+    
+    D = length(N)
+    @info "Testing in $D dimensions"
+
+    M = prod(N)
+    x = 0.5.*rand(Float64,D,M) 
+    p = NFST3Plan(x, N .+ 1; m, σ)
+    pNDST = NDSTPlan(x, N .+ 1)
+
+    fHat = rand(Float64,M) 
+    f = transpose(pNDST) * fHat
+    fApprox = transpose(p) * fHat
+    e = norm(f[:] - fApprox[:]) / norm(f[:])
+    @debug "error transpose nfst "  e
+    @test e < eps
+
+    gHat = pNDST * f
+    gHatApprox = p * f
+    e = norm(gHat[:] - gHatApprox[:]) / norm(gHat[:])
+    @debug "error ndct "  e
+    @test e < eps
+  end
+end

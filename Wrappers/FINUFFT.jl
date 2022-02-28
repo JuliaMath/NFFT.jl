@@ -74,6 +74,16 @@ end
 AbstractNFFTs.size_in(p::FINUFFTPlan) = Int.(p.N)
 AbstractNFFTs.size_out(p::FINUFFTPlan) = (Int(p.M),)
 
+function AbstractNFFTs.plan_nfft(::Type{<:Array}, x::Matrix{T}, N::NTuple{D,Int}, rest...;
+                   timing::Union{Nothing,TimingStats} = nothing, kargs...) where {T,D}
+  t = @elapsed begin
+    p = FINUFFTPlan(x, N, rest...; kargs...)
+  end
+  if timing != nothing
+    timing.pre = t
+  end
+  return p
+end
 
 function LinearAlgebra.mul!(fHat::StridedArray, p::FINUFFTPlan{T,D}, f::AbstractArray;
              verbose=false, timing::Union{Nothing,TimingStats} = nothing) where {T,D}

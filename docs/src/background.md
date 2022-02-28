@@ -61,7 +61,7 @@ The NFFT now approximates ``\bm{A}``by the product of three matrices
 ```
 where 
 * ``\bm{F} \in \mathbb{C}^{\mathbf{n}\times \mathbf{n}}`` is the regular DFT matrix.
-* ``\bm{D} \in \mathbb{C}^{\mathbf{n}\times \mathbf{N}}`` is a diagonal matrix that additionally includes zero filling and the fftshift. We call this the *apodization* matrix.
+* ``\bm{D} \in \mathbb{C}^{\mathbf{n}\times \mathbf{N}}`` is a diagonal matrix that additionally includes zero filling and the fftshift. We call this the *deconvolve* matrix.
 * ``\bm{B} \in \mathbb{C}^{M \times \mathbf{n}}`` is a sparse matrix implementing the discrete convolution with a window function ``\varphi``. We call this the *convolution* matrix.
 
 The NFFT is based on the convolution theorem. It applies a convolution in the time/space domain, which is evaluated at equidistant sampling nodes. This convolution is then corrected in the Fourier space by division with the Fourier transform ``\psi`` of ``\varphi``. The adjoint NFFT matrix approximates ``\bm{A}^{\mathsf{H}}`` by

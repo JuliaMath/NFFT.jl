@@ -5,7 +5,7 @@ FFTW.set_num_threads(Threads.nthreads())
 # This is a reduced version of the actual problem
 function _nfft!(p, f) 
   
-  NFFT.apodization!(p, f, p.tmpVec)     # apodization uses Polyester-based threading or no threading depending on storeApodizationIdx
+  NFFT.deconvolve!(p, f, p.tmpVec)     # deconvolve uses Polyester-based threading or no threading depending on storeApodizationIdx
 
   @info "Timing After First FFT "       
   @time p.forwardFFT * p.tmpVec

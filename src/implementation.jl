@@ -24,8 +24,8 @@ mutable struct NFFTPlan{T,D,R} <: AbstractNFFTPlan{T,D,R}
     backwardFFT::FFTW.cFFTWPlan{Complex{T},1,true,D,UnitRange{Int64}}
     tmpVec::Array{Complex{T},D}
     tmpVecHat::Array{Complex{T},D}
-    # Caches for apodization
-    apodizationIdx::Array{Int64,1}
+    # Caches for deconvolve
+    deconvolveIdx::Array{Int64,1}
     windowHatInvLUT::Vector{Vector{T}}
     # Cache for precompute = LUT 
     windowLinInterp::Vector{T}
@@ -44,7 +44,7 @@ end
 function Base.copy(p::NFFTPlan{T,D,R}) where {T,D,R}
     tmpVec = similar(p.tmpVec)
     tmpVecHat = similar(p.tmpVecHat)
-    apodizationIdx = copy(p.apodizationIdx)
+    deconvolveIdx = copy(p.deconvolveIdx)
     windowLinInterp = copy(p.windowLinInterp)
     windowPolyInterp = copy(p.windowPolyInterp)
     windowHatInvLUT = copy(p.windowHatInvLUT)
@@ -60,7 +60,7 @@ function Base.copy(p::NFFTPlan{T,D,R}) where {T,D,R}
     BP = plan_bfft!(tmpVec, p.dims; flags = p.backwardFFT.flags)
 
     return NFFTPlan{T,D,R}(p.N, p.NOut, p.M, x, p.n, p.dims, p.params, FP, BP, tmpVec, 
-                           tmpVecHat, apodizationIdx, windowHatInvLUT, windowLinInterp, windowPolyInterp,
+                           tmpVecHat, deconvolveIdx, windowHatInvLUT, windowLinInterp, windowPolyInterp,
                            blocks, nodesInBlock, blockOffsets, idxInBlock, windowTensor, B)
 end
 
@@ -93,14 +93,14 @@ function NFFTPlan(x::Matrix{T}, N::NTuple{D,Int}; dims::Union{Integer,UnitRange{
 
     blocks, nodesInBlocks, blockOffsets, idxInBlock, windowTensor = precomputeBlocks(x, n, params, calcBlocks)
 
-    windowLinInterp, windowPolyInterp, windowHatInvLUT, apodizationIdx, B = 
+    windowLinInterp, windowPolyInterp, windowHatInvLUT, deconvolveIdx, B = 
             precomputation(x, N[dims_], n[dims_], params)
 
     U = params.storeApodizationIdx ? N : ntuple(d->0,D)
     tmpVecHat = Array{Complex{T},D}(undef, U)
 
     NFFTPlan(N, NOut, M, x, n, dims_, params, FP, BP, tmpVec, tmpVecHat, 
-                       apodizationIdx, windowHatInvLUT, windowLinInterp, windowPolyInterp,
+                       deconvolveIdx, windowHatInvLUT, windowLinInterp, windowPolyInterp,
                        blocks, nodesInBlocks, blockOffsets, idxInBlock, windowTensor, B)
 end
 
@@ -110,7 +110,7 @@ function AbstractNFFTs.nodes!(p::NFFTPlan{T}, x::Matrix{T}) where {T}
         x .= sortslices(x, dims=2)
     end
 
-    windowLinInterp, windowPolyInterp, windowHatInvLUT, apodizationIdx, B = 
+    windowLinInterp, windowPolyInterp, windowHatInvLUT, deconvolveIdx, B = 
        precomputation(x, p.N, p.n, p.params)
 
     p.M = size(x, 2)
@@ -140,7 +140,7 @@ function LinearAlgebra.mul!(fHat::StridedArray, p::NFFTPlan{T,D,R}, f::AbstractA
     consistencyCheck(p, f, fHat)
 
     fill!(p.tmpVec, zero(Complex{T}))
-    t1 = @elapsed @inbounds apodization!(p, f, p.tmpVec)
+    t1 = @elapsed @inbounds deconvolve!(p, f, p.tmpVec)
     t2 = @elapsed p.forwardFFT * p.tmpVec 
     t3 = @elapsed @inbounds convolve!(p, p.tmpVec, fHat)
     if verbose
@@ -161,9 +161,9 @@ function LinearAlgebra.mul!(f::StridedArray, pl::Adjoint{Complex{T},<:NFFTPlan{T
     p = pl.parent
     consistencyCheck(p, f, fHat)    
 
-    t1 = @elapsed @inbounds convolve_adjoint!(p, fHat, p.tmpVec)
+    t1 = @elapsed @inbounds convolve_transpose!(p, fHat, p.tmpVec)
     t2 = @elapsed p.backwardFFT * p.tmpVec
-    t3 = @elapsed @inbounds apodization_adjoint!(p, p.tmpVec, f)
+    t3 = @elapsed @inbounds deconvolve_transpose!(p, p.tmpVec, f)
     if verbose
         @info "Timing: conv=$t1 fft=$t2 apod=$t3"
     end
