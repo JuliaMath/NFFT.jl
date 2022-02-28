@@ -10,7 +10,7 @@ mutable struct CuNFFTPlan{T,D} <: AbstractNFFTPlan{T,D,1}
   backwardFFT::CUDA.CUFFT.cCuFFTPlan{Complex{T},1,true,D}
   tmpVec::CuArray{Complex{T},D}
   tmpVecHat::CuArray{Complex{T},D}
-  apodizationIdx::CuArray{Int64,1}
+  deconvolveIdx::CuArray{Int64,1}
   windowLinInterp::Vector{T}
   windowHatInvLUT::CuArray{Complex{T}} # ::Vector{Vector{T}}
   B::CuSparseMatrixCSC{Complex{T}} # ::SparseMatrixCSC{T,Int64}
@@ -46,12 +46,12 @@ function CuNFFTPlan(x::Matrix{T}, N::NTuple{D,Int}; dims::Union{Integer,UnitRang
     FP = plan_fft!(tmpVec, dims_)
     BP = plan_bfft!(tmpVec, dims_)
 
-    windowLinInterp, windowHatInvLUT, apodizationIdx, B = NFFT.precomputation(x, N[dims_], n[dims_], params)
+    windowLinInterp, windowHatInvLUT, deconvolveIdx, B = NFFT.precomputation(x, N[dims_], n[dims_], params)
     
     U = params.storeApodizationIdx ? N : ntuple(d->0,D)
     tmpVecHat = CuArray{Complex{T},D}(undef, U)
 
-    apodIdx = CuArray(apodizationIdx)
+    apodIdx = CuArray(deconvolveIdx)
     winHatInvLUT = CuArray(Complex{T}.(windowHatInvLUT[1])) 
     B_ = CuSparseMatrixCSC(Complex{T}.(B))
 
@@ -67,11 +67,11 @@ function LinearAlgebra.mul!(fHat::CuArray, p::CuNFFTPlan{T,D}, f::CuArray;
                           verbose=false, timing::Union{Nothing,TimingStats} = nothing) where {T,D} 
   NFFT.consistencyCheck(p, f, fHat)
 
-  # apodization
+  # deconvolve
   fill!(p.tmpVec, zero(Complex{T}))
   t1 = @elapsed begin
     p.tmpVecHat[:] .= vec(f).*p.windowHatInvLUT
-    p.tmpVec[p.apodizationIdx] = p.tmpVecHat
+    p.tmpVec[p.deconvolveIdx] = p.tmpVecHat
   end
 
   # FFT
@@ -105,9 +105,9 @@ function LinearAlgebra.mul!(f::CuArray, pl::Adjoint{Complex{T},<:CuNFFTPlan{T,D}
   # FFT
   t2 = @elapsed p.backwardFFT * p.tmpVec 
 
-  # adjoint apodization
+  # adjoint deconvolve
   t3 = @elapsed begin
-    p.tmpVecHat[:] = p.tmpVec[p.apodizationIdx]
+    p.tmpVecHat[:] = p.tmpVec[p.deconvolveIdx]
     f[:] .= vec(p.tmpVecHat) .* p.windowHatInvLUT
   end
 

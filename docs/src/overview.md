@@ -98,7 +98,7 @@ The NFFT has the following parameters that can be passed as a keyword argument t
 | `window`   | Convolution window: Available are `:gauss`,  `:spline`, `:kaiser_bessel_rev`, `:kaiser_bessel`.    | `:kaiser_bessel` |
 | `precompute`        | Flag indicating the precomputation strategy for the convolution matrix         | `TENSOR`      |
 | `sortNodes`        | Flag if the nodes should be sorted in a lexicographic way         | `false`      |
-| `storeApodizationIdx`        | Flag if the apodization indices should be stored. Currently this option is necessary on the GPU       | `false`      |
+| `storeApodizationIdx`        | Flag if the deconvolve indices should be stored. Currently this option is necessary on the GPU       | `false`      |
 | `fftflags`        | flags passed to the inner `AbstractFFT` as `flags`. This can for instance be `FFTW.MEASURE` in order to optimize the inner FFT    | `FFTW.ESTIMATE`      |
 
 In practice you the default values are properly chosen. The only parameter you should car about is `reltol`. In case of memory issues you want to change `m`, and `σ` instead and use a small oversampling factor like `1.25`.

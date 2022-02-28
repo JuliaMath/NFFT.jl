@@ -18,7 +18,7 @@ function sdc(p::AbstractNFFTPlan{T,D,1}; iters=20) where {T,D}
 
     # Pre-weighting to correct non-uniform sample density
     for i in 1:iters
-        convolve_adjoint!(p, weights, p.tmpVec)
+        convolve_transpose!(p, weights, p.tmpVec)
         p.tmpVec ./= scaling_factor
         convolve!(p, p.tmpVec, weights_tmp)
         weights_tmp ./= scaling_factor

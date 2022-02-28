@@ -154,10 +154,10 @@ Change nodes `x` in the plan `p` operation and return the plan.
 ## Optional Interface ##
 # The following methods can but don't need to be implemented 
 
-@mustimplement apodization!(p::AbstractNFFTPlan, f::AbstractArray, g::AbstractArray)
-@mustimplement apodization_adjoint!(p::AbstractNFFTPlan, g::AbstractArray, f::AbstractArray)
+@mustimplement deconvolve!(p::AbstractNFFTPlan, f::AbstractArray, g::AbstractArray)
+@mustimplement deconvolve_transpose!(p::AbstractNFFTPlan, g::AbstractArray, f::AbstractArray)
 @mustimplement convolve!(p::AbstractNFFTPlan, g::AbstractArray, fHat::AbstractArray)
-@mustimplement convolve_adjoint!(p::AbstractNFFTPlan, fHat::AbstractArray, g::AbstractArray)
+@mustimplement convolve_transpose!(p::AbstractNFFTPlan, fHat::AbstractArray, g::AbstractArray)
 
 
 

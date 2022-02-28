@@ -10,7 +10,7 @@ export AnyNFFTPlan, AnyRealNFFTPlan, AnyComplexNFFTPlan,
        plan_nfft, plan_nfct, plan_nfst, mul!, size_in, size_out, nodes!
 
 # optional
-export apodization!, apodization_adjoint!, convolve!, convolve_adjoint!
+export deconvolve!, deconvolve_transpose!, convolve!, convolve_transpose!
 
 # derived
 export nfft, nfft_adjoint, ndft, ndft_adjoint, nfct, nfct_transposed, ndct, ndct_transposed

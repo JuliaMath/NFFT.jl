@@ -323,10 +323,10 @@ function precomputation(x::Union{Matrix{T},Vector{T}}, N::NTuple{D,Int}, n, para
 
   if params.storeApodizationIdx
     windowHatInvLUT = Vector{Vector{T}}(undef, 1)
-    windowHatInvLUT[1], apodizationIdx = precompWindowHatInvLUT(params, N, n, windowHatInvLUT_)  
+    windowHatInvLUT[1], deconvolveIdx = precompWindowHatInvLUT(params, N, n, windowHatInvLUT_)  
   else
     windowHatInvLUT = windowHatInvLUT_
-    apodizationIdx = Array{Int64,1}(undef, 0)
+    deconvolveIdx = Array{Int64,1}(undef, 0)
   end
 
   if precompute == LINEAR
@@ -354,7 +354,7 @@ function precomputation(x::Union{Matrix{T},Vector{T}}, N::NTuple{D,Int}, n, para
     error("precompute = $precompute not supported by NFFT.jl!")
   end
 
-  return (windowLinInterp, windowPolyInterp, windowHatInvLUT, apodizationIdx, B)
+  return (windowLinInterp, windowPolyInterp, windowHatInvLUT, deconvolveIdx, B)
 end
 
 ####################################
