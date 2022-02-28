@@ -1,7 +1,7 @@
 name = "NFFT"
 uuid = "efe261a4-0d2b-5849-be55-fc731d526b0d"
 authors = ["Tobias Knopp <tobias@knoppweb.de>"]
-version = "0.11.0"
+version = "0.12.0"
 
 [deps]
 AbstractNFFTs = "7f219486-4aa7-41d6-80a7-e08ef20ceed7"
@@ -18,7 +18,7 @@ SpecialFunctions = "276daf66-3868-5448-9aa4-cd146d93841b"
 #StaticArrays = "90137ffa-7385-5640-81b9-e52037218182"
 
 [compat]
-AbstractNFFTs = "0.6"
+AbstractNFFTs = "0.7"
 DataFrames = "1.3.1"
 FFTW = "0.2, 1"
 FLoops = "0.2"
