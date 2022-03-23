@@ -13,7 +13,10 @@ for n in fieldnames(typeof(p))
   end
 end
 
+pAdjCopy = copy(adjoint(p)) # just ensure that copy does not error
+
 @show p
+@show adjoint(p)
 
 ## test range error
 

@@ -97,8 +97,19 @@ size_out(p::Adjoint{Complex{T},<:AbstractComplexFTPlan{T,D,R}}) where {T,D,R} = 
 size_in(p::Transpose{T,<:AbstractRealFTPlan{T,D,R}}) where {T,D,R} = size_out(p.parent)
 size_out(p::Transpose{T,<:AbstractRealFTPlan{T,D,R}}) where {T,D,R} = size_in(p.parent)
 
+# The following are required both, because there seem to be special array handling in base
 function Base.show(io::IO, mime::MIME{Symbol("text/plain")}, p::Transpose{T,<:AbstractRealFTPlan{T,D,R}}) where {T,D,R}
   print(io, "Transposed ")
+  print(io, p.parent)
+end
+
+function Base.show(io::IO, p::Transpose{T,<:AbstractRealFTPlan{T,D,R}}) where {T,D,R}
+  print(io, "Transposed ")
+  print(io, p.parent)
+end
+
+function Base.show(io::IO, p::Adjoint{Complex{T},<:AbstractComplexFTPlan{T,D,R}}) where {T,D,R}
+  print(io, "Adjoint ")
   print(io, p.parent)
 end
 
@@ -107,6 +118,13 @@ function Base.show(io::IO, mime::MIME{Symbol("text/plain")}, p::Adjoint{Complex{
   print(io, p.parent)
 end
 
+function Base.copy(p::Transpose{T,<:AbstractRealFTPlan{T,D,R}}) where {T,D,R}
+  transpose(copy(p.parent))
+end
+
+function Base.copy(p::Adjoint{Complex{T},<:AbstractComplexFTPlan{T,D,R}}) where {T,D,R}
+  adjoint(copy(p.parent))
+end
 
 #####################
 # define interface
