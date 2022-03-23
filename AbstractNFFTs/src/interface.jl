@@ -77,6 +77,7 @@ Base.eltype(p::AbstractComplexFTPlan{T}) where T = Complex{T}
 Base.eltype(p::AbstractRealFTPlan{T}) where T = T
 
 Base.size(p::AbstractFTPlan) = (prod(size_out(p)), prod(size_in(p)))
+Base.length(p::AbstractFTPlan) = prod(size(p))
 
 Base.size(p::Adjoint{Complex{T}, U}) where {T, U<:AbstractComplexFTPlan{T}} = 
   (prod(size_in(p.parent)), prod(size_out(p.parent)))
@@ -95,6 +96,35 @@ size_out(p::Adjoint{Complex{T},<:AbstractComplexFTPlan{T,D,R}}) where {T,D,R} = 
 
 size_in(p::Transpose{T,<:AbstractRealFTPlan{T,D,R}}) where {T,D,R} = size_out(p.parent)
 size_out(p::Transpose{T,<:AbstractRealFTPlan{T,D,R}}) where {T,D,R} = size_in(p.parent)
+
+# The following are required both, because there seem to be special array handling in base
+function Base.show(io::IO, mime::MIME{Symbol("text/plain")}, p::Transpose{T,<:AbstractRealFTPlan{T,D,R}}) where {T,D,R}
+  print(io, "Transposed ")
+  print(io, p.parent)
+end
+
+function Base.show(io::IO, p::Transpose{T,<:AbstractRealFTPlan{T,D,R}}) where {T,D,R}
+  print(io, "Transposed ")
+  print(io, p.parent)
+end
+
+function Base.show(io::IO, p::Adjoint{Complex{T},<:AbstractComplexFTPlan{T,D,R}}) where {T,D,R}
+  print(io, "Adjoint ")
+  print(io, p.parent)
+end
+
+function Base.show(io::IO, mime::MIME{Symbol("text/plain")}, p::Adjoint{Complex{T},<:AbstractComplexFTPlan{T,D,R}}) where {T,D,R}
+  print(io, "Adjoint ")
+  print(io, p.parent)
+end
+
+function Base.copy(p::Transpose{T,<:AbstractRealFTPlan{T,D,R}}) where {T,D,R}
+  transpose(copy(p.parent))
+end
+
+function Base.copy(p::Adjoint{Complex{T},<:AbstractComplexFTPlan{T,D,R}}) where {T,D,R}
+  adjoint(copy(p.parent))
+end
 
 #####################
 # define interface
