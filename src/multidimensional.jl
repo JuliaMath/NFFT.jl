@@ -383,7 +383,8 @@ end
 
 @noinline function fillBlock!(p::NFFTPlan{T,D,1}, fHat, block, nodesInBlock, off, L::Val{Z}, scale, 
                               idxInBlock, winTensor, winPoly) where {T,D,Z}
-  if (D >= 3 && Z >= 10) || (D == 2 && Z >= 16) # magic
+  if (Threads.nthreads() == 1 || !NFFT._use_threads[]) &&
+      (D >= 3 && Z >= 10) || (D == 2 && Z >= 16) # magic 
     for (kLocal,k) in enumerate(nodesInBlock)
       fillOneNodeReal!(p, fHat, block, off, L, scale, k, kLocal, idxInBlock, winTensor, winPoly)
     end

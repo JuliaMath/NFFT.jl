@@ -3,7 +3,7 @@
 Base.@kwdef mutable struct NFFTParams{T}
   m::Int = 4
   σ::T = 2.0
-  reltol::T = 1e-9
+  reltol::T = 1e-7
   window::Symbol = :kaiser_bessel
   LUTSize::Int64 = 0
   precompute::PrecomputeFlags = POLYNOMIAL
