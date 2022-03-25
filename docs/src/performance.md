@@ -23,6 +23,10 @@ FINUFFT is not included in this plot since it does not allow to adjust the overs
 
 In both figures one can see that independent implementations reach very similar accuracy. There are some smaller implementation details (different window functions, different kernel size handling) that slightly affect the accuracy. For instance NFFT3 uses a kernel size of ``(2m+2)^D`` while NFFT.jl and FINUFFT use ``(2m)^D``.
 
+Finally, we want to look at different precomputation methods. While FULL and TENSOR are exact methods, that just cache the window function, LINEAR and POLYNOMIAL apply an approximation. However, by proper selection of the approximation parameters it is possible to keep the approximation error smaller than the error introduced by cutting of the window function. This can be verified in the following error plot.
+
+![Accurracy](./assets/accuracy_m_pre_D2.svg)
+
 ## Performance 
 
 Next, we investigate the performance of the NFFT and benchmark the following three operations:
@@ -55,7 +59,7 @@ The parameters for this benchmark are
 * ``m=4``
 * ``\sigma = 2``
 * 1, 2, 4, 8 threads
-* precompute `NFFT.LUT` and `NFFT.TENSOR` for NFFT.jl and NFFT3
+* precompute `NFFT.LINEAR` and `NFFT.TENSOR` for NFFT.jl and NFFT3
 * sorted random nodes
 
 The results are shown in the following graphic:
@@ -65,5 +69,5 @@ The results are shown in the following graphic:
 Observations:
 * All packages are within a factor of about three.
 * They are properly multi-threaded and scale with the number of threads.
-* `NFFT.TENSOR` is faster than `NFFT.LUT` but has larger precomputation time.
+* `NFFT.TENSOR` is faster than `NFFT.LINEAR` but has larger precomputation time.
 

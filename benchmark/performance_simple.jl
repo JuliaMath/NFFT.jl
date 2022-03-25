@@ -9,7 +9,7 @@ ccall(("omp_set_num_threads",NFFT3.lib_path_nfft),Nothing,(Int64,),convert(Int64
 NFFT._use_threads[] = (Threads.nthreads() > 1)
 
 function nfft_performance_simple(;N = (1024,1024), M = prod(N), m = 4, 
-  σ = 2.0, threading=false, pre=NFFT.LUT, T=Float64, blocking=true,
+  σ = 2.0, threading=false, pre=NFFT.LINEAR, T=Float64, blocking=true,
   storeApodizationIdx=false, fftflags=NFFT.FFTW.MEASURE, ctor=NFFTPlan)
 
   timing = TimingStats()
@@ -18,11 +18,11 @@ function nfft_performance_simple(;N = (1024,1024), M = prod(N), m = 4,
   
   fHat = randn(Complex{T}, M)
   f = randn(Complex{T}, N)
-
-  if ctor == CuNFFT.CuNFFTPlan
-   @time fHat = CuNFFT.CuArray(fHat)
-   @time f = CuNFFT.CuArray(f)
-  end
+s
+  #=if ctor == CuNFFT.CuNFFTPlan
+    fHat = CuNFFT.CuArray(fHat)
+    f = CuNFFT.CuArray(f)
+  end=#
 
   NFFT._use_threads[] = threading
   NFFT.FFTW.set_num_threads( threading ? Threads.nthreads() : 1)
@@ -32,12 +32,6 @@ function nfft_performance_simple(;N = (1024,1024), M = prod(N), m = 4,
 
   tadjoint = @elapsed CUDA.@sync mul!(f, adjoint(p), fHat; timing)
   ttrafo = @elapsed CUDA.@sync mul!(fHat, p, f; timing)
-
-  if ctor == FINUFFTPlan 
-    # This extracts the raw trafo timing that the FINUFFTPlan caches internally
-    ttrafo = p.timeTrafo
-    tadjoint = p.timeAdjoint
-  end
 
   @info tpre, ttrafo, tadjoint
 

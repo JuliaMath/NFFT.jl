@@ -1,26 +1,26 @@
-########## apodization ##########
+########## deconvolve ##########
 
-function AbstractNFFTs.apodization!(p::NFFTPlan{T,D,1}, f::AbstractArray{U,D}, g::StridedArray{Complex{T},D}) where {D,T,U}
+function AbstractNFFTs.deconvolve!(p::NFFTPlan{T,D,1}, f::AbstractArray{U,D}, g::StridedArray{Complex{T},D}) where {D,T,U}
   if !p.params.storeApodizationIdx
-    apodization_alloc_free!(p, f, g)
+    deconvolve_alloc_free!(p, f, g)
   else
     p.tmpVecHat[:] .= vec(f) .* p.windowHatInvLUT[1]
-    g[p.apodizationIdx] = p.tmpVecHat
+    g[p.deconvolveIdx] = p.tmpVecHat
   end
   return
 end
 
-function apodization_alloc_free!(p::NFFTPlan{T,D,1}, f::AbstractArray{U,D}, g::StridedArray{Complex{T},D}) where {D,T,U}
+function deconvolve_alloc_free!(p::NFFTPlan{T,D,1}, f::AbstractArray{U,D}, g::StridedArray{Complex{T},D}) where {D,T,U}
   if D == 1
-    _apodization_alloc_free!(p, f, g, 1) 
+    _deconvolve_alloc_free!(p, f, g, 1) 
   else
     @cthreads for o = 1:p.N[end]
-        _apodization_alloc_free!(p, f, g, o)  
+        _deconvolve_alloc_free!(p, f, g, o)  
     end
   end
 end
 
-@generated function _apodization_alloc_free!(p::NFFTPlan{T,D,1}, f::AbstractArray{U,D}, g::StridedArray{Complex{T},D}, o) where {D,T,U}
+@generated function _deconvolve_alloc_free!(p::NFFTPlan{T,D,1}, f::AbstractArray{U,D}, g::StridedArray{Complex{T},D}, o) where {D,T,U}
   quote
     @nexprs 1 d -> gidx_{$D-1} = rem(o+p.n[$D] - p.N[$D]÷2 - 1, p.n[$D]) + 1
     @nexprs 1 d -> l_{$D-1} = o
@@ -43,29 +43,29 @@ end
   end
 end
 
-########## apodization adjoint ##########
+########## deconvolve adjoint ##########
 
-function AbstractNFFTs.apodization_adjoint!(p::NFFTPlan{T,D,1}, g::AbstractArray{Complex{T},D}, f::StridedArray{U,D}) where {D,T,U}
+function AbstractNFFTs.deconvolve_transpose!(p::NFFTPlan{T,D,1}, g::AbstractArray{Complex{T},D}, f::StridedArray{U,D}) where {D,T,U}
   if !p.params.storeApodizationIdx
-    apodization_adjoint_alloc_free!(p, g, f)
+    deconvolve_transpose_alloc_free!(p, g, f)
   else
-    p.tmpVecHat[:] = g[p.apodizationIdx]
+    p.tmpVecHat[:] = g[p.deconvolveIdx]
     f[:] .= vec(p.tmpVecHat) .* p.windowHatInvLUT[1]
   end
   return
 end
 
-function apodization_adjoint_alloc_free!(p::NFFTPlan{T,D,1}, g::AbstractArray{Complex{T},D}, f::StridedArray{U,D}) where {D,T,U}
+function deconvolve_transpose_alloc_free!(p::NFFTPlan{T,D,1}, g::AbstractArray{Complex{T},D}, f::StridedArray{U,D}) where {D,T,U}
   if D == 1
-    _apodization_adjoint_alloc_free!(p, g, f, 1)  
+    _deconvolve_transpose_alloc_free!(p, g, f, 1)  
   else
     @cthreads for o = 1:p.N[end]
-      _apodization_adjoint_alloc_free!(p, g, f, o)  
+      _deconvolve_transpose_alloc_free!(p, g, f, o)  
     end
   end
 end
 
-@generated function _apodization_adjoint_alloc_free!(p::NFFTPlan{T,D,1}, g::AbstractArray{Complex{T},D}, f::StridedArray{U,D}, o) where {D,T,U}
+@generated function _deconvolve_transpose_alloc_free!(p::NFFTPlan{T,D,1}, g::AbstractArray{Complex{T},D}, f::StridedArray{U,D}, o) where {D,T,U}
   quote
     @nexprs 1 d -> gidx_{$D-1} = rem(o+p.n[$D] - p.N[$D]÷2 - 1, p.n[$D]) + 1
     @nexprs 1 d -> l_{$D-1} = o
@@ -93,9 +93,9 @@ end
 function AbstractNFFTs.convolve!(p::NFFTPlan{T,D,1}, g::AbstractArray{Complex{T},D}, fHat::StridedVector{U}) where {D,T,U}
   if isempty(p.B)
     if p.params.blocking
-      convolve_LUT_MT!(p, g, fHat)
+      convolve_blocking!(p, g, fHat)
     else
-      convolve_LUT!(p, g, fHat)
+      convolve_nonblocking!(p, g, fHat)
     end
   else
     convolve_sparse_matrix!(p, g, fHat)
@@ -103,22 +103,23 @@ function AbstractNFFTs.convolve!(p::NFFTPlan{T,D,1}, g::AbstractArray{Complex{T}
   return
 end
 
-function convolve_LUT!(p::NFFTPlan{T,D,1}, g::AbstractArray{Complex{T},D}, fHat::StridedVector{U}) where {D,T,U}
+function convolve_nonblocking!(p::NFFTPlan{T,D,1}, g::AbstractArray{Complex{T},D}, fHat::StridedVector{U}) where {D,T,U}
   L = Val(2*p.params.m)
   scale = Int(p.params.LUTSize/(p.params.m+2))
 
   @cthreads for k in 1:p.M
-      fHat[k] = _convolve_LUT(p, g, L, scale, k)
+      fHat[k] = _convolve_nonblocking(p, g, L, scale, k)
   end
 end
 
-function _precomputeOneNode(p::NFFTPlan{T,D,1}, scale, k, d, L::Val{Z}) where {T,D,Z}
-    return _precomputeOneNode(p.windowLUT, p.x, p.n, p.params.m, p.params.σ, scale, k, d, L, p.params.LUTSize) 
+function precomputeOneNode(p::NFFTPlan{T,D,1}, scale, k, d, L::Val{Z}) where {T,D,Z}
+    return precomputeOneNode(p.windowLinInterp, p.x, p.n, 
+                    p.params.m, p.params.σ, scale, k, d, L, p.params.LUTSize) 
 end
 
-@generated function _convolve_LUT(p::NFFTPlan{T,D,1}, g::AbstractArray{Complex{T},D}, L::Val{Z}, scale, k) where {D,T,Z}
+@generated function _convolve_nonblocking(p::NFFTPlan{T,D,1}, g::AbstractArray{Complex{T},D}, L::Val{Z}, scale, k) where {D,T,Z}
   quote
-    @nexprs $(D) d -> ((tmpIdx_d, tmpWin_d) = _precomputeOneNode(p, scale, k, d, L) )
+    @nexprs $(D) d -> ((tmpIdx_d, tmpWin_d) = precomputeOneNode(p, scale, k, d, L) )
   
     fHat = zero(Complex{T})
 
@@ -142,32 +143,32 @@ end
 
 ########## convolve adjoint ##########
 
-function AbstractNFFTs.convolve_adjoint!(p::NFFTPlan{T,D,1}, fHat::AbstractVector{U}, g::StridedArray{Complex{T},D}) where {D,T,U}
+function AbstractNFFTs.convolve_transpose!(p::NFFTPlan{T,D,1}, fHat::AbstractVector{U}, g::StridedArray{Complex{T},D}) where {D,T,U}
   if isempty(p.B)
     if p.params.blocking
-      convolve_adjoint_LUT_MT!(p, fHat, g)
+      convolve_transpose_blocking!(p, fHat, g)
     else
-      convolve_adjoint_LUT!(p, fHat, g)
+      convolve_transpose_nonblocking!(p, fHat, g)
     end
   else
-    convolve_adjoint_sparse_matrix!(p, fHat, g)
+    convolve_transpose_sparse_matrix!(p, fHat, g)
   end
 end
 
 
-function convolve_adjoint_LUT!(p::NFFTPlan{T,D,1}, fHat::AbstractVector{U}, g::StridedArray{Complex{T},D}) where {D,T,U}
+function convolve_transpose_nonblocking!(p::NFFTPlan{T,D,1}, fHat::AbstractVector{U}, g::StridedArray{Complex{T},D}) where {D,T,U}
   fill!(g, zero(T))
   L = Val(2*p.params.m)
   scale = Int(p.params.LUTSize/(p.params.m+2))
 
   @inbounds @simd for k in 1:p.M
-    _convolve_adjoint_LUT!(p, fHat, g, L, scale, k)
+    _convolve_transpose_nonblocking!(p, fHat, g, L, scale, k)
   end
 end
 
-@generated function _convolve_adjoint_LUT!(p::NFFTPlan{T,D,1}, fHat::AbstractVector{U}, g::StridedArray{Complex{T},D}, L::Val{Z}, scale, k) where {D,T,U,Z}
+@generated function _convolve_transpose_nonblocking!(p::NFFTPlan{T,D,1}, fHat::AbstractVector{U}, g::StridedArray{Complex{T},D}, L::Val{Z}, scale, k) where {D,T,U,Z}
   quote
-    @nexprs $(D) d -> ((tmpIdx_d, tmpWin_d) = _precomputeOneNode(p, scale, k, d, L) )
+    @nexprs $(D) d -> ((tmpIdx_d, tmpWin_d) = precomputeOneNode(p, scale, k, d, L) )
 
     @nexprs 1 d -> prodWin_{$D} = one(T)
     @nloops_ $D l d -> 1:$Z d->begin
@@ -181,7 +182,7 @@ end
   end
 end
 
-function convolve_adjoint_sparse_matrix!(p::NFFTPlan{T,D,1},
+function convolve_transpose_sparse_matrix!(p::NFFTPlan{T,D,1},
                         fHat::AbstractVector{U}, g::StridedArray{Complex{T},D}) where {D,T,U}
   #threaded_mul!(vec(g), p.B, fHat)
   mul!(vec(g), p.B, fHat)
@@ -192,24 +193,32 @@ end
 
 ######## blocked multi-threading #########
 
-function convolve_LUT_MT!(p::NFFTPlan, g, fHat)
-  L = Val(2*p.params.m)
-  _convolve_LUT_MT!(p, g, fHat, L)
+
+function makePolyArrayStatic(p::NFFTPlan)
+  if p.params.precompute == POLYNOMIAL
+    P = p.windowPolyInterp
+    return ntuple(d-> ntuple(g-> P[g,d], size(P,1)), size(P,2))
+    #return SArray{Tuple{12,12}}(P) # Static Array Version
+  else
+    return nothing
+  end
 end
 
-function _convolve_LUT_MT!(p::NFFTPlan{T,D,1}, g, fHat, L) where {D,T}
+function convolve_blocking!(p::NFFTPlan, g, fHat)
+  L = Val(2*p.params.m)
+  winPoly = makePolyArrayStatic(p)
+  _convolve_blocking!(p, g, fHat, L, winPoly)
+end
+
+function _convolve_blocking!(p::NFFTPlan{T,D,1}, g, fHat, L, winPoly) where {D,T}
   scale = Int(p.params.LUTSize/(p.params.m+2))
 
   @cthreads for l in CartesianIndices(size(p.blocks))
     if !isempty(p.nodesInBlock[l])
       toBlock!(p, g, p.blocks[l], p.blockOffsets[l])
-      if p.params.precompute == LUT
-        windowTensor = nothing
-      else
-        windowTensor = p.windowTensor[l]
-      end
+      winTensor = (p.params.precompute == TENSOR) ? p.windowTensor[l] : nothing
       calcOneNode!(p, fHat, p.nodesInBlock[l], p.blocks[l], p.blockOffsets[l], L, 
-                   scale, p.idxInBlock[l], windowTensor)
+                   scale, p.idxInBlock[l], winTensor, winPoly)
     end
   end
 end
@@ -255,18 +264,19 @@ quote
 end
 
 @noinline function calcOneNode!(p::NFFTPlan{T,D,1}, fHat, nodesInBlock, block,
-         off, L::Val{Z}, scale, idxInBlock, windowTensor) where {D,T,Z}
+         off, L, scale, idxInBlock, winTensor, winPoly) where {D,T}
   for (kLocal,k) in enumerate(nodesInBlock)
-    fHat[k] = _convolve_LUT_MT(p, block, off, L, scale, k, kLocal, idxInBlock, windowTensor)
+    fHat[k] = _convolve_nonblocking(p, block, off, L, scale, k, kLocal, 
+                               idxInBlock, winTensor, winPoly)
   end
   return
 end
 
-@generated function _convolve_LUT_MT(p::NFFTPlan{T,D,1}, block,
-                          off, L::Val{Z}, scale, k, kLocal, idxInBlock, windowTensor) where {D,T,Z}
+@generated function _convolve_nonblocking(p::NFFTPlan{T,D,1}, block, off, L::Val{Z}, scale, 
+                   k, kLocal, idxInBlock, winTensor, winPoly) where {D,T,Z}
   quote
-    @nexprs $(D) d -> ((off_d, tmpWin_d) = 
-       _precomputeOneNodeShifted(p.windowLUT, scale, kLocal, d, L, idxInBlock, windowTensor) )
+    @nexprs $(D) d -> ((off_d, tmpWin_d) =  precomputeOneNodeBlocking(p.windowLinInterp, winTensor, winPoly, scale, 
+                      kLocal, d, L, idxInBlock) )
 
     fHat = zero(Complex{T})
 
@@ -290,12 +300,13 @@ end
 
 ##########################
 
-function convolve_adjoint_LUT_MT!(p::NFFTPlan, fHat, g)
+function convolve_transpose_blocking!(p::NFFTPlan, fHat, g)
   L = Val(2*p.params.m)
-  _convolve_adjoint_LUT_MT!(p, fHat, g, L)
+  winPoly = makePolyArrayStatic(p)
+  _convolve_transpose_blocking!(p, fHat, g, L, winPoly)
 end
 
-function _convolve_adjoint_LUT_MT!(p::NFFTPlan{T,D,1}, fHat, g, L) where {D,T}
+function _convolve_transpose_blocking!(p::NFFTPlan{T,D,1}, fHat, g, L, winPoly) where {D,T}
   #g .= zero(T)
   ccall(:memset, Ptr{Cvoid}, (Ptr{Cvoid}, Cint, Csize_t), g, 0, sizeof(g))
   scale = Int(p.params.LUTSize/(p.params.m+2))
@@ -305,12 +316,10 @@ function _convolve_adjoint_LUT_MT!(p::NFFTPlan{T,D,1}, fHat, g, L) where {D,T}
     if !isempty(p.nodesInBlock[l])
       # p.blocks[l] .= zero(T)
       ccall(:memset, Ptr{Cvoid}, (Ptr{Cvoid}, Cint, Csize_t), p.blocks[l], 0, sizeof(p.blocks[l]))
-      if p.params.precompute == LUT
-        windowTensor = nothing
-      else
-        windowTensor = p.windowTensor[l]
-      end
-      fillBlock!(p, fHat, p.blocks[l], p.nodesInBlock[l], p.blockOffsets[l], L, scale, p.idxInBlock[l], windowTensor)
+
+      winTensor = (p.params.precompute == TENSOR) ? p.windowTensor[l] : nothing
+      fillBlock!(p, fHat, p.blocks[l], p.nodesInBlock[l], p.blockOffsets[l], L, scale, 
+                 p.idxInBlock[l], winTensor, winPoly)
  
       lock(lk) do
         addBlock!(p, g, p.blocks[l], p.blockOffsets[l])
@@ -372,28 +381,29 @@ end
   end
 end
 
-@noinline function fillBlock!(p::NFFTPlan{T,D,1}, fHat, block, nodesInBlock, off, L::Val{Z}, scale, idxInBlock, windowTensor) where {T,D,Z}
-  if (D >= 3 && Z >= 10) || (D == 2 && Z >= 16) # magic
+@noinline function fillBlock!(p::NFFTPlan{T,D,1}, fHat, block, nodesInBlock, off, L::Val{Z}, scale, 
+                              idxInBlock, winTensor, winPoly) where {T,D,Z}
+  if (Threads.nthreads() == 1 || !NFFT._use_threads[]) &&
+      (D >= 3 && Z >= 10) || (D == 2 && Z >= 16) # magic 
     for (kLocal,k) in enumerate(nodesInBlock)
-      fillOneNodeReal!(p, fHat, block, off, L, scale, k, kLocal, idxInBlock, windowTensor)
+      fillOneNodeReal!(p, fHat, block, off, L, scale, k, kLocal, idxInBlock, winTensor, winPoly)
     end
   else
     for (kLocal,k) in enumerate(nodesInBlock)
-      fillOneNode!(p, fHat, block, off, L, scale, k, kLocal, idxInBlock, windowTensor)
+      fillOneNode!(p, fHat, block, off, L, scale, k, kLocal, idxInBlock, winTensor, winPoly)
     end
   end
   return
 end
 
 
-
-@generated function fillOneNode!(p::NFFTPlan{T,D,1}, fHat, block,
-                          off, L::Val{Z}, scale, k, kLocal, idxInBlock, windowTensor) where {D,T,Z}
+@generated function fillOneNode!(p::NFFTPlan{T,D,1}, fHat, block, off, L::Val{Z}, scale, 
+              k, kLocal, idxInBlock, winTensor, winPoly) where {D,T,Z}
   quote
     fHat_ = fHat[k]
 
-    @nexprs $(D) d -> ((off_d, tmpWin_d) = 
-          _precomputeOneNodeShifted(p.windowLUT, scale, kLocal, d, L, idxInBlock, windowTensor) )
+    @nexprs $(D) d -> ((off_d, tmpWin_d) = precomputeOneNodeBlocking(p.windowLinInterp, winTensor, winPoly, scale, kLocal, d, L,
+                                             idxInBlock) )
 
     innerWin = @ntuple $(Z) l -> tmpWin_1[l] * fHat_
 
@@ -414,13 +424,13 @@ end
 end
 
 
-@generated function fillOneNodeReal!(p::NFFTPlan{T,D,1}, fHat, block,
-                          off, L::Val{Z}, scale, k, kLocal, idxInBlock, windowTensor) where {D,T,Z}
+@generated function fillOneNodeReal!(p::NFFTPlan{T,D,1}, fHat, block, off, L::Val{Z}, scale, k, 
+                kLocal, idxInBlock, winTensor, winPoly) where {D,T,Z}
   quote
     fHat_ = fHat[k]
 
-    @nexprs $(D) d -> ((off_d, tmpWin_d) = 
-          _precomputeOneNodeShifted(p.windowLUT, scale, kLocal, d, L, idxInBlock, windowTensor) )
+    @nexprs $(D) d -> ((off_d, tmpWin_d) =  precomputeOneNodeBlocking(p.windowLinInterp, winTensor, winPoly, scale, kLocal, 
+                                              d, L, idxInBlock) )
 
     innerWin = Vector{Float64}(undef,$(2*Z)) # Probably cache me somewhere
     for l=1:$Z

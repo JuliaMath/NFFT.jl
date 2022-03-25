@@ -18,14 +18,14 @@ g = p * f                            # calculate forward NFFT
 # output
 
 8-element Vector{ComplexF64}:
- -2.7271960749471913 + 3.8456244591889663im
- -10.845195849781447 + 28.19548075582263im
-   14.03623366684479 + 1.6000052059841996im
-  21.401834121287745 - 11.485663941852422im
- -13.314941250549001 - 5.046096728494918im
-  -6.727872247372357 + 13.675812003571808im
-   4.774802666945808 - 1.3445454001853465im
-  16.242902197269107 + 4.374305558237685im
+ -2.7271960749618627 + 3.845624459208927im
+ -10.845195849950779 + 28.19548075631718im
+  14.036233666898797 + 1.60000520605086im
+  21.401834121537096 - 11.48566394195766im
+ -13.314941250611952 - 5.046096728543002im
+  -6.727872247343865 + 13.675812003697818im
+   4.774802667091818 - 1.344545400212461im
+   16.24290219740824 + 4.374305558267862im
 ```
 
 In 2D:
@@ -41,22 +41,22 @@ g = p * f
 # output
 
 16-element Vector{ComplexF64}:
-   720.6895321991428 + 965.523882337822im
-  -437.3350182803553 + 342.7623380075059im
- -254.25406987603407 + 443.98830703088487im
- -22.031291596643175 - 1154.643640748674im
-  -553.2097750894053 + 870.1410092341794im
- -502.99856720409076 - 345.1896840438394im
- -113.39126060095302 - 58.42376028544506im
-   809.2621963625332 + 440.7093087106408im
-   328.7372432704462 - 1199.2654551138367im
- -135.96498544404344 - 1231.1920536210084im
-  -62.36674520903343 - 1112.539501445665im
- -1232.9994882806322 - 1753.9813744481355im
-    670.645665258891 + 1123.1414479384587im
-  -520.6069238679662 - 69.30438918621493im
- -347.30015266304264 - 1573.5948177689895im
-   654.2300616992694 + 458.5668830750467im
+   720.6895322185172 + 965.5238823656152im
+ -437.33501828717453 + 342.76233801285343im
+ -254.25406988002578 + 443.98830704210553im
+ -22.031291597036198 - 1154.6436407643157im
+   -553.209775088763 + 870.1410092328575im
+  -502.9985672100636 - 345.1896840480448im
+ -113.39126060229795 - 58.42376028629204im
+   809.2621963819304 + 440.70930871993255im
+   328.7372432755835 - 1199.2654551345026im
+  -135.9649854453875 - 1231.1920536412715im
+  -62.36674520775709 - 1112.5395014452213im
+  -1232.999488293727 - 1753.9813744663504im
+   670.6456652700496 + 1123.1414479604596im
+   -520.606923875402 - 69.3043891865587im
+  -347.3001526656314 - 1573.59481779028im
+   654.2300617100419 + 458.5668830799317im
 
 ```
 
@@ -96,9 +96,9 @@ The NFFT has the following parameters that can be passed as a keyword argument t
 | `m`      | Kernel size parameter. The convolution matrix has `2m+1` non-zero entries around each sampling node in each dimension.  |  `m` $\in \{2,\dots,8\}$      |
 | `σ`     | Oversampling factor. The inner FFT is of size `σN` | `σ` $\in [1.25, 2.0]$      |
 | `window`   | Convolution window: Available are `:gauss`,  `:spline`, `:kaiser_bessel_rev`, `:kaiser_bessel`.    | `:kaiser_bessel` |
-| `precompute`        | Flag indicating the precomputation strategy for the convolution matrix         | `LUT`      |
+| `precompute`        | Flag indicating the precomputation strategy for the convolution matrix         | `TENSOR`      |
 | `sortNodes`        | Flag if the nodes should be sorted in a lexicographic way         | `false`      |
-| `storeApodizationIdx`        | Flag if the apodization indices should be stored. Currently this option is necessary on the GPU       | `false`      |
+| `storeApodizationIdx`        | Flag if the deconvolve indices should be stored. Currently this option is necessary on the GPU       | `false`      |
 | `fftflags`        | flags passed to the inner `AbstractFFT` as `flags`. This can for instance be `FFTW.MEASURE` in order to optimize the inner FFT    | `FFTW.ESTIMATE`      |
 
 In practice you the default values are properly chosen. The only parameter you should car about is `reltol`. In case of memory issues you want to change `m`, and `σ` instead and use a small oversampling factor like `1.25`.
@@ -117,13 +117,13 @@ independently of the chosen window.
 
 ## Precomputation
 
-There are different pre-computation strategies available. Again you don't need to change this parameter since the default `NFFT.LUT` is the best choice in most situations. However, our GPU implementation requires `NFFT.FULL` and thus there sometimes is need to change this value. In addition, it allows NFFT researchers to enforce a certain precomputation strategy, which can be mandatory when comparing different implementations in benchmarks.
+There are different pre-computation strategies available. Again you don't need to change this parameter since the default `NFFT.LINEAR` is the best choice in most situations. However, our GPU implementation requires `NFFT.FULL` and thus there sometimes is need to change this value. In addition, it allows NFFT researchers to enforce a certain precomputation strategy, which can be mandatory when comparing different implementations in benchmarks.
 
 | Value                          | Description      | 
 | :--------------------------------- | :--------------- | 
-| `NFFT.LUT`      | This option uses a look-up table to first sample the window function and later use linear interpolation during the actual convolution. |  
+| `NFFT.LINEAR`      | This option uses a look-up table to first sample the window function and later use linear interpolation during the actual convolution. |  
 | `NFFT.FULL`      | This option precomputes the entire convolution matrix and stores it as a `SparseMatrixCSC`. This option requires more memory and the longest precomputation time. This allows simple GPU implementations see CuNFFT.  | 
-| `NFFT.TENSOR`      | This option calculates the window on demand but exploits the tensor structure for multi-dimensional plans. Hence, this option makes no approximation but reaches a similar performance as `NFFT.LUT`. This option is right now only available in the NFFT3 backend.  | 
+| `NFFT.TENSOR`      | This option calculates the window on demand but exploits the tensor structure for multi-dimensional plans. Hence, this option makes no approximation but reaches a similar performance as `NFFT.LINEAR`. This option is right now only available in the NFFT3 backend.  | 
 
 ## Multi-Threading
 
@@ -133,7 +133,7 @@ julia -t T
 ```
 where `T` it the number of desired threads. NFFT.jl will use all threads that are specified. 
 
-Currently, the NFFT.LUT is fully multi-threaded while NFFT.LUT is multi-threaded in the precomputation
+Currently, the NFFT.LINEAR is fully multi-threaded while NFFT.LINEAR is multi-threaded in the precomputation
 and forward transformation, while the adjoint is not yet multi-threaded.
 
 ## Directional

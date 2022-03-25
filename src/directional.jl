@@ -1,12 +1,12 @@
 
-function AbstractNFFTs.apodization!(p::NFFTPlan{T,D,R}, f::AbstractArray{U,D},
+function AbstractNFFTs.deconvolve!(p::NFFTPlan{T,D,R}, f::AbstractArray{U,D},
                       g::StridedArray{Complex{T},D}) where {T,D,R,U}
   dstart = Val(p.dims[1])
   dend = Val(p.dims[end])
-  return _apodization!(p, f, g, dstart, dend)
+  return _deconvolve!(p, f, g, dstart, dend)
 end
 
-@generated function _apodization!(p::NFFTPlan{T,D,R}, f::AbstractArray{U,D},
+@generated function _deconvolve!(p::NFFTPlan{T,D,R}, f::AbstractArray{U,D},
                                   g::StridedArray{Complex{T},D}, dstart::Val{DS}, 
                                   dend::Val{DE}) where {T,D,R,U,DS,DE}
     quote
@@ -27,14 +27,14 @@ end
     end
 end
 
-function AbstractNFFTs.apodization_adjoint!(p::NFFTPlan{T,D,R},
+function AbstractNFFTs.deconvolve_transpose!(p::NFFTPlan{T,D,R},
                  g::AbstractArray{Complex{T},D}, f::StridedArray{U,D}) where {T,D,R,U}
   dstart = Val(p.dims[1])
   dend = Val(p.dims[end])
-  return _apodization_adjoint!(p, g, f, dstart, dend)
+  return _deconvolve_transpose!(p, g, f, dstart, dend)
 end
 
-@generated function _apodization_adjoint!(p::NFFTPlan{T,D,R},
+@generated function _deconvolve_transpose!(p::NFFTPlan{T,D,R},
            g::AbstractArray{Complex{T},D}, f::StridedArray{U,D}, dstart::Val{DS}, 
            dend::Val{DE}) where {T,D,R,U,DS,DE}
     quote
@@ -88,7 +88,7 @@ end
             idx = abs((xscale_d - l_{d+$L1} )*scale) + 1
             idxL = floor(idx)
             idxInt = Int(idxL)
-            prodWin_{d-1} = prodWin_d * (p.windowLUT[idxInt] + ( idx-idxL ) * (p.windowLUT[idxInt+1] - p.windowLUT[idxInt]))
+            prodWin_{d-1} = prodWin_d * (p.windowLinInterp[idxInt] + ( idx-idxL ) * (p.windowLinInterp[idxInt+1] - p.windowLinInterp[idxInt]))
           end begin
              # bodyexpr
              ### The last L3 loops contain no NFFT
@@ -105,15 +105,15 @@ end
   end
 end
 
-function AbstractNFFTs.convolve_adjoint!(p::NFFTPlan{T,D,R}, fHat::AbstractArray{U,R},
+function AbstractNFFTs.convolve_transpose!(p::NFFTPlan{T,D,R}, fHat::AbstractArray{U,R},
         g::StridedArray{Complex{T},D}) where {T,D,R,U}
   l1 = Val(p.dims[1]-1)
   l2 = Val(length(p.dims))
   l3 = Val(D-p.dims[end])
-  return _convolve_adjoint!(p, fHat, g, l1, l2, l3)
+  return _convolve_transpose!(p, fHat, g, l1, l2, l3)
 end
 
-@generated function _convolve_adjoint!(p::NFFTPlan{T,D,R}, fHat::AbstractArray{U,R},
+@generated function _convolve_transpose!(p::NFFTPlan{T,D,R}, fHat::AbstractArray{U,R},
             g::StridedArray{Complex{T},D}, l1::Val{L1}, l2::Val{L2}, l3::Val{L3}) where {T,D,R,U,L1,L2,L3}
   quote
     fill!(g, zero(T))
@@ -138,7 +138,7 @@ end
             idx = abs((xscale_d - l_{d+$L1})*scale) + 1
             idxL = floor(idx)
             idxInt = Int(idxL)
-            prodWin_{d-1} = prodWin_d * (p.windowLUT[idxInt] + ( idx-idxL ) * (p.windowLUT[idxInt+1] - p.windowLUT[idxInt]))
+            prodWin_{d-1} = prodWin_d * (p.windowLinInterp[idxInt] + ( idx-idxL ) * (p.windowLinInterp[idxInt+1] - p.windowLinInterp[idxInt]))
           end begin
              # bodyexpr
              ### The last L3 loops contain no NFFT

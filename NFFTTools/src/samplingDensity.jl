@@ -4,10 +4,21 @@ function sdc(p::AbstractNFFTPlan{T,D,1}; iters=20) where {T,D}
     # Uses method of Pipe & Menon, 1999. Mag Reson Med, 186, 179.
     weights = ones(Complex{T}, p.M)
     weights_tmp = similar(weights)
-    scaling_factor = !isempty(p.B) ? maximum(p.B)^2 :  maximum(maximum(p.windowLUT))^2
+
+    pre = p.params.precompute
+    if pre == LINEAR
+      scaling_factor = maximum(p.windowLinInterp)^2
+    elseif pre == POLYNOMIAL
+      scaling_factor = maximum(p.windowPolyInterp[1,:])^2
+    elseif pre == TENSOR
+      scaling_factor = maximum(maximum(p.windowTensor))^2
+    elseif pre == FULL
+      scaling_factor = maximum(p.B)^2
+    end
+
     # Pre-weighting to correct non-uniform sample density
     for i in 1:iters
-        convolve_adjoint!(p, weights, p.tmpVec)
+        convolve_transpose!(p, weights, p.tmpVec)
         p.tmpVec ./= scaling_factor
         convolve!(p, p.tmpVec, weights_tmp)
         weights_tmp ./= scaling_factor

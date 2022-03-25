@@ -75,7 +75,7 @@ end
                      σ, scale, I, J, V, mProd, nProd, L::Val{Z}, k, LUTSize) where {T, D, Z}
   quote
 
-    @nexprs $(D) d -> ((tmpIdx_d, tmpWin_d) = _precomputeOneNode(win, x, n, m, σ, scale, k, d, L, LUTSize) )
+    @nexprs $(D) d -> ((tmpIdx_d, tmpWin_d) = precomputeOneNode(win, x, n, m, σ, scale, k, d, L, LUTSize) )
 
     @nexprs 1 d -> κ_{$D} = 1 # This is a hack, I actually want to write κ_$D = 1
     @nexprs 1 d -> ζ_{$D} = 1
@@ -96,7 +96,7 @@ end
 
 ### precomputation of the window and the indices required during convolution ###
 
-@generated function _precomputeOneNode(win::Function, x::AbstractMatrix{T}, n::NTuple{D,Int}, m, 
+@generated function precomputeOneNode(win::Function, x::AbstractMatrix{T}, n::NTuple{D,Int}, m, 
   σ, scale, k, d, L::Val{Z}, LUTSize) where {T,D,Z}
   quote
     xscale = x[d,k] * n[d]
@@ -108,7 +108,7 @@ end
   end
 end
 
-@generated function _precomputeOneNode(windowLUT::Vector, x::AbstractMatrix{T}, n::NTuple{D,Int}, m, 
+@generated function precomputeOneNode(windowLinInterp::Array, x::AbstractMatrix{T}, n::NTuple{D,Int}, m, 
   σ, scale, k, d, L::Val{Z}, LUTSize) where {T,D,Z}
   quote
     xscale = x[d,k] * n[d]
@@ -116,24 +116,24 @@ end
     tmpIdx = @ntuple $(Z) l -> ( rem(l + off + n[d] - 1, n[d]) + 1)
 
     idx = ((xscale - off)*LUTSize)/(m+2)
-    tmpWin =  _precomputeShiftedWindowEntries(windowLUT, idx, scale, d, L)
+    tmpWin =  shiftedWindowEntries(windowLinInterp, idx, scale, d, L)
 
     return (tmpIdx, tmpWin)
   end
 end
 
+# precompute = LINEAR
 
-@generated function _precomputeOneNodeShifted(windowLUT, scale, k, d, L::Val{Z}, idxInBlock::Matrix,
-                                              windowTensor::Nothing) where {Z}
-  quote
-    y, idx = idxInBlock[d,k]
-    tmpWin =  _precomputeShiftedWindowEntries(windowLUT, idx, scale, d, L)
+function precomputeOneNodeBlocking(winLin, winTensor::Nothing, winPoly::Nothing, 
+                                    scale, k, d, L, idxInBlock::Matrix)
 
-    return (y, tmpWin)
-  end
+  y, idx = idxInBlock[d,k]
+  tmpWin =  shiftedWindowEntries(winLin, idx, scale, d, L)
+
+  return (y, tmpWin)
 end
 
-@generated  function _precomputeShiftedWindowEntries(windowLUT::Vector, idx, scale, d, L::Val{Z}) where {Z}
+@generated function shiftedWindowEntries(winLin::Vector, idx, scale, d, L::Val{Z}) where {Z}
   quote
     idxL = floor(Int,idx) 
     idxInt = Int(idxL)
@@ -152,27 +152,77 @@ end
       idxInt1 = abs( idxInt - (l-1)*scale ) +1 
       idxInt2 = abs( idxInt - (l-1)*scale +1) +1
 
-      (windowLUT[idxInt1] + α * (windowLUT[idxInt2] - windowLUT[idxInt1])) 
+      (winLin[idxInt1] + α * (winLin[idxInt2] - winLin[idxInt1])) 
     end
     return tmpWin
   end
 end
 
-@generated function _precomputeOneNodeShifted(windowLUT, scale, k, d, L::Val{Z}, idxInBlock::Matrix,
-                                              windowTensor::Array) where {Z}
-  quote
-    y, idx = idxInBlock[d,k]
-    tmpWin =  _precomputeShiftedWindowEntries(windowTensor, k, d, L)
+# precompute = POLYNOMIAL
 
-    return (y, tmpWin)
-  end
+function precomputeOneNodeBlocking(winLin, winTensor::Nothing, winPoly::NTuple{Z, NTuple{X,T}}, scale, 
+                                   k, d, L, idxInBlock::Matrix) where {T,Z,X}
+
+  y, x = idxInBlock[d,k]
+  tmpWin =  shiftedWindowEntries(winPoly, x, scale, d, L)
+
+  return (y, tmpWin)
 end
 
 
-@generated  function _precomputeShiftedWindowEntries(windowTensor, k, d, L::Val{Z}) where {Z}
+@generated function shiftedWindowEntries(winPoly::NTuple{Z, NTuple{X,T}}, x::T, scale, d, L::Val{Z}) where {T,Z,X}
   quote
     tmpWin = @ntuple $(Z) l -> begin
-      windowTensor[l, d, k]
+      evalpoly(x, winPoly[l])
+    end
+    return tmpWin
+  end
+end
+
+#= Static Array version. Not faster
+function precomputeOneNodeBlocking(winLin, winTensor::Nothing, winPoly::SMatrix{X,Z,T}, scale, 
+  k, d, L, idxInBlock::Matrix) where {T,Z,X}
+
+  y, x = idxInBlock[d,k]
+  tmpWin =  shiftedWindowEntries(winPoly, x, scale, d, L)
+
+  return (y, tmpWin)
+end
+
+@generated function shiftedWindowEntries(winPoly::SMatrix{X,Z,T}, x::T, scale, d, L::Val{Z}) where {T,Z,X}
+  quote
+
+    x_1 = one(T)
+    @nexprs $(X-1) h->(x_{h+1} = x_h * x)
+
+    xx = @ntuple $(X) h -> begin
+      x_{h} 
+    end
+
+    xs = SVector(xx...)
+
+    tmpWin = transpose(winPoly) * xs
+
+    return tmpWin
+  end
+end
+=#
+
+# precompute = TENSOR
+
+function precomputeOneNodeBlocking(winLin, winTensor::Array, winPoly::Nothing, scale, 
+                                   k, d, L, idxInBlock::Matrix)
+  y, idx = idxInBlock[d,k]
+  tmpWin =  shiftedWindowEntriesTensor(winTensor, k, d, L)
+
+  return (y, tmpWin)
+end
+
+
+@generated function shiftedWindowEntriesTensor(winTensor, k, d, L::Val{Z}) where {Z}
+  quote
+    tmpWin = @ntuple $(Z) l -> begin
+      winTensor[l, d, k]
     end
     return tmpWin
   end
@@ -196,15 +246,58 @@ Remarks:
   this fact. We therefore always use `Int(K/(m+2))`instead of `K÷(m+2)` since this gives
   an error while the later variant would silently error.
 """
-function precomputeLUT(win, n, m, σ, K, T)
-  windowLUT = Vector{T}(undef, K+1)
+function precomputeLinInterp(win, m, σ, K, T)
+  windowLinInterp = Vector{T}(undef, K+1)
 
   step = (m+2) / (K)
   @cthreads for l = 1:(K+1)
       y = ( (l-1) * step ) 
-      windowLUT[l] = win(y, 1, m, σ)
+      windowLinInterp[l] = win(y, 1, m, σ)
   end
-  return windowLUT
+  return windowLinInterp
+end
+
+function precomputePolyInterp(win, m, σ, T)
+  deg = 2*m # 2*m #+ 2   # Certainly depends on Window
+  K = 2*m 
+  NSamples = 2*deg # Sample more densely!!!
+  windowPolyInterp = Matrix{T}(undef, deg, K)
+
+  x = range(-0.5, 0.5,length=NSamples) 
+  V = ones(deg, NSamples)
+  for r=2:deg
+    V[r,:] .= V[r-1,:] .* x
+  end
+
+  for l = 1:K 
+      y = (-(l-0.5) + m) .+ x
+      samples = win.(y, 1, m, σ)
+      windowPolyInterp[:,l] .= V' \ samples
+  end
+  return windowPolyInterp
+end
+
+function testPrecomputePoly(win, m, σ, T)
+  deg = 2*m + 3
+  K = 2*m
+  step = 1 
+
+  windowPolyInterp = precomputePolyInterp(win, m, σ, T)
+
+  x = -0.394234
+  xx = [x^l for l=0:(deg-1)]
+
+  winTrue = zeros(T,K)
+  winApprox = zeros(T,K)
+
+  for l = 1:K
+    y = (-(l-0.5) * step + m) + x
+    @info y
+    winTrue[l] = win(y, 1, m, σ)
+    winApprox[l] = windowPolyInterp[:,l]' * xx
+  end
+
+  return winTrue, winApprox
 end
 
 
@@ -216,7 +309,6 @@ function precomputeWindowHatInvLUT(windowHatInvLUT, win_hat, N, n, m, σ, T)
       end
   end
 end
-
 
 function precomputation(x::Union{Matrix{T},Vector{T}}, N::NTuple{D,Int}, n, params) where {T,D}
 
@@ -231,36 +323,44 @@ function precomputation(x::Union{Matrix{T},Vector{T}}, N::NTuple{D,Int}, n, para
 
   if params.storeApodizationIdx
     windowHatInvLUT = Vector{Vector{T}}(undef, 1)
-    windowHatInvLUT[1], apodizationIdx = precompWindowHatInvLUT(params, N, n, windowHatInvLUT_)  
+    windowHatInvLUT[1], deconvolveIdx = precompWindowHatInvLUT(params, N, n, windowHatInvLUT_)  
   else
     windowHatInvLUT = windowHatInvLUT_
-    apodizationIdx = Array{Int64,1}(undef, 0)
+    deconvolveIdx = Array{Int64,1}(undef, 0)
   end
 
-  if precompute == LUT
-    windowLUT = precomputeLUT(win, n, m, σ, LUTSize, T)
+  if precompute == LINEAR
+    windowLinInterp = precomputeLinInterp(win, m, σ, LUTSize, T)
+    windowPolyInterp = Matrix{T}(undef, 0, 0)
+    B = sparse([],[],T[])
+  elseif precompute == POLYNOMIAL
+    windowLinInterp = Vector{T}(undef, 0)
+    windowPolyInterp = precomputePolyInterp(win, m, σ, T)
     B = sparse([],[],T[])
   elseif precompute == FULL
-    windowLUT = Vector{T}(undef, 0)
+    windowLinInterp = Vector{T}(undef, 0)
+    windowPolyInterp = Matrix{T}(undef, 0, 0)
     B = precomputeB(win, x, N, n, m, M, σ, LUTSize, T)
-    #windowLUT = precomputeLUT(win, windowLUT, n, m, σ, LUTSize, T) # These versions are for debugging
-    #B = precomputeB(windowLUT, x, N, n, m, M, σ, LUTSize, T)
+    #windowLinInterp = precomputeLinInterp(win, windowLinInterp, n, m, σ, LUTSize, T) # These versions are for debugging
+    #B = precomputeB(windowLinInterp, x, N, n, m, M, σ, LUTSize, T)
   elseif precompute == TENSOR
-    windowLUT = Vector{T}(undef, 0)
+    windowLinInterp = Vector{T}(undef, 0)
+    windowPolyInterp = Matrix{T}(undef, 0, 0)
     B = sparse([],[],T[])
   else 
-    windowLUT = Vector{T}(undef, 0)
+    windowLinInterp = Vector{T}(undef, 0)
+    windowPolyInterp = Matrix{T}(undef, 0, 0)
     B = sparse([],[],T[])
     error("precompute = $precompute not supported by NFFT.jl!")
   end
 
-  return (windowLUT, windowHatInvLUT, apodizationIdx, B)
+  return (windowLinInterp, windowPolyInterp, windowHatInvLUT, deconvolveIdx, B)
 end
 
 ####################################
 
 
-# This function is type instable. why???
+# This function is type unstable. why???
 function precompWindowHatInvLUT(p::NFFTParams{T}, N, n, windowHatInvLUT_) where {T}
   
   windowHatInvLUT = zeros(Complex{T}, N)
@@ -315,7 +415,7 @@ function precomputeBlocks(x::Matrix{T}, n::NTuple{D,Int}, params, calcBlocks::Bo
     blocks, nodesInBlocks, blockOffsets = 
         _precomputeBlocks(xShift, n, params.m, params.LUTSize)
 
-    idxInBlock =  _precomputeIdxInBlock(xShift, n, params.m, params.LUTSize, blockOffsets, nodesInBlocks)
+    idxInBlock =  _precomputeIdxInBlock(xShift, n, params.m, params.precompute, params.LUTSize, blockOffsets, nodesInBlocks)
     if params.precompute != TENSOR
       windowTensor = Array{Array{T,3},D}(undef, ntuple(d->0,D))
     else
@@ -327,7 +427,7 @@ function precomputeBlocks(x::Matrix{T}, n::NTuple{D,Int}, params, calcBlocks::Bo
     blocks = Array{Array{Complex{T},D},D}(undef,ntuple(d->0,D))
     nodesInBlocks = Array{Vector{Int64},D}(undef,ntuple(d->0,D))
     blockOffsets = Array{NTuple{D,Int64},D}(undef,ntuple(d->0,D))
-    idxInBlock = Array{Matrix{Tuple{Int,Float64}},D}(undef, ntuple(d->0,D))
+    idxInBlock = Array{Matrix{Tuple{Int,T}},D}(undef, ntuple(d->0,D))
     windowTensor = Array{Array{T,3},D}(undef, ntuple(d->0,D))
   end
   
@@ -367,14 +467,14 @@ function _precomputeBlocks(x::Matrix{T}, n::NTuple{D,Int}, m, LUTSize) where {T,
 
   nodesInBlock = [ Int[] for l in CartesianIndices(numBlocks) ]
   numNodesInBlock = zeros(Int, numBlocks)
-  @cthreads  for k=1:size(x,2)
+  for k=1:size(x,2) # @cthreads 
     idx = ntuple(d->unsafe_trunc(Int, x[d,k]*n[d])÷blockSize[d]+1, D)
     numNodesInBlock[idx...] += 1
   end
   @cthreads  for l in CartesianIndices(numBlocks)
     sizehint!(nodesInBlock[l], numNodesInBlock[l])
   end
-  @cthreads  for k=1:size(x,2)
+  for k=1:size(x,2) # @cthreads  
     idx = ntuple(d->unsafe_trunc(Int, x[d,k]*n[d])÷blockSize[d]+1, D)
     push!(nodesInBlock[idx...], k)
   end
@@ -397,24 +497,29 @@ end
 
 
 
-function _precomputeIdxInBlock(x::Matrix{T}, n::NTuple{D,Int}, m, LUTSize, blockOffsets, nodesInBlock) where {T,D}
+function _precomputeIdxInBlock(x::Matrix{T}, n::NTuple{D,Int}, m, precompute, LUTSize, blockOffsets, nodesInBlock) where {T,D}
 
   numBlocks = size(nodesInBlock)
 
-  idxInBlock = Array{Matrix{Tuple{Int,Float64}},D}(undef, numBlocks)
+  idxInBlock = Array{Matrix{Tuple{Int,T}},D}(undef, numBlocks)
 
   @cthreads for l in CartesianIndices(numBlocks)
     if !isempty(nodesInBlock[l])
 
       # precompute idxInBlock
-      idxInBlock[l] = Matrix{Tuple{Int,Float64}}(undef, D, length(nodesInBlock[l]))
+      idxInBlock[l] = Matrix{Tuple{Int,T}}(undef, D, length(nodesInBlock[l]))
       @inbounds for (i,k) in enumerate(nodesInBlock[l])
         @inbounds for d=1:D
           xtmp = x[d,k] # this is expensive because of cache misses
           xscale = xtmp * n[d]
           off = unsafe_trunc(Int, xscale) - m + 1
           y = off - blockOffsets[l][d] - 1
-          idx = ((xscale - off)*LUTSize)/(m+2)
+
+          if precompute == LINEAR
+            idx = (xscale - off)*(LUTSize÷(m+2))
+          else
+            idx = (xscale - off - m + 1 -0.5 )
+          end
           idxInBlock[l][d,i] = (y,idx)
         end
       end
@@ -442,10 +547,11 @@ function _precomputeWindowTensor(x::Matrix{T}, n::NTuple{D,Int}, m, σ, nodesInB
       windowTensor[l] = Array{T,3}(undef, 2*m+1, D, length(nodesInBlock[l]))
       @inbounds for (i,k) in enumerate(nodesInBlock[l])
         @inbounds for d=1:D
-          xtmp = x[d,k] #- 0.5  # this is expensive because of cache misses
+          xtmp = x[d,k]  # this is expensive because of cache misses
           xscale = xtmp * n[d]
           #off = unsafe_trunc(Int, xscale) - m 
           off = floor(Int, xscale) - m + 1
+
           @inbounds for k=1:(2*m+1)
             windowTensor[l][k,d,i] = win( (xscale - (k-1) - off), 1, m, σ)
           end

@@ -11,9 +11,12 @@ import Base.size
 using Reexport
 using SpecialFunctions: besseli, besselj
 
+#using StaticArrays
+
 @reexport using AbstractNFFTs
 
-export NDFTPlan, NNDFTPlan, NFFTPlan, NFFTParams
+export NDFTPlan, NDCTPlan, NDSTPlan, NNDFTPlan, 
+       NFFTPlan, NFFTParams
 
 
 #########################
