@@ -133,7 +133,7 @@ end
     off = floor(Int, xscale) - m + 1
     tmpIdx = @ntuple $(Z) l -> ( rem(l + off + n[d] - 1, n[d]) + 1)
 
-    idx = (xscale - off - m + 1//2)
+    idx = (xscale - off - m + T(0.5))
     tmpWin =  shiftedWindowEntries(winPoly, idx, scale, d, L)
 
     return (tmpIdx, tmpWin)
