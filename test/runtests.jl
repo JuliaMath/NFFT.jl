@@ -13,5 +13,5 @@ include("performance.jl")
 include("testToeplitz.jl")
 include("samplingDensity.jl")
 include("cuda.jl")
-# Need to run after the other tests since the overload plan_*
+# Need to run after the other tests since they overload plan_*
 include("wrappers.jl")

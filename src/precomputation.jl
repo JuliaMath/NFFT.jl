@@ -108,7 +108,9 @@ end
   end
 end
 
-@generated function precomputeOneNode(windowLinInterp::Array, x::AbstractMatrix{T}, n::NTuple{D,Int}, m, 
+# precompute = LINEAR
+
+@generated function precomputeOneNode(winLin::Array, winPoly::Nothing, x::AbstractMatrix{T}, n::NTuple{D,Int}, m, 
   σ, scale, k, d, L::Val{Z}, LUTSize) where {T,D,Z}
   quote
     xscale = x[d,k] * n[d]
@@ -116,7 +118,23 @@ end
     tmpIdx = @ntuple $(Z) l -> ( rem(l + off + n[d] - 1, n[d]) + 1)
 
     idx = ((xscale - off)*LUTSize)/(m+2)
-    tmpWin =  shiftedWindowEntries(windowLinInterp, idx, scale, d, L)
+    tmpWin =  shiftedWindowEntries(winLin, idx, scale, d, L)
+
+    return (tmpIdx, tmpWin)
+  end
+end
+
+# precompute = POLYNOMIAL
+
+@generated function precomputeOneNode(winLin::Array, winPoly::NTuple{Y, NTuple{X,T}}, x::AbstractMatrix{T}, n::NTuple{D,Int}, m, 
+  σ, scale, k, d, L::Val{Z}, LUTSize) where {Y,X,T,D,Z}
+  quote
+    xscale = x[d,k] * n[d]
+    off = floor(Int, xscale) - m + 1
+    tmpIdx = @ntuple $(Z) l -> ( rem(l + off + n[d] - 1, n[d]) + 1)
+
+    idx = (xscale - off - m + 1 - 0.5 )
+    tmpWin =  shiftedWindowEntries(winPoly, idx, scale, d, L)
 
     return (tmpIdx, tmpWin)
   end

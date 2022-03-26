@@ -40,9 +40,9 @@ end
 
 @testset "NFFT in multiple dimensions" begin
     for (u,N) in enumerate([(256,), (30,32), (10,12,14), (6,6,6,6)])
-      for (pre, storeApod, blocking) in zip([NFFT.LINEAR, NFFT.FULL, NFFT.LINEAR, NFFT.LINEAR, NFFT.TENSOR, NFFT.POLYNOMIAL],
-                                           [false, false, true, false, false, false],
-                                           [true, false, true, false, true, true])
+      for (pre, storeApod, blocking) in zip([ NFFT.LINEAR, NFFT.LINEAR, NFFT.LINEAR, NFFT.FULL, NFFT.TENSOR, NFFT.POLYNOMIAL, NFFT.POLYNOMIAL],
+                                           [false, true, false, false, false, false, false],
+                                           [true, true, false, false, true, true, false])
         eps = [1e-7, 1e-7, 1e-3, 1e-6, 1e-4]
         for (l,window) in enumerate([:kaiser_bessel, :cosh_type, :gauss, :kaiser_bessel_rev, :spline])
             D = length(N)

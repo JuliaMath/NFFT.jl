@@ -103,23 +103,25 @@ function AbstractNFFTs.convolve!(p::NFFTPlan{T,D,1}, g::AbstractArray{Complex{T}
   return
 end
 
-function convolve_nonblocking!(p::NFFTPlan{T,D,1}, g::AbstractArray{Complex{T},D}, fHat::StridedVector{U}) where {D,T,U}
+function convolve_nonblocking!(p::NFFTPlan, g, fHat)
   L = Val(2*p.params.m)
+  winPoly = makePolyArrayStatic(p)
+  _convolve_nonblocking!(p, g, fHat, L, winPoly)
+end
+
+function _convolve_nonblocking!(p::NFFTPlan, g, fHat, L, winPoly)
   scale = Int(p.params.LUTSize/(p.params.m+2))
 
   @cthreads for k in 1:p.M
-      fHat[k] = _convolve_nonblocking(p, g, L, scale, k)
+      fHat[k] = _convolve_nonblocking(p, g, L, winPoly, scale, k)
   end
 end
 
-function precomputeOneNode(p::NFFTPlan{T,D,1}, scale, k, d, L::Val{Z}) where {T,D,Z}
-    return precomputeOneNode(p.windowLinInterp, p.x, p.n, 
-                    p.params.m, p.params.σ, scale, k, d, L, p.params.LUTSize) 
-end
 
-@generated function _convolve_nonblocking(p::NFFTPlan{T,D,1}, g::AbstractArray{Complex{T},D}, L::Val{Z}, scale, k) where {D,T,Z}
+@generated function _convolve_nonblocking(p::NFFTPlan{T,D,1}, g::AbstractArray{Complex{T},D}, L::Val{Z}, winPoly, scale, k) where {D,T,Z}
   quote
-    @nexprs $(D) d -> ((tmpIdx_d, tmpWin_d) = precomputeOneNode(p, scale, k, d, L) )
+    @nexprs $(D) d -> ((tmpIdx_d, tmpWin_d) = precomputeOneNode(p.windowLinInterp, winPoly, p.x, p.n, 
+                                                 p.params.m, p.params.σ, scale, k, d, L, p.params.LUTSize)  )
   
     fHat = zero(Complex{T})
 
@@ -156,19 +158,27 @@ function AbstractNFFTs.convolve_transpose!(p::NFFTPlan{T,D,1}, fHat::AbstractVec
 end
 
 
-function convolve_transpose_nonblocking!(p::NFFTPlan{T,D,1}, fHat::AbstractVector{U}, g::StridedArray{Complex{T},D}) where {D,T,U}
-  fill!(g, zero(T))
+function convolve_transpose_nonblocking!(p::NFFTPlan, fHat, g)
   L = Val(2*p.params.m)
+  winPoly = makePolyArrayStatic(p)
+  _convolve_transpose_nonblocking!(p, fHat, g, L, winPoly)
+end
+
+
+function _convolve_transpose_nonblocking!(p::NFFTPlan{T,D,1}, fHat, g, L, winPoly)  where {D,T} 
+  fill!(g, zero(T))
   scale = Int(p.params.LUTSize/(p.params.m+2))
 
   @inbounds @simd for k in 1:p.M
-    _convolve_transpose_nonblocking!(p, fHat, g, L, scale, k)
+    __convolve_transpose_nonblocking!(p, fHat, g, L, winPoly, scale, k)
   end
 end
 
-@generated function _convolve_transpose_nonblocking!(p::NFFTPlan{T,D,1}, fHat::AbstractVector{U}, g::StridedArray{Complex{T},D}, L::Val{Z}, scale, k) where {D,T,U,Z}
+
+@generated function __convolve_transpose_nonblocking!(p::NFFTPlan{T,D,1}, fHat::AbstractVector{U}, g::StridedArray{Complex{T},D}, L::Val{Z}, winPoly, scale, k) where {D,T,U,Z}
   quote
-    @nexprs $(D) d -> ((tmpIdx_d, tmpWin_d) = precomputeOneNode(p, scale, k, d, L) )
+    @nexprs $(D) d -> ((tmpIdx_d, tmpWin_d) = precomputeOneNode(p.windowLinInterp, winPoly, p.x, p.n, 
+                                                 p.params.m, p.params.σ, scale, k, d, L, p.params.LUTSize)  )
 
     @nexprs 1 d -> prodWin_{$D} = one(T)
     @nloops_ $D l d -> 1:$Z d->begin
