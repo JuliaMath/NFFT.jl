@@ -320,10 +320,14 @@ end
 
 
 function precomputeWindowHatInvLUT(windowHatInvLUT, win_hat, N, n, m, σ, T)
+
   for d=1:length(windowHatInvLUT)
+      κ = k -> win_hat(k-1-N[d]÷2, n[d], m, σ)
+      cheb = ChebyshevInterpolator(κ, 1, N[d], 30)
+
       windowHatInvLUT[d] = zeros(T, N[d])
       @cthreads for k=1:N[d]
-          windowHatInvLUT[d][k] = 1. / win_hat(k-1-N[d]÷2, n[d], m, σ)
+          windowHatInvLUT[d][k] = 1. / cheb(k) #win_hat(k-1-N[d]÷2, n[d], m, σ)
       end
   end
 end
@@ -438,7 +442,7 @@ function precomputeBlocks(x::Matrix{T}, n::NTuple{D,Int}, params, calcBlocks::Bo
       windowTensor = Array{Array{T,3},D}(undef, ntuple(d->0,D))
     else
       #idxInBlock = Array{Matrix{Tuple{Int,Float64}},D}(undef, ntuple(d->0,D))
-      windowTensor = _precomputeWindowTensor(x, n, params.m, params.σ, nodesInBlocks, params.window)
+      windowTensor = _precomputeWindowTensor(xShift, n, params.m, params.σ, nodesInBlocks, params.window)
     end
 
   else
@@ -549,11 +553,14 @@ end
 
 function _precomputeWindowTensor(x::Matrix{T}, n::NTuple{D,Int}, m, σ, nodesInBlock, window::Symbol) where {T,D}
   win, win_hat = getWindow(window) # highly type instable. But what should be do
+  P = precomputePolyInterp(win, m, σ, T)
+  winPoly = ntuple(d-> ntuple(g-> P[g,d], size(P,1)), size(P,2))
 
-  return _precomputeWindowTensor(x, n, m, σ, nodesInBlock, win)
+  return _precomputeWindowTensor(x, n, m, σ, nodesInBlock, winPoly)
 end
 
-function _precomputeWindowTensor(x::Matrix{T}, n::NTuple{D,Int}, m, σ, nodesInBlock, win) where {T,D}
+
+function _precomputeWindowTensor(x::Matrix{T}, n::NTuple{D,Int}, m, σ, nodesInBlock, winPoly::NTuple{Z, NTuple{X,T}}) where {T,D,Z,X}
 
   numBlocks = size(nodesInBlock)
   windowTensor = Array{Array{T,3},D}(undef, numBlocks)
@@ -562,16 +569,16 @@ function _precomputeWindowTensor(x::Matrix{T}, n::NTuple{D,Int}, m, σ, nodesInB
     if !isempty(nodesInBlock[l])
 
       # precompute idxInBlock
-      windowTensor[l] = Array{T,3}(undef, 2*m+1, D, length(nodesInBlock[l]))
+      windowTensor[l] = Array{T,3}(undef, 2*m, D, length(nodesInBlock[l]))
       @inbounds for (i,k) in enumerate(nodesInBlock[l])
         @inbounds for d=1:D
           xtmp = x[d,k]  # this is expensive because of cache misses
           xscale = xtmp * n[d]
-          #off = unsafe_trunc(Int, xscale) - m
-          off = floor(Int, xscale) - m + 1
+          off = unsafe_trunc(Int, xscale) - m + 1
+          x_ = (xscale - off - m + 1 -0.5 )
 
-          @inbounds for k=1:(2*m+1)
-            windowTensor[l][k,d,i] = win( (xscale - (k-1) - off), 1, m, σ)
+          @inbounds @simd for k=1:Z
+            windowTensor[l][k,d,i] = evalpoly(x_, winPoly[k])
           end
         end
       end

@@ -4,5 +4,7 @@ docs/build/*
 test/*.png
 benchmark/*.png
 benchmark/*.csv
+benchmark/paper/data/*.csv
+benchmark/paper/img/*.pdf
 settings.json
 Manifest.toml

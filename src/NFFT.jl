@@ -10,6 +10,7 @@ using FLoops
 import Base.size
 using Reexport
 using SpecialFunctions: besseli, besselj
+using BasicInterpolators
 
 #using StaticArrays
 

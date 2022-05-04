@@ -50,10 +50,10 @@ function window_kaiser_bessel_rev(x,n,m,σ)
 end
 
 function window_kaiser_bessel_rev_hat(k,n,m,σ)
-    b = pi*(2-1/σ)
+  b = pi*(2-1/σ)
 
-    arg = sqrt(complex((2*pi*m*k/n)^2-(m*b)^2))
-    return sinc(arg/pi)
+  arg = sqrt(complex((2*pi*m*k/n)^2-(m*b)^2)) # Fix this to work on the real line.
+  return real(sinc(arg/pi))
 end
 
 
