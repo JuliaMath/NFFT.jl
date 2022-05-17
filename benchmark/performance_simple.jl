@@ -10,7 +10,7 @@ NFFT._use_threads[] = (Threads.nthreads() > 1)
 
 function nfft_performance_simple(;N = (1024,1024), M = prod(N), m = 4, 
   σ = 2.0, threading=false, pre=NFFT.LINEAR, T=Float64, blocking=true,
-  storeApodizationIdx=false, fftflags=NFFT.FFTW.MEASURE, ctor=NFFTPlan)
+  storeDeconvolutionIdx=false, fftflags=NFFT.FFTW.MEASURE, ctor=NFFTPlan)
 
   timing = TimingStats()
   x = T.(rand(length(N),M) .- 0.5)
@@ -28,7 +28,7 @@ s
   NFFT.FFTW.set_num_threads( threading ? Threads.nthreads() : 1)
 
   tpre = @elapsed p = ctor(x, N; m, σ, window=:kaiser_bessel, precompute=pre, 
-                            fftflags, storeApodizationIdx, blocking)
+                            fftflags, storeDeconvolutionIdx, blocking)
 
   tadjoint = @elapsed CUDA.@sync mul!(f, adjoint(p), fHat; timing)
   ttrafo = @elapsed CUDA.@sync mul!(fHat, p, f; timing)

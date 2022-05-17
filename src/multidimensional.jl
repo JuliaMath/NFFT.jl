@@ -1,7 +1,7 @@
 ########## deconvolve ##########
 
 function AbstractNFFTs.deconvolve!(p::NFFTPlan{T,D,1}, f::AbstractArray{U,D}, g::StridedArray{Complex{T},D}) where {D,T,U}
-  if !p.params.storeApodizationIdx
+  if !p.params.storeDeconvolutionIdx
     deconvolve_alloc_free!(p, f, g)
   else
     p.tmpVecHat[:] .= vec(f) .* p.windowHatInvLUT[1]
@@ -46,7 +46,7 @@ end
 ########## deconvolve adjoint ##########
 
 function AbstractNFFTs.deconvolve_transpose!(p::NFFTPlan{T,D,1}, g::AbstractArray{Complex{T},D}, f::StridedArray{U,D}) where {D,T,U}
-  if !p.params.storeApodizationIdx
+  if !p.params.storeDeconvolutionIdx
     deconvolve_transpose_alloc_free!(p, g, f)
   else
     p.tmpVecHat[:] = g[p.deconvolveIdx]

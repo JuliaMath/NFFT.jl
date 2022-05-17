@@ -343,7 +343,7 @@ function precomputation(x::Union{Matrix{T},Vector{T}}, N::NTuple{D,Int}, n, para
   windowHatInvLUT_ = Vector{Vector{T}}(undef, D)
   precomputeWindowHatInvLUT(windowHatInvLUT_, win_hat, N, n, m, σ, T)
 
-  if params.storeApodizationIdx
+  if params.storeDeconvolutionIdx
     windowHatInvLUT = Vector{Vector{T}}(undef, 1)
     windowHatInvLUT[1], deconvolveIdx = precompWindowHatInvLUT(params, N, n, windowHatInvLUT_)
   else
@@ -386,20 +386,20 @@ end
 function precompWindowHatInvLUT(p::NFFTParams{T}, N, n, windowHatInvLUT_) where {T}
 
   windowHatInvLUT = zeros(Complex{T}, N)
-  apodIdx = zeros(Int64, N)
+  deconvIdx = zeros(Int64, N)
 
   if length(N) == 1
-    precompWindowHatInvLUT(p, windowHatInvLUT, apodIdx, N, n, windowHatInvLUT_, 1)
+    precompWindowHatInvLUT(p, windowHatInvLUT, deconvIdx, N, n, windowHatInvLUT_, 1)
   else
     @cthreads for o = 1:N[end]
-      precompWindowHatInvLUT(p, windowHatInvLUT, apodIdx, N, n, windowHatInvLUT_, o)
+      precompWindowHatInvLUT(p, windowHatInvLUT, deconvIdx, N, n, windowHatInvLUT_, o)
     end
   end
-  return vec(windowHatInvLUT), vec(apodIdx)
+  return vec(windowHatInvLUT), vec(deconvIdx)
 end
 
 @generated function precompWindowHatInvLUT(p::NFFTParams{T}, windowHatInvLUT::AbstractArray{Complex{T},D},
-           apodIdx::AbstractArray{Int,D}, N, n, windowHatInvLUT_, o)::Nothing where {D,T}
+           deconvIdx::AbstractArray{Int,D}, N, n, windowHatInvLUT_, o)::Nothing where {D,T}
   quote
     linIdx = LinearIndices(n)
 
@@ -410,13 +410,13 @@ end
       end begin
       N2 = N[1]÷2
       @inbounds @simd for i = 1:N2
-        apodIdx[i, CartesianIndex(@ntuple $(D-1) l)] =
+        deconvIdx[i, CartesianIndex(@ntuple $(D-1) l)] =
            linIdx[i-N2+n[1], CartesianIndex(@ntuple $(D-1) gidx)]
         v = windowHatInvLUT_[1][i]
         @nexprs $(D-1) d -> v *= windowHatInvLUT_[d+1][l_d]
         windowHatInvLUT[i, CartesianIndex(@ntuple $(D-1) l)] = v
 
-        apodIdx[i+N2, CartesianIndex(@ntuple $(D-1) l)] =
+        deconvIdx[i+N2, CartesianIndex(@ntuple $(D-1) l)] =
            linIdx[i, CartesianIndex(@ntuple $(D-1) gidx)]
         v = windowHatInvLUT_[1][i+N2]
         @nexprs $(D-1) d -> v *= windowHatInvLUT_[d+1][l_d]
