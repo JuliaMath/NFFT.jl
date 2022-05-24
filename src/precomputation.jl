@@ -13,7 +13,7 @@ function initParams(x::Matrix{T}, N::NTuple{D,Int}, dims::Union{Integer,UnitRang
   # Taken from NFFT3
   m2K = [1, 3, 7, 9, 14, 17, 20, 23, 24]
   K = m2K[min(m+1,length(m2K))]
-  params.LUTSize = 2^(K) * (m+2) # ensure that LUTSize is dividable by (m+2)
+  params.LUTSize = 2^(K) * (m) # ensure that LUTSize is dividable by (m)
 
   if length(dims_) != size(x,1)
       throw(ArgumentError("Nodes x have dimension $(size(x,1)) != $(length(dims_))"))
@@ -61,7 +61,7 @@ function precomputeB(win, x, N::NTuple{D,Int}, n::NTuple{D,Int}, m, M, σ, K, T)
   mProd = ntuple(d-> (d==1) ? 1 : (2*m)^(d-1), D)
   nProd = ntuple(d-> (d==1) ? 1 : prod(n[1:(d-1)]), D)
   L = Val(2*m)
-  scale = Int(K/(m+2))
+  scale = Int(K/(m))
 
   @cthreads for k in 1:M
     _precomputeB(win, x, N, n, m, M, σ, scale, I, J, V, mProd, nProd, L, k, K)
@@ -117,7 +117,7 @@ end
     off = floor(Int, xscale) - m + 1
     tmpIdx = @ntuple $(Z) l -> ( rem(l + off + n[d] - 1, n[d]) + 1)
 
-    idx = ((xscale - off)*LUTSize)/(m+2)
+    idx = ((xscale - off)*LUTSize)/(m)
     tmpWin =  shiftedWindowEntries(winLin, idx, scale, d, L)
 
     return (tmpIdx, tmpWin)
@@ -160,7 +160,7 @@ end
     tmpWin = @ntuple $(Z) l -> begin
       # Uncommented code: This is the version where we pull in l into the abs.
       # We pulled this out of the iteration.
-      # idx = abs((xscale - (l-1)  - off)*LUTSize)/(m+2)
+      # idx = abs((xscale - (l-1)  - off)*LUTSize)/(m)
 
       # The second +1 is because Julia has 1-based indexing
       # The first +1 is part of the index calculation and needs(!)
@@ -255,19 +255,19 @@ Precompute the look up table for the window function φ.
 
 Remarks:
 * Only the positive half is computed
-* The window is computed for the interval [0, (m+2)/n]. The reason for the +2 is
+* The window is computed for the interval [0, (m)/n]. The reason for the +2 is
   that we do evaluate the window function outside its interval, since x does not
   necessary match the sampling points
 * The window has K+1 entries and during the index calculation we multiply with the
-  factor K/(m+2).
-* It is very important that K/(m+2) is an integer since our index calculation exploits
-  this fact. We therefore always use `Int(K/(m+2))`instead of `K÷(m+2)` since this gives
+  factor K/(m).
+* It is very important that K/(m) is an integer since our index calculation exploits
+  this fact. We therefore always use `Int(K/(m))`instead of `K÷(m)` since this gives
   an error while the later variant would silently error.
 """
 function precomputeLinInterp(win, m, σ, K, T)
   windowLinInterp = Vector{T}(undef, K+1)
 
-  step = (m+2) / (K)
+  step = (m) / (K)
   @cthreads for l = 1:(K+1)
       y = ( (l-1) * step )
       windowLinInterp[l] = win(y, 1, m, σ)
@@ -538,7 +538,7 @@ function _precomputeIdxInBlock(x::Matrix{T}, n::NTuple{D,Int}, m, precompute, LU
           y = off - blockOffsets[l][d] - 1
 
           if precompute == LINEAR
-            idx = (xscale - off)*(LUTSize÷(m+2))
+            idx = (xscale - off)*(LUTSize÷(m))
           else
             idx = (xscale - off - m + 1 -0.5 )
           end

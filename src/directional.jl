@@ -67,7 +67,7 @@ end
                    fHat::StridedArray{U,R}, l1::Val{L1}, l2::Val{L2}, l3::Val{L3}) where {T,D,R,U,L1,L2,L3}
   quote
     fill!(fHat, zero(T))
-    scale = Int(p.params.LUTSize/(p.params.m+2))
+    scale = Int(p.params.LUTSize/(p.params.m))
 
     for k in 1:p.M
       ### The first L1 loops contain no NFFT
@@ -82,7 +82,7 @@ end
           @nexprs $L2 d -> xscale_d = p.x[d,k] * p.n[d+$L1]
           @nexprs $L2 d -> c_d = floor(Int, xscale_d)
           ### The next L2 loops contain the NFFT
-          @nloops_ $L2 d->l_{d+$L1} d->(c_d-p.params.m):(c_d+p.params.m) d->begin
+          @nloops_ $L2 d->l_{d+$L1} d->(c_d-p.params.m+1):(c_d+p.params.m) d->begin
             # preexpr
             gidx_{d+$L1} = rem(l_{d+$L1}+p.n[d+$L1], p.n[d+$L1]) + 1
             idx = abs((xscale_d - l_{d+$L1} )*scale) + 1
@@ -117,7 +117,7 @@ end
             g::StridedArray{Complex{T},D}, l1::Val{L1}, l2::Val{L2}, l3::Val{L3}) where {T,D,R,U,L1,L2,L3}
   quote
     fill!(g, zero(T))
-    scale = Int(p.params.LUTSize/(p.params.m+2))
+    scale = Int(p.params.LUTSize/(p.params.m))
 
     for k in 1:p.M
       ### The first L1 loops contain no NFFT
@@ -132,7 +132,7 @@ end
           @nexprs $L2 d -> xscale_d = p.x[d,k] * p.n[d+$L1]
           @nexprs $L2 d -> c_d = floor(Int, xscale_d)
           ### The next L2 loops contain the NFFT
-          @nloops_ $L2 d->l_{d+$L1} d->(c_d-p.params.m):(c_d+p.params.m) d->begin
+          @nloops_ $L2 d->l_{d+$L1} d->(c_d-p.params.m+1):(c_d+p.params.m) d->begin
             # preexpr
             gidx_{d+$L1} = rem(l_{d+$L1}+p.n[d+$L1], p.n[d+$L1]) + 1
             idx = abs((xscale_d - l_{d+$L1})*scale) + 1
