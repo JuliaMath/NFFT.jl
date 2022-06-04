@@ -1,6 +1,6 @@
 
 
-Base.@kwdef mutable struct NFFTParams{T}
+Base.@kwdef mutable struct NFFTParams{T,D}
   m::Int = 4
   σ::T = 2.0
   reltol::T = 1e-7
@@ -10,6 +10,7 @@ Base.@kwdef mutable struct NFFTParams{T}
   sortNodes::Bool = false
   storeDeconvolutionIdx::Bool = false
   blocking::Bool = true
+  blockSize::NTuple{D,Int64} = ntuple(d->0, D)
 end
 
 mutable struct NFFTPlan{T,D,R} <: AbstractNFFTPlan{T,D,R}
@@ -19,7 +20,7 @@ mutable struct NFFTPlan{T,D,R} <: AbstractNFFTPlan{T,D,R}
     x::Matrix{T}
     n::NTuple{D,Int64}
     dims::UnitRange{Int64}
-    params::NFFTParams{T}
+    params::NFFTParams{T,D}
     forwardFFT::FFTW.cFFTWPlan{Complex{T},-1,true,D,UnitRange{Int64}}
     backwardFFT::FFTW.cFFTWPlan{Complex{T},1,true,D,UnitRange{Int64}}
     tmpVec::Array{Complex{T},D}

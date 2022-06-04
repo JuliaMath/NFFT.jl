@@ -21,6 +21,7 @@ NFFT._use_threads[] = (Threads.nthreads() > 1)
 
 const σs = [2.0] 
 const ms = 3:8
+#const NBase = [65536, 256, 32] #[4*4096, 128, 32]
 const NBase = [4*4096, 128, 32]
 const Ds = 1:3
 
@@ -112,7 +113,7 @@ function plot_accuracy(df, packagesStr, packagesStrShort, filename)
     p1 = plot(df1_[df1_.Package.==packagesStr[1],:ErrorTrafo], 
               df1_[df1_.Package.==packagesStr[1],:TimeTrafo], ylims=(0.0,maxTimeTrafo),
               label = packagesStrShort[1],
-              xscale = :log10, legend = (i==length(Ds)) ? (:topright) : nothing, 
+              xscale = :log10, legend = (i==length(Ds)) ? (0.0, -0.5) : nothing, 
               lw=2, xlabel = xlabel, ylabel="Runtime / s",
               title=titleTrafo, shape=:circle, c=:black, xlims=xlims[i])
 
@@ -153,7 +154,7 @@ function plot_accuracy(df, packagesStr, packagesStrShort, filename)
     pl[1,i] = p1; pl[2,i] = p2; pl[3,i] = p3; 
   end
 
-  p = plot(vec(pl)..., layout=(length(Ds),3), size=(1200,800), dpi=200, margin = 1mm)
+  p = plot(vec(pl)..., layout=(length(Ds),3), size=(900,600), dpi=200, margin = 1mm)
 
   mkpath("./img/")
   savefig(p, filename)

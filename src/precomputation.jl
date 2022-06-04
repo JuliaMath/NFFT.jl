@@ -1,10 +1,11 @@
 ### Init some initial parameters necessary to create the plan ###
 
-function initParams(x::Matrix{T}, N::NTuple{D,Int}, dims::Union{Integer,UnitRange{Int64}}=1:D; kargs...) where {D,T}
+function initParams(x::Matrix{T}, N::NTuple{D,Int}, dims::Union{Integer,UnitRange{Int64}}=1:D; 
+                    kargs...) where {D,T}
   # convert dims to a unit range
   dims_ = (typeof(dims) <: Integer) ? (dims:dims) : dims
 
-  params = NFFTParams{T}(; kargs...)
+  params = NFFTParams{T,D}(; kargs...)
   m, σ, reltol = accuracyParams(; kargs...)
   params.m = m
   params.σ = σ
@@ -31,6 +32,13 @@ function initParams(x::Matrix{T}, N::NTuple{D,Int}, dims::Union{Integer,UnitRang
 
   params.σ = n[dims_[1]] / N[dims_[1]]
 
+  #params.blockSize = ntuple(d-> n[d] , D) # just one block
+  if haskey(kargs, :blockSize)
+    params.blockSize = kargs[:blockSize]
+  else
+    params.blockSize = ntuple(d-> _blockSize(n,d) , D)
+  end
+
   M = size(x, 2)
 
   # calculate output size
@@ -49,6 +57,27 @@ function initParams(x::Matrix{T}, N::NTuple{D,Int}, dims::Union{Integer,UnitRang
       x .= sortslices(x, dims=2)
   end
   return params, N, Tuple(NOut), M, n, dims_
+end
+
+
+function _blockSize(n::NTuple{1,Int}, d)
+  return min(1024, n[d])
+end
+
+function _blockSize(n::NTuple{2,Int}, d)
+  return min(64, n[d])
+end
+
+function _blockSize(n::NTuple{D,Int}, d) where {D}
+  if d == 1
+    return min(16, n[d])
+  elseif d == 2
+    return min(16, n[d])
+  elseif d == 3
+    return min(16, n[d])
+  else
+    return 1
+  end
 end
 
 ### Precomputation of the B matrix ###
@@ -435,7 +464,7 @@ function precomputeBlocks(x::Matrix{T}, n::NTuple{D,Int}, params, calcBlocks::Bo
     xShift = copy(x)
     shiftNodes!(xShift)
     blocks, nodesInBlocks, blockOffsets =
-        _precomputeBlocks(xShift, n, params.m, params.LUTSize)
+        _precomputeBlocks(xShift, n, params.m, params.LUTSize, params.blockSize)
 
     idxInBlock =  _precomputeIdxInBlock(xShift, n, params.m, params.precompute, params.LUTSize, blockOffsets, nodesInBlocks)
     if params.precompute != TENSOR
@@ -456,37 +485,12 @@ function precomputeBlocks(x::Matrix{T}, n::NTuple{D,Int}, params, calcBlocks::Bo
   return (blocks, nodesInBlocks, blockOffsets, idxInBlock, windowTensor)
 end
 
-function _blockSize(n::NTuple{1,Int}, d)
-  return min(1024, n[d])
-end
 
-function _blockSize(n::NTuple{2,Int}, d)
-  return min(64, n[d])
-end
-
-function _blockSize(n::NTuple{D,Int}, d) where {D}
-  if d == 1
-    return min(16, n[d])
-  elseif d == 2
-    return min(16, n[d])
-  elseif d == 3
-    return min(16, n[d])
-  else
-    return 1
-  end
-end
-
-function _precomputeBlocks(x::Matrix{T}, n::NTuple{D,Int}, m, LUTSize) where {T,D}
+function _precomputeBlocks(x::Matrix{T}, n::NTuple{D,Int}, m, LUTSize, blockSize) where {T,D}
 
   padding = ntuple(d->m, D)
-  # What is the best block size?
-  # Limit the block size to at maximum n
-  blockSize = ntuple(d-> _blockSize(n,d) , D)
-  #blockSize = ntuple(d-> n[d] , D) # just one block
-  blockSizePadded = ntuple(d-> blockSize[d] + 2*padding[d] , D)
-
-  numBlocks =  ntuple(d-> ceil(Int, n[d]/blockSize[d]) , D)
-
+  numBlocks =  ntuple(d-> ceil(Int, n[d]/blockSize[d]), D)
+  blockSizePadded = ntuple(d-> blockSize[d] + 2*padding[d], D)
   nodesInBlock = [ Int[] for l in CartesianIndices(numBlocks) ]
   numNodesInBlock = zeros(Int, numBlocks)
   for k=1:size(x,2) # @cthreads
