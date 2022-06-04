@@ -40,17 +40,17 @@ end
 
 @testset "NFFT in multiple dimensions" begin
     for (u,N) in enumerate([(256,), (30,32), (10,12,14), (6,6,6,6)])
-      for (pre, storeApod, blocking) in zip([ NFFT.LINEAR, NFFT.LINEAR, NFFT.LINEAR, NFFT.FULL, NFFT.TENSOR, NFFT.POLYNOMIAL, NFFT.POLYNOMIAL],
+      for (pre, storeDeconv, blocking) in zip([ NFFT.LINEAR, NFFT.LINEAR, NFFT.LINEAR, NFFT.FULL, NFFT.TENSOR, NFFT.POLYNOMIAL, NFFT.POLYNOMIAL],
                                            [false, true, false, false, false, false, false],
                                            [true, true, false, false, true, true, false])
         eps = [1e-7, 1e-7, 1e-3, 1e-6, 1e-4]
         for (l,window) in enumerate([:kaiser_bessel, :cosh_type, :gauss, :kaiser_bessel_rev, :spline])
             D = length(N)
-            @info "Testing $D, window=$window, pre=$pre, storeApod=$storeApod, block=$blocking"
+            @info "Testing $D, window=$window, pre=$pre, storeDeconv=$storeDeconv, block=$blocking"
 
             M = prod(N)
             x = rand(Float64,D,M) .- 0.5
-            p = plan_nfft(x, N; m, σ, window, precompute = pre, storeApodizationIdx = storeApod,
+            p = plan_nfft(x, N; m, σ, window, precompute = pre, storeDeconvolutionIdx = storeDeconv,
                          fftflags = FFTW.ESTIMATE, blocking)
 
             pNDFT = NDFTPlan(x, N)

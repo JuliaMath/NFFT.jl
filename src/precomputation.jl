@@ -1,10 +1,11 @@
 ### Init some initial parameters necessary to create the plan ###
 
-function initParams(x::Matrix{T}, N::NTuple{D,Int}, dims::Union{Integer,UnitRange{Int64}}=1:D; kargs...) where {D,T}
+function initParams(x::Matrix{T}, N::NTuple{D,Int}, dims::Union{Integer,UnitRange{Int64}}=1:D; 
+                    kargs...) where {D,T}
   # convert dims to a unit range
   dims_ = (typeof(dims) <: Integer) ? (dims:dims) : dims
 
-  params = NFFTParams{T}(; kargs...)
+  params = NFFTParams{T,D}(; kargs...)
   m, σ, reltol = accuracyParams(; kargs...)
   params.m = m
   params.σ = σ
@@ -13,7 +14,7 @@ function initParams(x::Matrix{T}, N::NTuple{D,Int}, dims::Union{Integer,UnitRang
   # Taken from NFFT3
   m2K = [1, 3, 7, 9, 14, 17, 20, 23, 24]
   K = m2K[min(m+1,length(m2K))]
-  params.LUTSize = 2^(K) * (m+2) # ensure that LUTSize is dividable by (m+2)
+  params.LUTSize = 2^(K) * (m) # ensure that LUTSize is dividable by (m)
 
   if length(dims_) != size(x,1)
       throw(ArgumentError("Nodes x have dimension $(size(x,1)) != $(length(dims_))"))
@@ -30,6 +31,13 @@ function initParams(x::Matrix{T}, N::NTuple{D,Int}, dims::Union{Integer,UnitRang
                         N[d], D)
 
   params.σ = n[dims_[1]] / N[dims_[1]]
+
+  #params.blockSize = ntuple(d-> n[d] , D) # just one block
+  if haskey(kargs, :blockSize)
+    params.blockSize = kargs[:blockSize]
+  else
+    params.blockSize = ntuple(d-> _blockSize(n,d) , D)
+  end
 
   M = size(x, 2)
 
@@ -51,6 +59,27 @@ function initParams(x::Matrix{T}, N::NTuple{D,Int}, dims::Union{Integer,UnitRang
   return params, N, Tuple(NOut), M, n, dims_
 end
 
+
+function _blockSize(n::NTuple{1,Int}, d)
+  return min(1024, n[d])
+end
+
+function _blockSize(n::NTuple{2,Int}, d)
+  return min(64, n[d])
+end
+
+function _blockSize(n::NTuple{D,Int}, d) where {D}
+  if d == 1
+    return min(16, n[d])
+  elseif d == 2
+    return min(16, n[d])
+  elseif d == 3
+    return min(16, n[d])
+  else
+    return 1
+  end
+end
+
 ### Precomputation of the B matrix ###
 
 function precomputeB(win, x, N::NTuple{D,Int}, n::NTuple{D,Int}, m, M, σ, K, T) where D
@@ -61,7 +90,7 @@ function precomputeB(win, x, N::NTuple{D,Int}, n::NTuple{D,Int}, m, M, σ, K, T)
   mProd = ntuple(d-> (d==1) ? 1 : (2*m)^(d-1), D)
   nProd = ntuple(d-> (d==1) ? 1 : prod(n[1:(d-1)]), D)
   L = Val(2*m)
-  scale = Int(K/(m+2))
+  scale = Int(K/(m))
 
   @cthreads for k in 1:M
     _precomputeB(win, x, N, n, m, M, σ, scale, I, J, V, mProd, nProd, L, k, K)
@@ -117,7 +146,7 @@ end
     off = floor(Int, xscale) - m + 1
     tmpIdx = @ntuple $(Z) l -> ( rem(l + off + n[d] - 1, n[d]) + 1)
 
-    idx = ((xscale - off)*LUTSize)/(m+2)
+    idx = ((xscale - off)*LUTSize)/(m)
     tmpWin =  shiftedWindowEntries(winLin, idx, scale, d, L)
 
     return (tmpIdx, tmpWin)
@@ -160,7 +189,7 @@ end
     tmpWin = @ntuple $(Z) l -> begin
       # Uncommented code: This is the version where we pull in l into the abs.
       # We pulled this out of the iteration.
-      # idx = abs((xscale - (l-1)  - off)*LUTSize)/(m+2)
+      # idx = abs((xscale - (l-1)  - off)*LUTSize)/(m)
 
       # The second +1 is because Julia has 1-based indexing
       # The first +1 is part of the index calculation and needs(!)
@@ -255,19 +284,19 @@ Precompute the look up table for the window function φ.
 
 Remarks:
 * Only the positive half is computed
-* The window is computed for the interval [0, (m+2)/n]. The reason for the +2 is
+* The window is computed for the interval [0, (m)/n]. The reason for the +2 is
   that we do evaluate the window function outside its interval, since x does not
   necessary match the sampling points
 * The window has K+1 entries and during the index calculation we multiply with the
-  factor K/(m+2).
-* It is very important that K/(m+2) is an integer since our index calculation exploits
-  this fact. We therefore always use `Int(K/(m+2))`instead of `K÷(m+2)` since this gives
+  factor K/(m).
+* It is very important that K/(m) is an integer since our index calculation exploits
+  this fact. We therefore always use `Int(K/(m))`instead of `K÷(m)` since this gives
   an error while the later variant would silently error.
 """
 function precomputeLinInterp(win, m, σ, K, T)
   windowLinInterp = Vector{T}(undef, K+1)
 
-  step = (m+2) / (K)
+  step = (m) / (K)
   @cthreads for l = 1:(K+1)
       y = ( (l-1) * step )
       windowLinInterp[l] = win(y, 1, m, σ)
@@ -343,7 +372,7 @@ function precomputation(x::Union{Matrix{T},Vector{T}}, N::NTuple{D,Int}, n, para
   windowHatInvLUT_ = Vector{Vector{T}}(undef, D)
   precomputeWindowHatInvLUT(windowHatInvLUT_, win_hat, N, n, m, σ, T)
 
-  if params.storeApodizationIdx
+  if params.storeDeconvolutionIdx
     windowHatInvLUT = Vector{Vector{T}}(undef, 1)
     windowHatInvLUT[1], deconvolveIdx = precompWindowHatInvLUT(params, N, n, windowHatInvLUT_)
   else
@@ -386,20 +415,20 @@ end
 function precompWindowHatInvLUT(p::NFFTParams{T}, N, n, windowHatInvLUT_) where {T}
 
   windowHatInvLUT = zeros(Complex{T}, N)
-  apodIdx = zeros(Int64, N)
+  deconvIdx = zeros(Int64, N)
 
   if length(N) == 1
-    precompWindowHatInvLUT(p, windowHatInvLUT, apodIdx, N, n, windowHatInvLUT_, 1)
+    precompWindowHatInvLUT(p, windowHatInvLUT, deconvIdx, N, n, windowHatInvLUT_, 1)
   else
     @cthreads for o = 1:N[end]
-      precompWindowHatInvLUT(p, windowHatInvLUT, apodIdx, N, n, windowHatInvLUT_, o)
+      precompWindowHatInvLUT(p, windowHatInvLUT, deconvIdx, N, n, windowHatInvLUT_, o)
     end
   end
-  return vec(windowHatInvLUT), vec(apodIdx)
+  return vec(windowHatInvLUT), vec(deconvIdx)
 end
 
 @generated function precompWindowHatInvLUT(p::NFFTParams{T}, windowHatInvLUT::AbstractArray{Complex{T},D},
-           apodIdx::AbstractArray{Int,D}, N, n, windowHatInvLUT_, o)::Nothing where {D,T}
+           deconvIdx::AbstractArray{Int,D}, N, n, windowHatInvLUT_, o)::Nothing where {D,T}
   quote
     linIdx = LinearIndices(n)
 
@@ -410,13 +439,13 @@ end
       end begin
       N2 = N[1]÷2
       @inbounds @simd for i = 1:N2
-        apodIdx[i, CartesianIndex(@ntuple $(D-1) l)] =
+        deconvIdx[i, CartesianIndex(@ntuple $(D-1) l)] =
            linIdx[i-N2+n[1], CartesianIndex(@ntuple $(D-1) gidx)]
         v = windowHatInvLUT_[1][i]
         @nexprs $(D-1) d -> v *= windowHatInvLUT_[d+1][l_d]
         windowHatInvLUT[i, CartesianIndex(@ntuple $(D-1) l)] = v
 
-        apodIdx[i+N2, CartesianIndex(@ntuple $(D-1) l)] =
+        deconvIdx[i+N2, CartesianIndex(@ntuple $(D-1) l)] =
            linIdx[i, CartesianIndex(@ntuple $(D-1) gidx)]
         v = windowHatInvLUT_[1][i+N2]
         @nexprs $(D-1) d -> v *= windowHatInvLUT_[d+1][l_d]
@@ -435,7 +464,7 @@ function precomputeBlocks(x::Matrix{T}, n::NTuple{D,Int}, params, calcBlocks::Bo
     xShift = copy(x)
     shiftNodes!(xShift)
     blocks, nodesInBlocks, blockOffsets =
-        _precomputeBlocks(xShift, n, params.m, params.LUTSize)
+        _precomputeBlocks(xShift, n, params.m, params.LUTSize, params.blockSize)
 
     idxInBlock =  _precomputeIdxInBlock(xShift, n, params.m, params.precompute, params.LUTSize, blockOffsets, nodesInBlocks)
     if params.precompute != TENSOR
@@ -456,37 +485,12 @@ function precomputeBlocks(x::Matrix{T}, n::NTuple{D,Int}, params, calcBlocks::Bo
   return (blocks, nodesInBlocks, blockOffsets, idxInBlock, windowTensor)
 end
 
-function _blockSize(n::NTuple{1,Int}, d)
-  return min(1024, n[d])
-end
 
-function _blockSize(n::NTuple{2,Int}, d)
-  return min(64, n[d])
-end
-
-function _blockSize(n::NTuple{D,Int}, d) where {D}
-  if d == 1
-    return min(16, n[d])
-  elseif d == 2
-    return min(16, n[d])
-  elseif d == 3
-    return min(16, n[d])
-  else
-    return 1
-  end
-end
-
-function _precomputeBlocks(x::Matrix{T}, n::NTuple{D,Int}, m, LUTSize) where {T,D}
+function _precomputeBlocks(x::Matrix{T}, n::NTuple{D,Int}, m, LUTSize, blockSize) where {T,D}
 
   padding = ntuple(d->m, D)
-  # What is the best block size?
-  # Limit the block size to at maximum n
-  blockSize = ntuple(d-> _blockSize(n,d) , D)
-  #blockSize = ntuple(d-> n[d] , D) # just one block
-  blockSizePadded = ntuple(d-> blockSize[d] + 2*padding[d] , D)
-
-  numBlocks =  ntuple(d-> ceil(Int, n[d]/blockSize[d]) , D)
-
+  numBlocks =  ntuple(d-> ceil(Int, n[d]/blockSize[d]), D)
+  blockSizePadded = ntuple(d-> blockSize[d] + 2*padding[d], D)
   nodesInBlock = [ Int[] for l in CartesianIndices(numBlocks) ]
   numNodesInBlock = zeros(Int, numBlocks)
   for k=1:size(x,2) # @cthreads
@@ -538,7 +542,7 @@ function _precomputeIdxInBlock(x::Matrix{T}, n::NTuple{D,Int}, m, precompute, LU
           y = off - blockOffsets[l][d] - 1
 
           if precompute == LINEAR
-            idx = (xscale - off)*(LUTSize÷(m+2))
+            idx = (xscale - off)*(LUTSize÷(m))
           else
             idx = (xscale - off - m + 1 -0.5 )
           end

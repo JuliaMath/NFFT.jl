@@ -1,6 +1,6 @@
 
 
-Base.@kwdef mutable struct NFFTParams{T}
+Base.@kwdef mutable struct NFFTParams{T,D}
   m::Int = 4
   σ::T = 2.0
   reltol::T = 1e-7
@@ -8,8 +8,9 @@ Base.@kwdef mutable struct NFFTParams{T}
   LUTSize::Int64 = 0
   precompute::PrecomputeFlags = POLYNOMIAL
   sortNodes::Bool = false
-  storeApodizationIdx::Bool = false
+  storeDeconvolutionIdx::Bool = false
   blocking::Bool = true
+  blockSize::NTuple{D,Int64} = ntuple(d->0, D)
 end
 
 mutable struct NFFTPlan{T,D,R} <: AbstractNFFTPlan{T,D,R}
@@ -19,7 +20,7 @@ mutable struct NFFTPlan{T,D,R} <: AbstractNFFTPlan{T,D,R}
     x::Matrix{T}
     n::NTuple{D,Int64}
     dims::UnitRange{Int64}
-    params::NFFTParams{T}
+    params::NFFTParams{T,D}
     forwardFFT::FFTW.cFFTWPlan{Complex{T},-1,true,D,UnitRange{Int64}}
     backwardFFT::FFTW.cFFTWPlan{Complex{T},1,true,D,UnitRange{Int64}}
     tmpVec::Array{Complex{T},D}
@@ -96,7 +97,7 @@ function NFFTPlan(x::Matrix{T}, N::NTuple{D,Int}; dims::Union{Integer,UnitRange{
     windowLinInterp, windowPolyInterp, windowHatInvLUT, deconvolveIdx, B =
             precomputation(x, N[dims_], n[dims_], params)
 
-    U = params.storeApodizationIdx ? N : ntuple(d->0,D)
+    U = params.storeDeconvolutionIdx ? N : ntuple(d->0,D)
     tmpVecHat = Array{Complex{T},D}(undef, U)
 
     NFFTPlan(N, NOut, M, x, n, dims_, params, FP, BP, tmpVec, tmpVecHat,
@@ -160,12 +161,12 @@ function LinearAlgebra.mul!(fHat::StridedArray, p::NFFTPlan{T,D,R}, f::AbstractA
     t2 = @elapsed p.forwardFFT * p.tmpVec
     t3 = @elapsed @inbounds convolve!(p, p.tmpVec, fHat)
     if verbose
-        @info "Timing: apod=$t1 fft=$t2 conv=$t3"
+        @info "Timing: deconv=$t1 fft=$t2 conv=$t3"
     end
     if timing != nothing
       timing.conv = t3
       timing.fft = t2
-      timing.apod = t1
+      timing.deconv = t1
     end
     return fHat
 end
@@ -181,12 +182,12 @@ function LinearAlgebra.mul!(f::StridedArray, pl::Adjoint{Complex{T},<:NFFTPlan{T
     t2 = @elapsed p.backwardFFT * p.tmpVec
     t3 = @elapsed @inbounds deconvolve_transpose!(p, p.tmpVec, f)
     if verbose
-        @info "Timing: conv=$t1 fft=$t2 apod=$t3"
+        @info "Timing: conv=$t1 fft=$t2 deconv=$t3"
     end
     if timing != nothing
       timing.conv_adjoint = t1
       timing.fft_adjoint = t2
-      timing.apod_adjoint = t3
+      timing.deconv_adjoint = t3
     end
     return f
 end

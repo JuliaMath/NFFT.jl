@@ -55,8 +55,8 @@ function AbstractNFFTs.plan_nfft(::Type{<:Array}, x::Matrix{T}, N::NTuple{D,Int}
 end
 
 include("directional.jl")
-include("multidimensional.jl")
-
+include("deconvolution.jl")
+include("convolution.jl")
 
 function __init__()
   NFFT._use_threads[] = (Threads.nthreads() > 1)

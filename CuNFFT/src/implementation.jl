@@ -35,7 +35,7 @@ function CuNFFTPlan(x::Matrix{T}, N::NTuple{D,Int}; dims::Union{Integer,UnitRang
     end
 
     params, N, NOut, M, n, dims_ = NFFT.initParams(x, N, dims; kwargs...)
-    params.storeApodizationIdx = true # CuNFFT only works this way
+    params.storeDeconvolutionIdx = true # CuNFFT only works this way
     params.precompute = NFFT.FULL # CuNFFT only works this way
 
     tmpVec = CuArray{Complex{T},D}(undef, n)
@@ -48,15 +48,15 @@ function CuNFFTPlan(x::Matrix{T}, N::NTuple{D,Int}; dims::Union{Integer,UnitRang
 
     windowLinInterp, windowHatInvLUT, deconvolveIdx, B = NFFT.precomputation(x, N[dims_], n[dims_], params)
     
-    U = params.storeApodizationIdx ? N : ntuple(d->0,D)
+    U = params.storeDeconvolutionIdx ? N : ntuple(d->0,D)
     tmpVecHat = CuArray{Complex{T},D}(undef, U)
 
-    apodIdx = CuArray(deconvolveIdx)
+    deconvIdx = CuArray(deconvolveIdx)
     winHatInvLUT = CuArray(Complex{T}.(windowHatInvLUT[1])) 
     B_ = CuSparseMatrixCSC(Complex{T}.(B))
 
     CuNFFTPlan{T,D}(N, NOut, M, x, n, dims_, params, FP, BP, tmpVec, tmpVecHat, 
-               apodIdx, windowLinInterp, winHatInvLUT, B_)
+               deconvIdx, windowLinInterp, winHatInvLUT, B_)
 end
 
 AbstractNFFTs.size_in(p::CuNFFTPlan) = p.N
@@ -81,12 +81,12 @@ function LinearAlgebra.mul!(fHat::CuArray, p::CuNFFTPlan{T,D}, f::CuArray;
   t3 = @elapsed mul!(fHat, transpose(p.B), vec(p.tmpVec)) 
 
   if verbose
-    @info "Timing: apod=$t1 fft=$t2 conv=$t3"
+    @info "Timing: deconv=$t1 fft=$t2 conv=$t3"
   end
   if timing != nothing
     timing.conv = t3
     timing.fft = t2
-    timing.apod = t1
+    timing.deconv = t1
   end
 
   return fHat
@@ -112,12 +112,12 @@ function LinearAlgebra.mul!(f::CuArray, pl::Adjoint{Complex{T},<:CuNFFTPlan{T,D}
   end
 
   if verbose
-    @info "Timing: conv=$t1 fft=$t2 apod=$t3"
+    @info "Timing: conv=$t1 fft=$t2 deconv=$t3"
   end
   if timing != nothing
     timing.conv_adjoint = t1
     timing.fft_adjoint = t2
-    timing.apod_adjoint = t3
+    timing.deconv_adjoint = t3
   end
 
   return f

@@ -1,4 +1,4 @@
-using NFFT, DataFrames, LinearAlgebra, LaTeXStrings, DelimitedFiles, CuNFFT
+using NFFT, DataFrames, LinearAlgebra, Statistics, LaTeXStrings, DelimitedFiles, CuNFFT
 using Plots; pgfplotsx()
 
 include("../../Wrappers/NFFT3.jl")
@@ -95,7 +95,7 @@ function plot_accuracy_m(df, packagesStr, packagesStrShort, filename, D=1)
   end
 
   p2 = plot(ms, df1_[df1_.Package.==packagesStr[1],:ErrorAdjoint], 
-            yscale = :log10, lw=2, xlabel = "m", ylabel="Relative Error",
+            yscale = :log10, lw=2, xlabel = "m", #ylabel="Relative Error",
             legend = nothing, title=L"\textrm{NFFT}^H", shape=:circle, c=:black)
 
   for p=2:length(packagesStr)      
@@ -138,7 +138,7 @@ function plot_accuracy_sigma(df, packagesStr, packagesStrShort, filename,  D=1)
   end
 
   p2 = plot(σs, df1_[df1_.Package.==packagesStr[1],:ErrorAdjoint], 
-            yscale = :log10, lw=2, xlabel = L"\sigma", ylabel="Relative Error",
+            yscale = :log10, lw=2, xlabel = L"\sigma", #ylabel="Relative Error",
             legend = nothing, title=L"\textrm{NFFT}^H", shape=:circle, c=:black)
 
   for p=2:length(packagesStr)      
@@ -172,7 +172,7 @@ dfσ = DataFrame(data, vec(header))
 plot_accuracy_m(dfm, ["NFFT.jl/TENSOR", "NFFT3/TENSOR", "FINUFFT"],
                      ["NFFT.jl", "NFFT3", "FINUFFT"], "accuracy_m_D2.pdf", 2)
 plot_accuracy_m(dfm, ["NFFT.jl/FULL", "NFFT.jl/TENSOR", "NFFT.jl/LINEAR", "NFFT.jl/POLY"], 
-                     ["NFFT.jl/FULL", "NFFT.jl/TENSOR", "NFFT.jl/LINEAR", "NFFT.jl/POLYNOMIAL"],
+                     ["FULL", "TENSOR", "LINEAR", "POLYNOMIAL"],
                       "accuracy_m_pre_D2.pdf", 2)
 plot_accuracy_sigma(dfσ, ["NFFT.jl/TENSOR", "NFFT3/TENSOR"], 
                          ["NFFT.jl", "NFFT3"], "accuracy_sigma_D2.pdf", 2)

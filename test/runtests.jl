@@ -12,6 +12,6 @@ include("constructors.jl")
 include("performance.jl")
 include("testToeplitz.jl")
 include("samplingDensity.jl")
-include("cuda.jl")
+#include("cuda.jl")
 # Need to run after the other tests since they overload plan_*
 include("wrappers.jl")

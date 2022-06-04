@@ -4,11 +4,12 @@ using Plots; pgfplotsx()
 
 
 const packagesCtor = [NFFTPlan, NFFTPlan]
-const packagesStr = ["NFFT.jl/POLY/Block", "NFFT.jl/POLY/NonBlock"]
+const packagesStr = ["NFFT.jl/POLY/NonBlock", "NFFT.jl/POLY/Block"]
+const packagesStrShort = ["Regular", "Block Partitioning"]
 const precomp = [NFFT.POLYNOMIAL, NFFT.POLYNOMIAL]
-const blocking = [true, false]
+const blocking = [false, true]
 
-const benchmarkTime = [1, 1]
+const benchmarkTime = [10, 10]
 
 NFFT.FFTW.set_num_threads(Threads.nthreads())
 NFFT._use_threads[] = (Threads.nthreads() > 1)
@@ -16,8 +17,8 @@ NFFT._use_threads[] = (Threads.nthreads() > 1)
 
 const σs = [2.0] 
 const ms = 3:8
-const NBase = [4*4096, 128, 32]
-const Ds = 1:2
+const NBase = [65536, 256, 32] # [4*4096, 128, 32]
+const Ds = 2
 
 function nfft_accuracy_comparison(Ds=1:3)
   println("\n\n ##### nfft_performance blocking ##### \n\n")
@@ -84,8 +85,8 @@ function plot_accuracy(df, D=1)
   Plots.scalefontsizes()
   Plots.scalefontsizes(1.5)
   
-  titleTrafo = L"\textrm{NFFT}, \textrm{%$(D)D}"
-  titleAdjoint = L"\textrm{NFFT}^H, \textrm{%$(D)D}"
+  titleTrafo = L"\textrm{NFFT}" #, \textrm{%$(D)D}
+  titleAdjoint = L"\textrm{NFFT}^H" #, \textrm{%$(D)D}
 
   colors = [:black, :orange, :blue, :green, :brown, :gray, :blue, :purple, :yellow ]
   ls = [:solid, :dashdot, :solid, :solid, :solid, :dash, :solid, :dash, :solid]
@@ -96,19 +97,19 @@ function plot_accuracy(df, D=1)
 
   p1 = plot(df1_[df1_.Package.==packagesStr[1],:ErrorTrafo], 
             df1_[df1_.Package.==packagesStr[1],:TimeTrafo], ylims=(0.0,maxTimeTrafo),
-            xscale = :log10, label=packagesStr[1], lw=2, xlabel = "Relative Error", ylabel="Runtime / s",
+            xscale = :log10, label=packagesStrShort[1], lw=2, xlabel = "Relative Error", ylabel="Runtime / s",
             legend = (:topright), title=titleTrafo, shape=:circle, c=:black)
 
   for p=2:length(packagesStr)      
     plot!(p1, df1_[df1_.Package.==packagesStr[p],:ErrorTrafo], 
           df1_[df1_.Package.==packagesStr[p],:TimeTrafo], 
-            xscale = :log10, label=packagesStr[p], lw=2, shape=shape[p], ls=ls[p], 
+            xscale = :log10, label=packagesStrShort[p], lw=2, shape=shape[p], ls=ls[p], 
             c=colors[p], msc=colors[p], mc=colors[p], ms=4, msw=2)
   end
 
   p2 = plot(df1_[df1_.Package.==packagesStr[1],:ErrorAdjoint], 
             df1_[df1_.Package.==packagesStr[1],:TimeAdjoint], ylims=(0.0,maxTimeAdjoint),
-            xscale = :log10,  lw=2, xlabel = "Relative Error", ylabel="Runtime / s", #label=packagesStr[1],
+            xscale = :log10,  lw=2, xlabel = "Relative Error", #ylabel="Runtime / s", #label=packagesStr[1],
             legend = nothing, title=titleAdjoint, shape=:circle, c=:black)
 
   for p=2:length(packagesStr)      
@@ -128,8 +129,8 @@ end
 
 
 
-#df = nfft_accuracy_comparison(Ds)
-#writedlm("data/performanceBlocking.csv", Iterators.flatten(([names(df)], eachrow(df))), ',')
+df = nfft_accuracy_comparison(Ds)
+writedlm("data/performanceBlocking.csv", Iterators.flatten(([names(df)], eachrow(df))), ',')
 
 data, header = readdlm("data/performanceBlocking.csv", ',', header=true);
 df = DataFrame(data, vec(header))
