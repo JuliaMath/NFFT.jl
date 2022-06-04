@@ -40,22 +40,22 @@ function FINUFFTPlan(x::Matrix{T}, N::NTuple{D,Int};
 
   reltol = max(reltol, 1.0e-15)
 
-  x_ = 2π * x 
+  x_ = T.(2π) * x 
   nodes = ntuple(d->vec(x_[d,:]), D)
 
   planTrafo = FINUFFT.finufft_makeplan(2, collect(N), -1, 1, reltol;
-                          nthreads = Threads.nthreads(), 
+                          nthreads = Threads.nthreads(), dtype=T,
                           fftw = fftflags, upsampfac=2.0, debug=0)
 
   FINUFFT.finufft_setpts!(planTrafo, nodes...)
 
   planAdjoint = FINUFFT.finufft_makeplan(1, collect(N), 1, 1, reltol;
-                          nthreads = Threads.nthreads(), 
+                          nthreads = Threads.nthreads(), dtype=T, 
                           fftw = fftflags, upsampfac=2.0, debug=0)
 
   FINUFFT.finufft_setpts!(planAdjoint, nodes...)
 
-  p = FINUFFTPlan(N, M, x_, m, T(σ), reltol, fftflags, planTrafo, planAdjoint)
+  p = FINUFFTPlan(N, M, x_, m, T(σ), T(reltol), fftflags, planTrafo, planAdjoint)
 
   finalizer(p -> begin
     #println("Run FINUFFT finalizer")
