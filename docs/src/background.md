@@ -48,7 +48,7 @@ where ``\hat{\bm{g}} \in \mathbb{C}^\mathbf{N}``.
 
 ## NFFT
 
-The NFFT is an approximative algorithm that realizes the NDFT in just ``{\cal O}(N \log N + M)`` steps where ``N := \text{prod}(\bm{N})``. This is at the same level as the ordinary FFT with the exception that of the additional linear dependence on ``M`` which is unavoidable since all nodes need to be touched as least once.
+The NFFT is an approximative algorithm that realizes the NDFT in just ``{\mathcal O}(N \log N + M)`` steps where ``N := \text{prod}(\bm{N})``. This is at the same level as the ordinary FFT with the exception that of the additional linear dependence on ``M`` which is unavoidable since all nodes need to be touched as least once.
 
 The NFFT has two important parameters that influence its accuracy:
 * the window width ``m \in \mathbb{N}``
