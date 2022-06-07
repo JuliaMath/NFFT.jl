@@ -48,7 +48,7 @@ where ``\hat{\bm{g}} \in \mathbb{C}^\mathbf{N}``.
 
 ## NFFT
 
-The NFFT is an approximative algorithm that realizes the NDFT in just ``{\cal O}(N \log N + M)`` steps where ``N := \text{prod}(\bm{N})``. This is at the same level as the ordinary FFT with the exception that of the additional linear dependence on ``M`` which is unavoidable since all nodes need to be touched as least once.
+The NFFT is an approximative algorithm that realizes the NDFT in just ``{\mathcal O}(N \log N + M)`` steps where ``N := \text{prod}(\bm{N})``. This is at the same level as the ordinary FFT with the exception that of the additional linear dependence on ``M`` which is unavoidable since all nodes need to be touched as least once.
 
 The NFFT has two important parameters that influence its accuracy:
 * the window width ``m \in \mathbb{N}``
@@ -74,7 +74,7 @@ Implementation-wise, the matrix-vector notation illustrates that the NFFT consis
 * The multiplication with ``\bm{D}`` is a scalar multiplication with the input-vector plus the shifting of data, which can be done inplace.
 * The FFT is done with a high-performance FFT library such as the FFTW.
 * The multiplication with ``\bm{B}`` needs to run only over a subset of the indices and is the most challenging step.
-Since in practice the multiplication with ``\bm{B}`` is also the most expansive step, an NFFT library needs to pay special attention to optimizing it appropriately.
+Since in practice the multiplication with ``\bm{B}`` is also the most expensive step, an NFFT library needs to pay special attention to optimizing it appropriately.
 
 ## Directional NFFT
 
