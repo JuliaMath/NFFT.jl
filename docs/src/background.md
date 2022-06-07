@@ -74,7 +74,7 @@ Implementation-wise, the matrix-vector notation illustrates that the NFFT consis
 * The multiplication with ``\bm{D}`` is a scalar multiplication with the input-vector plus the shifting of data, which can be done inplace.
 * The FFT is done with a high-performance FFT library such as the FFTW.
 * The multiplication with ``\bm{B}`` needs to run only over a subset of the indices and is the most challenging step.
-Since in practice the multiplication with ``\bm{B}`` is also the most expansive step, an NFFT library needs to pay special attention to optimizing it appropriately.
+Since in practice the multiplication with ``\bm{B}`` is also the most expensive step, an NFFT library needs to pay special attention to optimizing it appropriately.
 
 ## Directional NFFT
 
