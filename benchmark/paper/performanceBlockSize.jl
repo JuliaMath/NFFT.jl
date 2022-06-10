@@ -2,21 +2,24 @@ using NFFT, DataFrames, LinearAlgebra, LaTeXStrings, DelimitedFiles
 using BenchmarkTools
 using Plots; pgfplotsx()
 
-const benchmarkTime = [2, 2]
+const benchmarkTime = [4, 4]
 
 NFFT.FFTW.set_num_threads(Threads.nthreads())
 NFFT._use_threads[] = (Threads.nthreads() > 1)
 
-const threads = [1,2,4] #,8]
+const threads = [1,2,4,8] 
 
 #const NBase = [65536, 256, 32] 
-const NBase = [4*4096, 128, 32]
+const NBase = [512*512, 512, 64]
 const Ds = 1:3
 const blockSizeBase = [
-  [16, 64, 256, 1024, 4096, 2*4096, 4*4096, 8*4096],
-  [2, 4, 8, 16, 32, 64, 128, 256],
-  [2, 4, 6, 8, 16, 32, 64],
+  [nextpow(2,round(Int,x)) for x=2 .^range(1,19,length=7)], #[div(NBase[1]*2,2^j) for j=(0:6).*2],
+  [nextpow(2,round(Int,x)) for x=2 .^range(1,10,length=7)], #[div(NBase[2]*2,2^j) for j=0:6],
+  [nextpow(2,round(Int,x)) for x=2 .^range(1,7,length=7)] #,[div(NBase[3]*2,2^j) for j=0:6],
 ]
+
+
+const fftflags = NFFT.FFTW.MEASURE
 
 function nfft_block_size_comparison(Ds=1:3, m = 4, σ = 2.0)
   println("\n\n ##### nfft_block_size_comparison ##### \n\n")
@@ -38,7 +41,7 @@ function nfft_block_size_comparison(Ds=1:3, m = 4, σ = 2.0)
         @info "b=$(bl) D=$D"
 
           blockSize = ntuple(d-> bl, D)
-          p = NFFTPlan(x, N; m, σ, precompute=POLYNOMIAL, blocking=true, blockSize=blockSize)
+          p = NFFTPlan(x, N; m, σ, precompute=POLYNOMIAL, blocking=true, blockSize=blockSize, fftflags=fftflags)
 
           @info "Adjoint benchmark:"
           BenchmarkTools.DEFAULT_PARAMETERS.seconds = benchmarkTime[1] 
@@ -94,8 +97,8 @@ function plot_performance_block_size(df, Ds)
 
     blockSizes = df1_[df1_.Threads .== threads[1], :blockSizeBase]
 
-    p1 = plot(blockSizes, 
-              df1_[df1_.Threads .== threads[1], :TimeTrafo], ylims=(0.0,maxTimeTrafo),
+    p1 = plot(blockSizes, yscale = :log2,
+              df1_[df1_.Threads .== threads[1], :TimeTrafo], #ylims=(0.0,maxTimeTrafo),
               label="1 thread", lw=2, ylabel="Runtime / s", xlabel = i==length(Ds) ? "Block Size" : "",
               legend = nothing, title=titleTrafo, shape=:circle, c=:black)
 
@@ -105,9 +108,10 @@ function plot_performance_block_size(df, Ds)
               label="$(threads[p]) threads", lw=2, shape=shape[p], ls=ls[p], 
               c=colors[p], msc=colors[p], mc=colors[p], ms=4, msw=2)
     end
+    
 
     plot!(p1, blockSizes, 
-              df2_[df2_.Threads .== threads[1], :TimeTrafo].*ones(length(blockSizes)), ylims=(0.0,maxTimeTrafo),
+              df2_[df2_.Threads .== threads[1], :TimeTrafo].*ones(length(blockSizes)), #ylims=(0.0,maxTimeTrafo),
               label="regular: 1 thread", lw=2,  ls=:dash,
               c=colors[1])
 
@@ -118,8 +122,8 @@ function plot_performance_block_size(df, Ds)
               c=colors[p])
     end
 
-    p2 = plot(blockSizes, 
-              df1_[df1_.Threads .== threads[1],:TimeAdjoint], ylims=(0.0,maxTimeAdjoint),
+    p2 = plot(blockSizes, yscale = :log2,
+              df1_[df1_.Threads .== threads[1],:TimeAdjoint], #ylims=(0.0,maxTimeAdjoint),
               lw=2, xlabel = i==length(Ds) ? "Block Size" : "", label="1 thread",
               legend = i==2 ? :topright : nothing, title=titleAdjoint, shape=:circle, c=:black)
 
@@ -131,7 +135,7 @@ function plot_performance_block_size(df, Ds)
     end
 
     plot!(p2, blockSizes, 
-              df2_[df2_.Threads .== threads[1], :TimeAdjoint].*ones(length(blockSizes)), ylims=(0.0,maxTimeAdjoint),
+              df2_[df2_.Threads .== threads[1], :TimeAdjoint].*ones(length(blockSizes)), #ylims=(0.0,maxTimeAdjoint),
               lw=2, ls=:dash, label=nothing,
               c=colors[1])
     pl[1,i] = p1; pl[2,i] = p2;
@@ -165,7 +169,7 @@ if haskey(ENV, "NFFT_PERF")
 
 else
   if false
-  rm("./data/performanceBlockSize.csv", force=true)
+    rm("./data/performanceBlockSize.csv", force=true)
     ENV["NFFT_PERF"] = 1
     for t in threads
       cmd = `julia -t $t performanceBlockSize.jl`

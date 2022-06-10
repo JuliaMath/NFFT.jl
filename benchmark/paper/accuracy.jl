@@ -80,9 +80,12 @@ function plot_accuracy_m(df, packagesStr, packagesStrShort, filename, D=1)
   Plots.scalefontsizes(1.5)
   
 
-  colors = [:black, :orange, :green, :gray, :brown,  :blue, :purple, :yellow ]
-  ls = [:solid, :dashdot, :dash, :dashdotdot, :solid, :dash, :solid, :dash, :solid]
-  shape = [:xcross, :circle, :xcross, :cross, :circle, :xcross, :xcross, :circle]
+  c#olors = [:black, :orange, :green, :gray, :brown,  :blue, :purple, :yellow ]
+  #ls = [:solid, :dashdot, :dash, :dashdotdot, :solid, :dash, :solid, :dash, :solid]
+  #shape = [:xcross, :circle, :xcross, :cross, :circle, :xcross, :xcross, :circle]
+  colors = [RGB(0.0,0.29,0.57), RGB(0.3,0.5,0.7), RGB(0.95,0.59,0.22), RGB(1.0,0.87,0.0)]
+  ls = [:solid, :solid, :solid, :solid]
+  shape = [:xcross, :circle, :xcross, :cross]
 
   p1 = plot(ms, df1_[df1_.Package.==packagesStr[1],:ErrorTrafo], 
             yscale = :log10, label=packagesStrShort[1], lw=2, xlabel = "m", ylabel="Relative Error",

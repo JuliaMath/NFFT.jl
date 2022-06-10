@@ -11,7 +11,7 @@ const packagesStr = [ "NFFT.jl/TENSOR", "NFFT.jl/POLY", "NFFT3/TENSOR", "FINUFFT
 const precomp = [NFFT.TENSOR, NFFT.POLYNOMIAL, NFFT.TENSOR, NFFT.LINEAR] #NFFT.LINEAR
 const blocking = [true, true, true, true, true]
 
-const benchmarkTime = [2, 2]
+const benchmarkTime = [20, 80]
 
 NFFT.FFTW.set_num_threads(Threads.nthreads())
 ccall(("omp_set_num_threads",NFFT3.lib_path_nfft),Nothing,(Int64,),convert(Int64,Threads.nthreads()))
@@ -22,8 +22,10 @@ NFFT._use_threads[] = (Threads.nthreads() > 1)
 const σs = [2.0] 
 const ms = 3:8
 #const NBase = [65536, 256, 32] #[4*4096, 128, 32]
-const NBase = [4*4096, 128, 32]
+#const NBase = [4*4096, 128, 32]
+const NBase = [512*512, 512, 64]
 const Ds = 1:3
+const fftflags = NFFT.FFTW.MEASURE
 
 function nfft_accuracy_comparison(Ds=1:3)
   println("\n\n ##### nfft_performance vs accuracy ##### \n\n")
@@ -53,8 +55,8 @@ function nfft_accuracy_comparison(Ds=1:3)
 
         for pl = 1:length(packagesStr)
           planner = packagesCtor[pl]
-          p = planner(x, N; m, σ, precompute=precomp[pl], blocking=blocking[pl])
-          b = @benchmark $planner($x, $N; m=$m, σ=$σ, precompute=$(precomp[pl]), blocking=$(blocking[pl]))
+          p = planner(x, N; m, σ, precompute=precomp[pl], blocking=blocking[pl], fftflags=fftflags)
+          b = @benchmark $planner($x, $N; m=$m, σ=$σ, precompute=$(precomp[pl]), blocking=$(blocking[pl]), fftflags=$(fftflags))
           tpre = minimum(b).time / 1e9
 
           @info "Adjoint accuracy: $(packagesStr[pl])"
@@ -92,9 +94,12 @@ function plot_accuracy(df, packagesStr, packagesStrShort, filename)
   Plots.scalefontsizes()
   Plots.scalefontsizes(1.5)
 
-  colors = [:black, :orange, :blue, :green, :brown, :gray, :blue, :purple, :yellow ]
-  ls = [:solid, :dashdot, :solid, :solid, :solid, :dash, :solid, :dash, :solid]
-  shape = [:circle, :circle, :circle, :xcross, :circle, :xcross, :xcross, :circle]
+  #colors = [RGB(0.0,0.29,0.57), RGB(0.3,0.5,0.7), RGB(0.95,0.59,0.22), RGB(1.0,0.87,0.0)]
+  #colors = [RGB(0.0,0.29,0.57), RGB(0.3,0.5,0.7),  RGB(0.7,0.13,0.16), RGB(0.72,0.84,0.48)]
+  #colors = [RGB(0.0,0.29,0.57), RGB(0.3,0.5,0.7), RGB(1.0,0.87,0.0), RGB(0.95,0.59,0.22)]
+  colors = [RGB(0.0,0.29,0.57), RGB(0.3,0.5,0.7), RGB(0.94,0.53,0.12), RGB(0.99,0.75,0.05)]
+  ls = [:solid, :solid, :solid, :solid]
+  shape = [:xcross, :circle, :xcross, :cross]
 
   xlims = [(4e-13,1e-5), (4e-15,1e-4),(4e-15,1e-4)]
 
@@ -115,7 +120,9 @@ function plot_accuracy(df, packagesStr, packagesStrShort, filename)
               label = packagesStrShort[1],
               xscale = :log10, legend = (i==length(Ds)) ? (0.0, -0.5) : nothing, 
               lw=2, xlabel = xlabel, ylabel="Runtime / s",
-              title=titleTrafo, shape=:circle, c=:black, xlims=xlims[i])
+              title=titleTrafo, shape=shape[1], ls=ls[1], 
+              c=colors[1], msc=colors[1], mc=colors[1], ms=4, msw=2,
+              xlims=xlims[i])
 
     for p=2:length(packagesStr)      
       plot!(p1, df1_[df1_.Package.==packagesStr[p],:ErrorTrafo], 
@@ -128,7 +135,9 @@ function plot_accuracy(df, packagesStr, packagesStrShort, filename)
     p2 = plot(df1_[df1_.Package.==packagesStr[1],:ErrorAdjoint], 
               df1_[df1_.Package.==packagesStr[1],:TimeAdjoint], ylims=(0.0,maxTimeAdjoint),
               xscale = :log10,  lw=2, xlabel = xlabel, #ylabel="Runtime / s", #label=packagesStr[1],
-              legend = nothing, title=titleAdjoint, shape=:circle, c=:black, xlims=xlims[i])
+              legend = nothing, title=titleAdjoint, shape=shape[1], ls=ls[1], 
+              c=colors[1], msc=colors[1], mc=colors[1], ms=4, msw=2,
+              xlims=xlims[i])
 
     for p=2:length(packagesStr)      
       plot!(p2, df1_[df1_.Package.==packagesStr[p],:ErrorAdjoint], 
@@ -141,7 +150,9 @@ function plot_accuracy(df, packagesStr, packagesStrShort, filename)
               df1_[df1_.Package.==packagesStr[1],:TimePre], ylims=(0.0,maxTimePre),
               label = (i==1) ? packagesStrShort[1] : "",
               xscale = :log10,  lw=2, xlabel = xlabel, #ylabel="Runtime / s", #label=packagesStr[1],
-              title=titlePre, shape=:circle, c=:black, legend = nothing,
+              title=titlePre, shape=shape[1], ls=ls[1], 
+              c=colors[1], msc=colors[1], mc=colors[1], ms=4, msw=2,
+              legend = nothing,
               xlims=xlims[i] )
 
     for p=2:length(packagesStr)      

@@ -1,4 +1,4 @@
-using NFFT, LinearAlgebra, CuNFFT
+using NFFT, LinearAlgebra#, CuNFFT
 
 include("../Wrappers/NFFT3.jl")
 include("../Wrappers/FINUFFT.jl")
@@ -18,7 +18,7 @@ function nfft_performance_simple(;N = (1024,1024), M = prod(N), m = 4,
   
   fHat = randn(Complex{T}, M)
   f = randn(Complex{T}, N)
-s
+
   #=if ctor == CuNFFT.CuNFFTPlan
     fHat = CuNFFT.CuArray(fHat)
     f = CuNFFT.CuArray(f)
@@ -30,8 +30,8 @@ s
   tpre = @elapsed p = ctor(x, N; m, σ, window=:kaiser_bessel, precompute=pre, 
                             fftflags, storeDeconvolutionIdx, blocking)
 
-  tadjoint = @elapsed CUDA.@sync mul!(f, adjoint(p), fHat; timing)
-  ttrafo = @elapsed CUDA.@sync mul!(fHat, p, f; timing)
+  tadjoint = @elapsed mul!(f, adjoint(p), fHat; timing)
+  ttrafo = @elapsed mul!(fHat, p, f; timing)
 
   @info tpre, ttrafo, tadjoint
 

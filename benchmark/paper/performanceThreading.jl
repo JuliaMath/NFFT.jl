@@ -12,12 +12,13 @@ mkpath("./img/")
 mkpath("./data/")
 
 
-const threads = [1,2,4,6]#,16]
+const threads = [1,2,4,8]
 const precomp = [NFFT.POLYNOMIAL, NFFT.TENSOR, NFFT.POLYNOMIAL, NFFT.TENSOR]
 const packagesCtor = [NFFTPlan, NFFTPlan, FINUFFTPlan, NFFT3Plan]
 const packagesStr = ["NFFT.jl/POLY", "NFFT.jl/TENSOR", "FINUFFT", "NFFT3"]
-const benchmarkTime = [2, 2, 2]
-const NBase = [4*4096, 256, 32]
+const benchmarkTime = [1, 20, 20]
+#const NBase = [4*4096, 256, 32]
+const NBase = [512*512, 512, 64]
 
 NFFT.FFTW.set_num_threads(Threads.nthreads())
 ccall(("omp_set_num_threads",NFFT3.lib_path_nfft),Nothing,(Int64,),convert(Int64,Threads.nthreads()))
@@ -143,15 +144,18 @@ function plot_performance_speedup(df; D=2, N=1024, M=N*N)
     end
   end
   
+  efftrafo = 1 ./ ttrafo .* ttrafo[1:1,:] ./ threads
+  effadjoint = 1 ./ tadjoint .* tadjoint[1:1,:] ./ threads
+  
   ttrafo = 1 ./ ttrafo * ttrafo[1,3]
   tadjoint = 1 ./ tadjoint * tadjoint[1,3]
 
   Plots.scalefontsizes()
   Plots.scalefontsizes(1.5)
   
-  colors = [:black, :orange, :blue, :green, :brown, :gray, :blue, :purple, :yellow ]
-  ls = [:solid, :solid, :solid, :solid, :solid, :dash, :solid, :dash, :solid]
-  shape = [:circle, :circle, :circle, :xcross, :circle, :xcross, :xcross, :circle]
+  colors = [RGB(0.0,0.29,0.57), RGB(0.3,0.5,0.7), RGB(0.94,0.53,0.12), RGB(0.99,0.75,0.05)]
+  ls = [:solid, :solid, :solid, :solid]
+  shape = [:xcross, :circle, :xcross, :cross]
 
 
     titleTrafo = L"\textrm{NFFT}"
@@ -159,8 +163,10 @@ function plot_performance_speedup(df; D=2, N=1024, M=N*N)
 
     p1 = plot(threads, 
               ttrafo[:,1], ylims=(0.0,maximum(threads)),
-              label=packagesStr[1], lw=2, ylabel="Speedup", xlabel = "# threads",
-              legend = :topleft, title=titleTrafo, shape=:circle, c=:black)
+              label=packagesStr[1], lw=2, ylabel="Speedup", #xlabel = "# threads",
+              legend = :topleft, title=titleTrafo, 
+              shape=shape[1], ls=ls[1], 
+              c=colors[1], msc=colors[1], mc=colors[1], ms=4, msw=2)
 
     for p=2:length(packagesStr)      
       plot!(p1, threads, 
@@ -170,10 +176,13 @@ function plot_performance_speedup(df; D=2, N=1024, M=N*N)
     end
 
     p2 = plot(threads, tadjoint[:,1],  ylims=(0.0,maximum(threads)),
-              lw=2, xlabel = "# threads", label=packagesStr[1],
+              lw=2, #xlabel = "# threads", 
+              label=packagesStr[1],
               #legend = i==2 ? :topright : nothing, 
               legend = nothing,
-              title=titleAdjoint, shape=:circle, c=:black)
+              title=titleAdjoint, 
+              shape=shape[1], ls=ls[1], 
+              c=colors[1], msc=colors[1], mc=colors[1], ms=4, msw=2)
 
     for p=2:length(packagesStr)      
       plot!(p2, threads, tadjoint[:,p], 
@@ -181,13 +190,43 @@ function plot_performance_speedup(df; D=2, N=1024, M=N*N)
               c=colors[p], msc=colors[p], mc=colors[p], ms=4, msw=2)
     end
 
-
-
    p = plot(p1, p2, layout=(1,2), size=(800,300), dpi=200)
+
+  
+  p3 = plot(threads, 
+              efftrafo[:,1], ylims=(0.0,1.2),
+              label=packagesStr[1], lw=2, ylabel="Efficiency", xlabel = "# threads",
+              legend = nothing, title=titleTrafo, 
+              shape=shape[1], ls=ls[1], 
+              c=colors[1], msc=colors[1], mc=colors[1], ms=4, msw=2)
+
+    for p=2:length(packagesStr)      
+      plot!(p3, threads, 
+             efftrafo[:,p], 
+              label=packagesStr[p], lw=2, shape=shape[p], ls=ls[p], 
+              c=colors[p], msc=colors[p], mc=colors[p], ms=4, msw=2)
+    end
+
+    p4 = plot(threads, effadjoint[:,1],  ylims=(0.0,1.2),
+              lw=2, xlabel = "# threads", label=packagesStr[1],
+              #legend = i==2 ? :topright : nothing, 
+              legend = nothing,
+              title=titleAdjoint, 
+              shape=shape[1], ls=ls[1], 
+              c=colors[1], msc=colors[1], mc=colors[1], ms=4, msw=2)
+
+    for p=2:length(packagesStr)      
+      plot!(p4, threads, effadjoint[:,p], 
+              label=packagesStr[p], lw=2, shape=shape[p], ls=ls[p], 
+              c=colors[p], msc=colors[p], mc=colors[p], ms=4, msw=2)
+    end
+
+   p = plot(p1, p2, p3, p4, layout=(2,2), size=(800,500), dpi=200)
 
 
   savefig(p, "./img/performance_mt_speedup.pdf")
-  return p
+  
+  return 
 end
 
 
