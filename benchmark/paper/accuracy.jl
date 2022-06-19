@@ -69,7 +69,8 @@ function nfft_accuracy_comparison(Ds, σs, ms)
   return df
 end
 
-function plot_accuracy_m(df, packagesStr, packagesStrShort, filename, D=1)
+function plot_accuracy_m(df, packagesStr, packagesStrShort, filename, D=1,
+      colors = [RGB(0.0,0.29,0.57), RGB(0.3,0.5,0.7), RGB(0.94,0.53,0.12), RGB(0.99,0.75,0.05)])
 
   σs = range(1.25, 4, length=12)
 
@@ -80,16 +81,14 @@ function plot_accuracy_m(df, packagesStr, packagesStrShort, filename, D=1)
   Plots.scalefontsizes(1.5)
   
 
-  c#olors = [:black, :orange, :green, :gray, :brown,  :blue, :purple, :yellow ]
-  #ls = [:solid, :dashdot, :dash, :dashdotdot, :solid, :dash, :solid, :dash, :solid]
-  #shape = [:xcross, :circle, :xcross, :cross, :circle, :xcross, :xcross, :circle]
-  colors = [RGB(0.0,0.29,0.57), RGB(0.3,0.5,0.7), RGB(0.95,0.59,0.22), RGB(1.0,0.87,0.0)]
   ls = [:solid, :solid, :solid, :solid]
-  shape = [:xcross, :circle, :xcross, :cross]
+  shape = [:circle, :xcross, :cross, :xcross ]
 
   p1 = plot(ms, df1_[df1_.Package.==packagesStr[1],:ErrorTrafo], 
             yscale = :log10, label=packagesStrShort[1], lw=2, xlabel = "m", ylabel="Relative Error",
-            legend = (:topright), title=L"\textrm{NFFT}", shape=:circle, c=:black)
+            legend = (:topright), title=L"\textrm{NFFT}", 
+            shape=shape[1], ls=ls[1], 
+            c=colors[1], msc=colors[1], mc=colors[1])
 
   for p=2:length(packagesStr)      
     plot!(p1, ms, df1_[df1_.Package.==packagesStr[p],:ErrorTrafo], 
@@ -99,7 +98,9 @@ function plot_accuracy_m(df, packagesStr, packagesStrShort, filename, D=1)
 
   p2 = plot(ms, df1_[df1_.Package.==packagesStr[1],:ErrorAdjoint], 
             yscale = :log10, lw=2, xlabel = "m", #ylabel="Relative Error",
-            legend = nothing, title=L"\textrm{NFFT}^H", shape=:circle, c=:black)
+            legend = nothing, title=L"\textrm{NFFT}^H", 
+            shape=shape[1], ls=ls[1], 
+            c=colors[1], msc=colors[1], mc=colors[1])
 
   for p=2:length(packagesStr)      
     plot!(p2, ms, df1_[df1_.Package.==packagesStr[p],:ErrorAdjoint], 
@@ -107,7 +108,7 @@ function plot_accuracy_m(df, packagesStr, packagesStrShort, filename, D=1)
             c=colors[p], msc=colors[p], mc=colors[p], ms=5, msw=2)
   end
 
-  p = plot(p1, p2, layout=(1,2), size=(800,300), dpi=200)
+  p = plot(p1, p2, layout=(1,2), size=(800,200), dpi=200)
   #p = plot(p1, layout=(1,2), size=(800,450), dpi=200)
 
   mkpath("./img/")
@@ -132,7 +133,9 @@ function plot_accuracy_sigma(df, packagesStr, packagesStrShort, filename,  D=1)
 
   p1 = plot(σs, df1_[df1_.Package.==packagesStr[1],:ErrorTrafo], 
             yscale = :log10, label=packagesStrShort[1], lw=2, xlabel = L"\sigma", ylabel="Relative Error",
-            legend = (:topright), title=L"\textrm{NFFT}", shape=:circle, c=:black)
+            legend = (:topright), title=L"\textrm{NFFT}", 
+            shape=shape[1], ls=ls[1], 
+            c=colors[1], msc=colors[1], mc=colors[1])
 
   for p=2:length(packagesStr)      
     plot!(p1, σs, df1_[df1_.Package.==packagesStr[p],:ErrorTrafo], 
@@ -142,7 +145,9 @@ function plot_accuracy_sigma(df, packagesStr, packagesStrShort, filename,  D=1)
 
   p2 = plot(σs, df1_[df1_.Package.==packagesStr[1],:ErrorAdjoint], 
             yscale = :log10, lw=2, xlabel = L"\sigma", #ylabel="Relative Error",
-            legend = nothing, title=L"\textrm{NFFT}^H", shape=:circle, c=:black)
+            legend = nothing, title=L"\textrm{NFFT}^H",
+            shape=shape[1], ls=ls[1], 
+            c=colors[1], msc=colors[1], mc=colors[1])
 
   for p=2:length(packagesStr)      
     plot!(p2, σs, df1_[df1_.Package.==packagesStr[p],:ErrorAdjoint], 
@@ -173,10 +178,12 @@ dfσ = DataFrame(data, vec(header))
 
 
 plot_accuracy_m(dfm, ["NFFT.jl/TENSOR", "NFFT3/TENSOR", "FINUFFT"],
-                     ["NFFT.jl", "NFFT3", "FINUFFT"], "accuracy_m_D2.pdf", 2)
+                     ["NFFT.jl", "NFFT3", "FINUFFT"], "accuracy_m_D2.pdf", 2,
+                     [RGB(0.0,0.29,0.57), RGB(0.94,0.53,0.12), RGB(0.99,0.75,0.05)])
 plot_accuracy_m(dfm, ["NFFT.jl/FULL", "NFFT.jl/TENSOR", "NFFT.jl/LINEAR", "NFFT.jl/POLY"], 
                      ["FULL", "TENSOR", "LINEAR", "POLYNOMIAL"],
-                      "accuracy_m_pre_D2.pdf", 2)
+                      "accuracy_m_pre_D2.pdf", 2,
+                      [RGB(0.7,0.13,0.16), RGB(0.3,0.5,0.7), RGB(0.5,0.48,0.45) ,RGB(0.0,0.29,0.57)])
 plot_accuracy_sigma(dfσ, ["NFFT.jl/TENSOR", "NFFT3/TENSOR"], 
                          ["NFFT.jl", "NFFT3"], "accuracy_sigma_D2.pdf", 2)
 
