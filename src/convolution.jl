@@ -302,16 +302,16 @@ end
 
 @noinline function fillBlock!(p::NFFTPlan{T,D,1}, fHat, block, nodesInBlock, off, L::Val{Z}, scale, 
                               idxInBlock, winTensor, winPoly) where {T,D,Z}
-  #=if (Threads.nthreads() == 1 || !NFFT._use_threads[]) &&
-      (D >= 3 && Z >= 10) || (D == 2 && Z >= 16) # magic 
+  if (Threads.nthreads() == 1 || !NFFT._use_threads[]) &&
+      (D >= 3 && Z >= 16) || (D == 2 && Z >= 16) # magic 
     for (kLocal,k) in enumerate(nodesInBlock)
-      fillOneNodeReal!(p, fHat, block, off, L, scale, k, kLocal, idxInBlock, winTensor, winPoly)
+      fillOneNode2!(p, fHat, block, off, L, scale, k, kLocal, idxInBlock, winTensor, winPoly)
     end
-  else=#
+  else
     for (kLocal,k) in enumerate(nodesInBlock)
       fillOneNode!(p, fHat, block, off, L, scale, k, kLocal, idxInBlock, winTensor, winPoly)
     end
-  #end
+  end
   return
 end
 
@@ -341,6 +341,31 @@ end
     return
   end
 end
+
+@generated function fillOneNode2!(p::NFFTPlan{T,D,1}, fHat, block, off, L::Val{Z}, scale, 
+              k, kLocal, idxInBlock, winTensor, winPoly) where {D,T,Z}
+  quote
+    fHat_ = fHat[k]
+
+    @nexprs $(D) d -> ((off_d, tmpWin_d) = precomputeOneNodeBlocking(p.windowLinInterp, winTensor, winPoly, scale, kLocal, d, L,
+                                             idxInBlock) )
+
+    @nexprs 1 d -> prodWin_{$D} = one(T)
+    @nloops_ $(D-1)  (d->l_{d+1})  (d -> 1:$Z) d->begin
+      # preexpr
+      prodWin_{d} = prodWin_{d+1} * tmpWin_{d+1}[l_{d+1}]
+      block_idx_{d+1} = off_{d+1} + l_{d+1} 
+    end begin
+      # bodyexpr
+      @inbounds @simd for l_1 = 1:$(Z)
+        block_idx_1 = off_1 + l_1 
+        (@nref $D block block_idx) += (tmpWin_1[l_1] * prodWin_1) * fHat_
+      end
+    end
+    return
+  end
+end
+
 
 
 @generated function fillOneNodeReal!(p::NFFTPlan{T,D,1}, fHat, block, off, L::Val{Z}, scale, k, 
