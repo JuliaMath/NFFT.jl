@@ -2,7 +2,7 @@ using NFFT, DataFrames, LinearAlgebra, LaTeXStrings, DelimitedFiles
 using BenchmarkTools
 using Plots; pgfplotsx()
 
-const benchmarkTime = [4, 4]
+const benchmarkTime = [20, 20]
 
 NFFT.FFTW.set_num_threads(Threads.nthreads())
 NFFT._use_threads[] = (Threads.nthreads() > 1)
@@ -81,9 +81,13 @@ function plot_performance_block_size(df, Ds)
   Plots.scalefontsizes()
   Plots.scalefontsizes(1.5)
   
-  colors = [:black, :orange, :blue, :green, :brown, :gray, :blue, :purple, :yellow ]
-  ls = [:solid, :solid, :solid, :solid, :solid, :dash, :solid, :dash, :solid]
-  shape = [:circle, :circle, :circle, :xcross, :circle, :xcross, :xcross, :circle]
+
+  #colors = [RGB(0.0,0.29,0.57), RGB(0.3,0.5,0.7), RGB(0.95,0.59,0.22), RGB(1.0,0.87,0.0)]
+  #colors = [RGB(0.0,0.29,0.57), RGB(0.3,0.5,0.7),  RGB(0.7,0.13,0.16), RGB(0.72,0.84,0.48)]
+  #colors = [RGB(0.0,0.29,0.57), RGB(0.3,0.5,0.7), RGB(1.0,0.87,0.0), RGB(0.95,0.59,0.22)]
+  colors = [RGB(0.72,0.84,0.48), RGB(0.41,0.76,0.80), RGB(0.5,0.48,0.45), RGB(0.7,0.13,0.16)]
+  ls = [:solid, :solid, :solid, :solid]
+  shape = [:xcross, :circle, :xcross, :cross]
 
   pl = Matrix{Any}(undef, 2, length(Ds))
   for (i,D) in enumerate(Ds)
@@ -97,10 +101,12 @@ function plot_performance_block_size(df, Ds)
 
     blockSizes = df1_[df1_.Threads .== threads[1], :blockSizeBase]
 
-    p1 = plot(blockSizes, yscale = :log2,
+    p1 = plot(blockSizes, yscale = :log2, xscale = :log10,
               df1_[df1_.Threads .== threads[1], :TimeTrafo], #ylims=(0.0,maxTimeTrafo),
               label="1 thread", lw=2, ylabel="Runtime / s", xlabel = i==length(Ds) ? "Block Size" : "",
-              legend = nothing, title=titleTrafo, shape=:circle, c=:black)
+              legend = nothing, title=titleTrafo, 
+              shape=shape[1], ls=ls[1], 
+              c=colors[1], msc=colors[1], mc=colors[1], ms=4, msw=2)
 
     for p=2:length(threads)      
       plot!(p1, blockSizes, 
@@ -122,10 +128,12 @@ function plot_performance_block_size(df, Ds)
               c=colors[p])
     end
 
-    p2 = plot(blockSizes, yscale = :log2,
+    p2 = plot(blockSizes, yscale = :log2, xscale = :log10,
               df1_[df1_.Threads .== threads[1],:TimeAdjoint], #ylims=(0.0,maxTimeAdjoint),
               lw=2, xlabel = i==length(Ds) ? "Block Size" : "", label="1 thread",
-              legend = i==2 ? :topright : nothing, title=titleAdjoint, shape=:circle, c=:black)
+              legend = i==2 ? :topright : nothing, title=titleAdjoint, 
+              shape=shape[1], ls=ls[1], 
+              c=colors[1], msc=colors[1], mc=colors[1], ms=4, msw=2)
 
     for p=2:length(threads)      
       plot!(p2, blockSizes, 
@@ -168,7 +176,7 @@ if haskey(ENV, "NFFT_PERF")
   writedlm("./data/performanceBlockSize.csv", Iterators.flatten(([names(df)], eachrow(df))), ',')
 
 else
-  if false
+  if true
     rm("./data/performanceBlockSize.csv", force=true)
     ENV["NFFT_PERF"] = 1
     for t in threads

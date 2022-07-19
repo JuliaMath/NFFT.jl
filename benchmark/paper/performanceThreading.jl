@@ -16,7 +16,7 @@ const threads = [1,2,4,8]
 const precomp = [NFFT.POLYNOMIAL, NFFT.TENSOR, NFFT.POLYNOMIAL, NFFT.TENSOR]
 const packagesCtor = [NFFTPlan, NFFTPlan, FINUFFTPlan, NFFT3Plan]
 const packagesStr = ["NFFT.jl/POLY", "NFFT.jl/TENSOR", "FINUFFT", "NFFT3"]
-const benchmarkTime = [1, 20, 20]
+const benchmarkTime = [1, 60, 60]
 #const NBase = [4*4096, 256, 32]
 const NBase = [512*512, 512, 64]
 
@@ -125,7 +125,7 @@ end
 
 
 
-function plot_performance_speedup(df; D=2, N=1024, M=N*N)
+function plot_performance_speedup(df, packagesStr, packagesStrShort, colors; D=2, N=1024, M=N*N)
 
   Plots.scalefontsizes()
   Plots.scalefontsizes(1.5)
@@ -147,13 +147,13 @@ function plot_performance_speedup(df; D=2, N=1024, M=N*N)
   efftrafo = 1 ./ ttrafo .* ttrafo[1:1,:] ./ threads
   effadjoint = 1 ./ tadjoint .* tadjoint[1:1,:] ./ threads
   
-  ttrafo = 1 ./ ttrafo * ttrafo[1,3]
-  tadjoint = 1 ./ tadjoint * tadjoint[1,3]
+  ttrafo = 1 ./ ttrafo .* ttrafo[1:1,:]  #ttrafo[1,3]
+  tadjoint = 1 ./ tadjoint .* tadjoint[1:1,:] # tadjoint[1,3]
 
   Plots.scalefontsizes()
   Plots.scalefontsizes(1.5)
   
-  colors = [RGB(0.0,0.29,0.57), RGB(0.3,0.5,0.7), RGB(0.94,0.53,0.12), RGB(0.99,0.75,0.05)]
+
   ls = [:solid, :solid, :solid, :solid]
   shape = [:xcross, :circle, :xcross, :cross]
 
@@ -163,7 +163,7 @@ function plot_performance_speedup(df; D=2, N=1024, M=N*N)
 
     p1 = plot(threads, 
               ttrafo[:,1], ylims=(0.0,maximum(threads)),
-              label=packagesStr[1], lw=2, ylabel="Speedup", #xlabel = "# threads",
+              label=packagesStrShort[1], lw=2, ylabel="Speedup", #xlabel = "# threads",
               legend = :topleft, title=titleTrafo, 
               shape=shape[1], ls=ls[1], 
               c=colors[1], msc=colors[1], mc=colors[1], ms=4, msw=2)
@@ -171,7 +171,7 @@ function plot_performance_speedup(df; D=2, N=1024, M=N*N)
     for p=2:length(packagesStr)      
       plot!(p1, threads, 
              ttrafo[:,p], 
-              label=packagesStr[p], lw=2, shape=shape[p], ls=ls[p], 
+              label=packagesStrShort[p], lw=2, shape=shape[p], ls=ls[p], 
               c=colors[p], msc=colors[p], mc=colors[p], ms=4, msw=2)
     end
 
@@ -186,7 +186,7 @@ function plot_performance_speedup(df; D=2, N=1024, M=N*N)
 
     for p=2:length(packagesStr)      
       plot!(p2, threads, tadjoint[:,p], 
-              label=packagesStr[p], lw=2, shape=shape[p], ls=ls[p], 
+              label=packagesStrShort[p], lw=2, shape=shape[p], ls=ls[p], 
               c=colors[p], msc=colors[p], mc=colors[p], ms=4, msw=2)
     end
 
@@ -195,7 +195,7 @@ function plot_performance_speedup(df; D=2, N=1024, M=N*N)
   
   p3 = plot(threads, 
               efftrafo[:,1], ylims=(0.0,1.2),
-              label=packagesStr[1], lw=2, ylabel="Efficiency", xlabel = "# threads",
+              label=packagesStrShort[1], lw=2, ylabel="Efficiency", xlabel = "# threads",
               legend = nothing, title=titleTrafo, 
               shape=shape[1], ls=ls[1], 
               c=colors[1], msc=colors[1], mc=colors[1], ms=4, msw=2)
@@ -203,7 +203,7 @@ function plot_performance_speedup(df; D=2, N=1024, M=N*N)
     for p=2:length(packagesStr)      
       plot!(p3, threads, 
              efftrafo[:,p], 
-              label=packagesStr[p], lw=2, shape=shape[p], ls=ls[p], 
+              label=packagesStrShort[p], lw=2, shape=shape[p], ls=ls[p], 
               c=colors[p], msc=colors[p], mc=colors[p], ms=4, msw=2)
     end
 
@@ -217,7 +217,7 @@ function plot_performance_speedup(df; D=2, N=1024, M=N*N)
 
     for p=2:length(packagesStr)      
       plot!(p4, threads, effadjoint[:,p], 
-              label=packagesStr[p], lw=2, shape=shape[p], ls=ls[p], 
+              label=packagesStrShort[p], lw=2, shape=shape[p], ls=ls[p], 
               c=colors[p], msc=colors[p], mc=colors[p], ms=4, msw=2)
     end
 
@@ -245,7 +245,7 @@ if haskey(ENV, "NFFT_PERF")
   writedlm("./data/performance_mt.csv", Iterators.flatten(([names(df)], eachrow(df))), ',')
 
 else
-  if false
+  if true
     rm("./data/performance_mt.csv", force=true)
     ENV["NFFT_PERF"] = 1
     for t in threads
@@ -260,7 +260,15 @@ else
   df = DataFrame(data, vec(header))
 
   plot_performance(df, N=NBase[2], M=NBase[2]*NBase[2])
-  plot_performance_speedup(df, N=NBase[2], M=NBase[2]*NBase[2])
+  plot_performance_speedup(df, [ "NFFT.jl/POLY", "NFFT.jl/TENSOR", "NFFT3", "FINUFFT"],
+                               [ "NFFT.jl/POLY", "NFFT.jl/TENSOR", "NFFT3", "FINUFFT"],
+                               [RGB(0.0,0.29,0.57), RGB(0.3,0.5,0.7), RGB(0.94,0.53,0.12), RGB(0.99,0.75,0.05)],
+                               N=NBase[2], M=NBase[2]*NBase[2])
+                              
+  #plot_performance_speedup(df, [ "NFFT.jl/TENSOR", "NFFT3", "FINUFFT"],
+  #                             [ "NFFT.jl", "NFFT3", "FINUFFT"],
+  #                             [RGB(0.3,0.5,0.7), RGB(0.94,0.53,0.12), RGB(0.99,0.75,0.05)],
+  #                             N=NBase[2], M=NBase[2]*NBase[2])
 end
 
 
