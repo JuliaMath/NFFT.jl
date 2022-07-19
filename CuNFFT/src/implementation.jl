@@ -46,8 +46,8 @@ function CuNFFTPlan(x::Matrix{T}, N::NTuple{D,Int}; dims::Union{Integer,UnitRang
     FP = plan_fft!(tmpVec, dims_)
     BP = plan_bfft!(tmpVec, dims_)
 
-    windowLinInterp, windowHatInvLUT, deconvolveIdx, B = NFFT.precomputation(x, N[dims_], n[dims_], params)
-    
+    windowLinInterp, windowPolyInterp, windowHatInvLUT, deconvolveIdx, B = NFFT.precomputation(x, N[dims_], n[dims_], params)
+
     U = params.storeDeconvolutionIdx ? N : ntuple(d->0,D)
     tmpVecHat = CuArray{Complex{T},D}(undef, U)
 
