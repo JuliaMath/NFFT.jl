@@ -13,8 +13,8 @@ end
         @nloops $D l f d->begin
             # preexpr
             if $DS ≤ d ≤ $DE
-                offset_d = round(Int, p.n[d] - p.N[d]÷2) - 1
-                gidx_d = rem(l_d+offset_d, p.n[d]) + 1
+                offset_d = round(Int, p.Ñ[d] - p.N[d]÷2) - 1
+                gidx_d = rem(l_d+offset_d, p.Ñ[d]) + 1
             else
                 gidx_d = l_d
             end
@@ -41,8 +41,8 @@ end
         @nloops $D l f d->begin
             # preexpr
             if $DS ≤ d ≤ $DE
-                offset_d = round(Int, p.n[d] - p.N[d]÷2) - 1
-                gidx_d = rem(l_d+offset_d, p.n[d]) + 1
+                offset_d = round(Int, p.Ñ[d] - p.N[d]÷2) - 1
+                gidx_d = rem(l_d+offset_d, p.Ñ[d]) + 1
             else
                 gidx_d = l_d
             end
@@ -69,7 +69,7 @@ end
     fill!(fHat, zero(T))
     scale = Int(p.params.LUTSize/(p.params.m))
 
-    for k in 1:p.M
+    for j in 1:p.J
       ### The first L1 loops contain no NFFT
       @nloops_ $L1 d->l_{d} d->1:size(g,d) d->begin
          # preexpr
@@ -77,14 +77,14 @@ end
          fidx_d = l_d
       end begin
           # bodyexpr
-          @nexprs 1 d -> fidx_{$L1+1} = k
+          @nexprs 1 d -> fidx_{$L1+1} = j
           @nexprs 1 d -> prodWin_{$L2} = one(T)
-          @nexprs $L2 d -> xscale_d = p.x[d,k] * p.n[d+$L1]
+          @nexprs $L2 d -> xscale_d = p.k[d,j] * p.Ñ[d+$L1]
           @nexprs $L2 d -> c_d = floor(Int, xscale_d)
           ### The next L2 loops contain the NFFT
           @nloops_ $L2 d->l_{d+$L1} d->(c_d-p.params.m+1):(c_d+p.params.m) d->begin
             # preexpr
-            gidx_{d+$L1} = rem(l_{d+$L1}+p.n[d+$L1], p.n[d+$L1]) + 1
+            gidx_{d+$L1} = rem(l_{d+$L1}+p.Ñ[d+$L1], p.Ñ[d+$L1]) + 1
             idx = abs((xscale_d - l_{d+$L1} )*scale) + 1
             idxL = floor(idx)
             idxInt = Int(idxL)
@@ -119,7 +119,7 @@ end
     fill!(g, zero(T))
     scale = Int(p.params.LUTSize/(p.params.m))
 
-    for k in 1:p.M
+    for j in 1:p.J
       ### The first L1 loops contain no NFFT
       @nloops_ $L1 d->l_{d} d->1:size(g,d) d->begin
          # preexpr
@@ -127,14 +127,14 @@ end
          fidx_d = l_d
       end begin
           # bodyexpr
-          @nexprs 1 d -> fidx_{$L1+1} = k
+          @nexprs 1 d -> fidx_{$L1+1} = j
           @nexprs 1 d -> prodWin_{$L2} = one(T)
-          @nexprs $L2 d -> xscale_d = p.x[d,k] * p.n[d+$L1]
+          @nexprs $L2 d -> xscale_d = p.k[d,j] * p.Ñ[d+$L1]
           @nexprs $L2 d -> c_d = floor(Int, xscale_d)
           ### The next L2 loops contain the NFFT
           @nloops_ $L2 d->l_{d+$L1} d->(c_d-p.params.m+1):(c_d+p.params.m) d->begin
             # preexpr
-            gidx_{d+$L1} = rem(l_{d+$L1}+p.n[d+$L1], p.n[d+$L1]) + 1
+            gidx_{d+$L1} = rem(l_{d+$L1}+p.Ñ[d+$L1], p.Ñ[d+$L1]) + 1
             idx = abs((xscale_d - l_{d+$L1})*scale) + 1
             idxL = floor(idx)
             idxInt = Int(idxL)

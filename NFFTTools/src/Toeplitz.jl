@@ -1,11 +1,11 @@
-## ################################################################
+###################################################################
 # constructors
 ###################################################################
 
 """
     calculateToeplitzKernel(shape, tr::Matrix{T}[; m = 4, σ = 2.0, window = :kaiser_bessel, fftplan = plan_fft(zeros(Complex{T}, 2 .* shape); flags=FFTW.ESTIMATE), kwargs...])
 
-Calculate the kernel for an implementation of the Gram matrix that utilizes its Toeplitz structure. The output is an array of twice the size of `shape`, as the Toeplitz trick requires an oversampling factor of 2 (cf. [Wajer, F. T. A. W., and K. P. Pruessmann. "Major speedup of reconstruction for sensitivity encoding with arbitrary trajectories." Proc. Intl. Soc. Mag. Res. Med. 2001.](https://cds.ismrm.org/ismrm-2001/PDF3/0767.pdf)). The type of the kernel is `Complex{T}`, i.e. the complex of the k-space trajectory's type; for speed and memory efficiecy, call this function with `Float32.(tr)`, and the kernel will also be `Float32`.
+Calculate the kernel for an implementation of the Gram matrix that utilizes its Toeplitz structure. The output is an array of twice the size of `shape`, as the Toeplitz trick requires an oversampling factor of 2 (cf. [Wajer, F. T. A. W., and K. P. Pruessmann. "Major speedup of reconstruction for sensitivity encoding with arbitrary trajectories." Proc. Intl. Soc. Mag. Res. Med. 2001.](https://cds.ismrm.org/ismrm-2001/PDF3/0767.pdf)). The type of the kernel is `Complex{T}`, i.e. the complex of the k-space trajectory's type; for speed and memory efficiency, call this function with `Float32.(tr)`, and the kernel will also be `Float32`.
 
 # Required Arguments
 - `shape::NTuple(Int)`: size of the image; e.g. `(256, 256)` for 2D imaging, or `(256,256,128)` for 3D imaging
@@ -14,15 +14,13 @@ Calculate the kernel for an implementation of the Gram matrix that utilizes its 
 # Optional Arguments:
 - `m::Int`: nfft kernel size (used to calculate the Toeplitz kernel); `default = 4`
 - `σ::Number`: nfft oversampling factor during the calculation of the Toeplitz kernel; `default = 2`
-- `window::Symbol`: Window function of the nfft (c.f. [`getWindow`](@ref)); `default = :kaiser_bessel`
-- `K::Int`: `default= 2000` # TODO: describe meaning of k
 
 # Keyword Arguments:
-- `fftplan`: plan for the final FFT of the Kernal from image to k-space. Therefore, it has to have twice the size of the original image. `default = plan_fft(zeros(Complex{T}, 2 .* shape); flags=FFTW.ESTIMATE)`. If this constructor is used many times, it is worth to precompute the plan with `plan_fft(zeros(Complex{T}, 2 .* shape); flags=FFTW.MEASURE)` and reuse it.
+- `fftplan`: plan for the final FFT of the kernel from image to k-space. Therefore, it has to have twice the size of the original image. `default = plan_fft(zeros(Complex{T}, 2 .* shape); flags=FFTW.ESTIMATE)`. If this constructor is used many times, it is worth to precompute the plan with `plan_fft(zeros(Complex{T}, 2 .* shape); flags=FFTW.MEASURE)` and reuse it.
 - `kwargs`: Passed on to [`plan_fft!`](https://juliamath.github.io/AbstractFFTs.jl/stable/api/#AbstractFFTs.plan_fft!) via `NFFTPlan`; can be used to modify the flags `flags=FFTW.ESTIMATE, timelimit=Inf`.
 
 # Examples
-```jldoctest; output = false, setup = :(using NFFT, Random; Random.seed!(1))
+```jldoctest; output = false, setup = :(using NFFT, NFFTTools, Random; Random.seed!(1))
 julia> Nx = 32;
 
 julia> trj = Float32.(rand(2, 1000) .- 0.5);
@@ -50,9 +48,9 @@ julia> λ = calculateToeplitzKernel((Nx, Nx), trj)
   4861.29+38.9623im   6082.55-267.478im      2519.09+293.503im
   1022.55-185.869im   177.426+414.384im      3650.56-146.597im
 
-julia> x = randn(ComplexF32, Nx, Nx);
+julia> y = randn(ComplexF32, Nx, Nx);
 
-julia> convolveToeplitzKernel!(x, λ)
+julia> convolveToeplitzKernel!(y, λ)
 32×32 Matrix{ComplexF32}:
   177.717-52.0493im   10.6059+20.7185im  …   746.131+330.005im
  -311.858+988.219im  -1216.83-1295.14im      410.732+751.925im
@@ -93,12 +91,12 @@ Calculate the kernel for an implementation of the Gram matrix that utilizes its 
 
 # Required Arguments
 - `f::Array{T}`: Array in which the kernel will be written.
-- `p::AbstractNFFTPlan`: NFFTPlan with the same dimentions as `tr`, which will be overwritten in place.
+- `p::AbstractNFFTPlan`: NFFTPlan with the same dimensions as `tr`, which will be overwritten in place.
 - `tr::Matrix{T}`: non-Cartesian k-space trajectory in units revolutions/voxel, i.e. `tr[i] ∈ [-0.5, 0.5] ∀ i`. The matrix has the size `2 x Nsamples` for 2D imaging with a trajectory length `Nsamples`, and `3 x Nsamples` for 3D imaging.
-- `fftplan`: plan for the final FFT of the Kernal from image to k-space. Therefore, it has to have twice the size of the original image. Calculate, e.g., with `fftplan = plan_fft(zeros(Complex{T}, 2 .* shape); flags=FFTW.MEASURE)`, where `shape` is the size of the reconstructed image.
+- `fftplan`: plan for the final FFT of the kernel from image to k-space. Therefore, it has to have twice the size of the original image. Calculate, e.g., with `fftplan = plan_fft(zeros(Complex{T}, 2 .* shape); flags=FFTW.MEASURE)`, where `shape` is the size of the reconstructed image.
 
 # Examples
-```jldoctest; output = false, setup = :(using NFFT, Random; Random.seed!(1))
+```jldoctest; output = false, setup = :(using NFFT, NFFTTools, Random; Random.seed!(1))
 julia> using FFTW
 
 julia> Nx = 32;
@@ -114,9 +112,9 @@ julia> λ = Array{ComplexF32}(undef, 2Nx, 2Nx);
 
 julia> calculateToeplitzKernel!(λ, p, trj, fftplan);
 
-julia> x = randn(ComplexF32, Nx, Nx);
+julia> y = randn(ComplexF32, Nx, Nx);
 
-julia> convolveToeplitzKernel!(x, λ);
+julia> convolveToeplitzKernel!(y, λ);
 
 ```
 """
@@ -129,7 +127,7 @@ function calculateToeplitzKernel!(f::Array{Complex{T}}, p::AbstractNFFTPlan{T}, 
 end
 
 
-## ################################################################
+###################################################################
 # constructor for explicit/exact calculation of the Toeplitz kernel
 # (slow)
 ###################################################################
@@ -157,18 +155,18 @@ function getMatrixElement(idx, shape::Tuple, nodes::Matrix{T}) where T
     return elem
 end
 
-## ################################################################
+###################################################################
 # apply Toeplitz kernel
 ###################################################################
 
 """
-    convolveToeplitzKernel!(x::Array{T,N}, λ::Array{T,N}[, fftplan = plan_fft(λ; flags=FFTW.ESTIMATE), ifftplan = plan_ifft(λ; flags=FFTW.ESTIMATE), xOS1 = similar(λ), xOS2 = similar(λ)])
+    convolveToeplitzKernel!(y::Array{T,N}, λ::Array{T,N}[, fftplan = plan_fft(λ; flags=FFTW.ESTIMATE), ifftplan = plan_ifft(λ; flags=FFTW.ESTIMATE), xOS1 = similar(λ), xOS2 = similar(λ)])
 
-Convolves the image `x` with the Toeplitz kernel `λ` and overwrites `x` with the result. `x` is also returned for convenience. As this function is commonly applied many times, it is highly recommened to pre-allocate / pre-compute all optional arguments. By doing so, this entire function is non-allocating.
+Convolves the image `y` with the Toeplitz kernel `λ` and overwrites `y` with the result. `y` is also returned for convenience. As this function is commonly applied many times, it is highly recommended to pre-allocate / pre-compute all optional arguments. By doing so, this entire function is non-allocating.
 
 # Required Arguments
-- `x::Array{T,N}`: Input image that will be overwritten with the result. `x` is a matrix (`N=2`) for 2D imaging and a 3D tensor (`N=3`) for 3D imaging. The type of the elments `T` must match the ones of `λ`.
-- `λ::Array{T,N}`: Toeplitz kernel, which as to be the same type as `x`, but twice the size due to the required oversampling (cf. [`calculateToeplitzKernel`](@ref)).
+- `y::Array{T,N}`: Input image that will be overwritten with the result. `y` is a matrix (`N=2`) for 2D imaging and a 3D tensor (`N=3`) for 3D imaging. The type of the elements `T` must match the ones of `λ`.
+- `λ::Array{T,N}`: Toeplitz kernel, which as to be the same type as `k`, but twice the size due to the required oversampling (cf. [`calculateToeplitzKernel`](@ref)).
 
 # Optional, but highly recommended Arguments
 - `fftplan`: plan for the oversampled FFT, i.e. it has to have twice the size of the original image. Calculate, e.g., with `fftplan = plan_fft(λ; flags=FFTW.MEASURE)`, where `shape` is the size of the reconstructed image.
@@ -177,7 +175,7 @@ Convolves the image `x` with the Toeplitz kernel `λ` and overwrites `x` with th
 - `xOS2`: pre-allocated array of the size of `λ`. Pre-allocate with `xOS2 = similar(λ)`.
 
 # Examples
-```jldoctest; output = false, setup = :(using NFFT, Random; Random.seed!(1))
+```jldoctest; output = false, setup = :(using NFFT, NFFTTools, Random; Random.seed!(1))
 julia> using FFTW
 
 julia> Nx = 32;
@@ -194,9 +192,9 @@ julia> fftplan = plan_fft(xOS1; flags=FFTW.MEASURE);
 
 julia> ifftplan = plan_ifft(xOS1; flags=FFTW.MEASURE);
 
-julia> x = randn(ComplexF32, Nx, Nx);
+julia> y = randn(ComplexF32, Nx, Nx);
 
-julia> convolveToeplitzKernel!(x, λ, fftplan, ifftplan, xOS1, xOS2)
+julia> convolveToeplitzKernel!(y, λ, fftplan, ifftplan, xOS1, xOS2)
 32×32 Matrix{ComplexF32}:
   177.717-52.0493im   10.6059+20.7185im  …   746.131+330.005im
  -311.858+988.219im  -1216.83-1295.14im      410.732+751.925im
@@ -221,7 +219,7 @@ julia> convolveToeplitzKernel!(x, λ, fftplan, ifftplan, xOS1, xOS2)
 
 ```
 """
-function convolveToeplitzKernel!(x::Array{T,N}, λ::Array{T,N},
+function convolveToeplitzKernel!(k::Array{T,N}, λ::Array{T,N},
     fftplan = plan_fft(λ; flags=FFTW.ESTIMATE),
     ifftplan = plan_ifft(λ; flags=FFTW.ESTIMATE),
     xOS1 = similar(λ),
@@ -229,16 +227,16 @@ function convolveToeplitzKernel!(x::Array{T,N}, λ::Array{T,N},
     ) where {T,N}
 
     fill!(xOS1, 0)
-    xOS1[CartesianIndices(x)] .= x
+    xOS1[CartesianIndices(k)] .= k
     mul!(xOS2, fftplan, xOS1)
     xOS2 .*= λ
     mul!(xOS1, ifftplan, xOS2)
-    x .= @view xOS1[CartesianIndices(x)]
-    return x
+    k .= @view xOS1[CartesianIndices(k)]
+    return k
 end
 
 
-## ################################################################
+###################################################################
 # helper class
 ###################################################################
 struct OnesVector{T} <: AbstractVector{T}

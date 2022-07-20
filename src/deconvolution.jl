@@ -21,17 +21,17 @@ end
 
 @generated function _deconvolve_alloc_free!(p::NFFTPlan{T,D,1}, f::AbstractArray{U,D}, g::StridedArray{Complex{T},D}, o) where {D,T,U}
   quote
-    @nexprs 1 d -> gidx_{$D-1} = rem(o+p.n[$D] - p.N[$D]÷2 - 1, p.n[$D]) + 1
+    @nexprs 1 d -> gidx_{$D-1} = rem(o+p.Ñ[$D] - p.N[$D]÷2 - 1, p.Ñ[$D]) + 1
     @nexprs 1 d -> l_{$D-1} = o
     @nloops $(D-2) l d->(1:size(f,d+1)) d-> begin
-        gidx_d = rem(l_d+p.n[d+1] - p.N[d+1]÷2 - 1, p.n[d+1]) + 1
+        gidx_d = rem(l_d+p.Ñ[d+1] - p.N[d+1]÷2 - 1, p.Ñ[d+1]) + 1
       end begin
       N2 = p.N[1]÷2
       @inbounds @simd for i = 1:N2
         v = f[i, CartesianIndex(@ntuple $(D-1) l)]
         v *= p.windowHatInvLUT[1][i] 
         @nexprs $(D-1) d -> v *= p.windowHatInvLUT[d+1][l_d]
-        g[i-N2+p.n[1], CartesianIndex(@ntuple $(D-1) gidx)] = v
+        g[i-N2+p.Ñ[1], CartesianIndex(@ntuple $(D-1) gidx)] = v
 
         v = f[i+N2, CartesianIndex(@ntuple $(D-1) l)] 
         v *= p.windowHatInvLUT[1][i+N2]
@@ -66,14 +66,14 @@ end
 
 @generated function _deconvolve_transpose_alloc_free!(p::NFFTPlan{T,D,1}, g::AbstractArray{Complex{T},D}, f::StridedArray{U,D}, o) where {D,T,U}
   quote
-    @nexprs 1 d -> gidx_{$D-1} = rem(o+p.n[$D] - p.N[$D]÷2 - 1, p.n[$D]) + 1
+    @nexprs 1 d -> gidx_{$D-1} = rem(o+p.Ñ[$D] - p.N[$D]÷2 - 1, p.Ñ[$D]) + 1
     @nexprs 1 d -> l_{$D-1} = o
     @nloops $(D-2) l d->(1:size(f,d+1)) d-> begin
-        gidx_d = rem(l_d+p.n[d+1] - p.N[d+1]÷2 - 1, p.n[d+1]) + 1
+        gidx_d = rem(l_d+p.Ñ[d+1] - p.N[d+1]÷2 - 1, p.Ñ[d+1]) + 1
       end begin
       N2 = p.N[1]÷2
       @inbounds @simd for i = 1:N2
-        v = g[i-N2+p.n[1], CartesianIndex(@ntuple $(D-1) gidx)]
+        v = g[i-N2+p.Ñ[1], CartesianIndex(@ntuple $(D-1) gidx)]
         v *= p.windowHatInvLUT[1][i] 
         @nexprs $(D-1) d -> v *= p.windowHatInvLUT[d+1][l_d]
         f[i, CartesianIndex(@ntuple $(D-1) l)] = v

@@ -8,66 +8,65 @@ Basic usage of NFFT.jl is shown in the following example for 1D:
 ```jldoctest; output = false, setup = :(using NFFT, Random; Random.seed!(1))
 using NFFT
 
-M, N = 8, 16
-x = range(-0.4, stop=0.4, length=M)  # nodes at which the NFFT is evaluated
-fHat = randn(ComplexF64,M)           # data to be transformed
-p = plan_nfft(x, N)                  # create plan. m and σ are optional parameters
-f = adjoint(p) * fHat                # calculate adjoint NFFT
-g = p * f                            # calculate forward NFFT
+J, N = 8, 16
+k = range(-0.4, stop=0.4, length=J)  # nodes at which the NFFT is evaluated
+f = randn(ComplexF64, J)             # data to be transformed
+p = plan_nfft(k, N, reltol=1e-9)     # create plan
+fHat = adjoint(p) * f                # calculate adjoint NFFT
+y = p * fHat                         # calculate forward NFFT
 
 # output
 
 8-element Vector{ComplexF64}:
- -2.7271960749618627 + 3.845624459208927im
- -10.845195849950779 + 28.19548075631718im
-  14.036233666898797 + 1.60000520605086im
-  21.401834121537096 - 11.48566394195766im
- -13.314941250611952 - 5.046096728543002im
-  -6.727872247343865 + 13.675812003697818im
-   4.774802667091818 - 1.344545400212461im
-   16.24290219740824 + 4.374305558267862im
+ -2.7271960749618147 + 3.8456244592089193im
+ -10.845195849950795 + 28.19548075631714im
+   14.03623366689872 + 1.6000052060508116im
+   21.40183412153706 - 11.485663941957627im
+ -13.314941250611934 - 5.0460967285430085im
+  -6.727872247343835 + 13.675812003697747im
+   4.774802667091787 - 1.3445454002125357im
+  16.242902197408224 + 4.374305558267848im
 ```
 
-In 2D:
+In the same way the 2D NFFT can be applied:
 
 ```jldoctest; output = false, setup = :(using NFFT, Random; Random.seed!(1))
-M, N = 16, 32
-x = rand(2, M) .- 0.5
-fHat = randn(ComplexF64,M)
-p = plan_nfft(x, (N,N))
-f = adjoint(p) * fHat
-g = p * f
+J, N = 16, 32
+k = rand(2, J) .- 0.5
+f = randn(ComplexF64, J)
+p = plan_nfft(k, (N,N), reltol=1e-9)
+fHat = adjoint(p) * f
+y = p * fHat
 
 # output
 
 16-element Vector{ComplexF64}:
-   720.6895322185172 + 965.5238823656152im
- -437.33501828717453 + 342.76233801285343im
- -254.25406988002578 + 443.98830704210553im
- -22.031291597036198 - 1154.6436407643157im
-   -553.209775088763 + 870.1410092328575im
-  -502.9985672100636 - 345.1896840480448im
- -113.39126060229795 - 58.42376028629204im
-   809.2621963819304 + 440.70930871993255im
-   328.7372432755835 - 1199.2654551345026im
-  -135.9649854453875 - 1231.1920536412715im
-  -62.36674520775709 - 1112.5395014452213im
-  -1232.999488293727 - 1753.9813744663504im
-   670.6456652700496 + 1123.1414479604596im
-   -520.606923875402 - 69.3043891865587im
-  -347.3001526656314 - 1573.59481779028im
-   654.2300617100419 + 458.5668830799317im
+   720.6895322185169 + 965.5238823656156im
+  -437.3350182871744 + 342.76233801285343im
+  -254.2540698800256 + 443.98830704210474im
+ -22.031291597035764 - 1154.6436407643148im
+  -553.2097750887631 + 870.1410092328575im
+  -502.9985672100639 - 345.1896840480444im
+ -113.39126060229778 - 58.42376028629184im
+   809.2621963819311 + 440.7093087199319im
+   328.7372432755839 - 1199.2654551345026im
+ -135.96498544538673 - 1231.1920536412733im
+ -62.366745207758484 - 1112.5395014452238im
+ -1232.9994882937272 - 1753.9813744663502im
+    670.645665270049 + 1123.1414479604593im
+   -520.606923875403 - 69.30438918655777im
+ -347.30015266563146 - 1573.5948177902806im
+   654.2300617100433 + 458.56688307993295im
 
 ```
 
 Currently, the eltype of the arguments `f` and `fHat`
-must be compatible that of the variable `x` used in the `plan_nfft` call.
-For example, if one wants to use `Float32` types to save memory,
-then one can make the plan using something like this:
+must be compatible with that of the sampling nodes `k` used in the `plan_nfft` call.
+For example, if one wants to use `Float32` types to save memory, one can create the plan like this:
 
 ```jldoctest; output = false, setup = :(using NFFT, Random; N=(4,); Random.seed!(1))
-x = Float32.(LinRange(-0.5,0.5,64))
-p = plan_nfft(x, N)
+k = Float32.(LinRange(-0.5,0.5,64))
+p = plan_nfft(k, N)
 
 # output
 
@@ -75,55 +74,89 @@ NFFTPlan with 64 sampling points for an input array of size(4,) and an output ar
 ```
 
 The plan will then internally use `Float32` types.
-Then the arguments `f` and `fHat` above should have eltype `Complex{Float32}`
-or equivalently `ComplexF32`, otherwise there will be error messages.
+The signals `f` and `fHat` then need to have the eltype `Complex{Float32}`
+or equivalently `ComplexF32`. Otherwise there will be error messages.
+
+In the previous example, the output vector was allocated within the `*` method. To avoid this allocation one can use the interface
+```
+mul!(fHat, p, f)
+mul!(y, adjoint(p), fHat)
+```
+which allows to pass the output vector as the first argument.
 
 One can also perform NFFT computations directly without first creating a plan:
 ```
-g = nfft(x, f)
-f = nfft_adjoint(x, N, fHat)
+fHat = nfft(k, f)
+y = nfft_adjoint(k, N, fHat)
 ```
 These forms are more forgiving about the types of the input arguments.
-The versions based on a plan are more optimized for repeated use with the same `x`
+The versions based on a plan are more optimized for repeated use with the same sampling nodes `k`.
+
+!!! note
+    The constructor `plan_nfft` is meant to be a generic factory function that can be implemented in different packages. If you want to use a concrete constructor of `NFFT.jl` use `NFFTPlan` instead. 
 
 ## Parameters
 
-The NFFT has the following parameters that can be passed as a keyword argument to the constructor 
+The NFFT has the several parameters that can be passed as a keyword argument to the constructor or the `nfft` and the `nfft_adjoint` function.
+
 
 | Parameter                          | Description      | Example Values        |
 | :--------------------------------- | :--------------- | :------------------ |
-| `reltol`      | Relative tolerance that the NFFT achieves.  |  `reltol` $=1e-9$      |
+| `reltol`      | Relative tolerance that the NFFT achieves.  |  `reltol` $=10^{-9}$      |
 | `m`      | Kernel size parameter. The convolution matrix has `2m+1` non-zero entries around each sampling node in each dimension.  |  `m` $\in \{2,\dots,8\}$      |
 | `σ`     | Oversampling factor. The inner FFT is of size `σN` | `σ` $\in [1.25, 2.0]$      |
-| `window`   | Convolution window: Available are `:gauss`,  `:spline`, `:kaiser_bessel_rev`, `:kaiser_bessel`.    | `:kaiser_bessel` |
+| `window`   | Convolution window ``\hat{\varphi}``    | `:kaiser_bessel` |
 | `precompute`        | Flag indicating the precomputation strategy for the convolution matrix         | `TENSOR`      |
+| `blocking`        | Flag block partitioning should be used to speed up computation        | `true`      |
 | `sortNodes`        | Flag if the nodes should be sorted in a lexicographic way         | `false`      |
-| `storeDeconvolutionIdx`        | Flag if the deconvolve indices should be stored. Currently this option is necessary on the GPU       | `false`      |
+| `storeDeconvolutionIdx`        | Flag if the deconvolve indices should be stored. Currently this option is necessary on the GPU       | `true`      |
 | `fftflags`        | flags passed to the inner `AbstractFFT` as `flags`. This can for instance be `FFTW.MEASURE` in order to optimize the inner FFT    | `FFTW.ESTIMATE`      |
 
-In practice you the default values are properly chosen. The only parameter you should car about is `reltol`. In case of memory issues you want to change `m`, and `σ` instead and use a small oversampling factor like `1.25`.
+In practice the default values are properly chosen and there is in most cases no need to change them. 
+The only parameter you sometimes need to care about are the accuracy parameters `reltol`, `m`,`\sigma` and the `fftflags`.
 
-The parameters `reltol`, `m`, and `σ` are linked to each other. Either pass `reltol` 
-which will automatically set `m` and `σ`, or set the later parameters which will
-set the `reltol`.
+## Accuracy
+
+On a high-level it is possible to set the accuracy using the parameter `reltol`. It will automatically set the low-level parameters `m` and `\sigma`. You only need to change the later if you run into memory issues. It is important that you change only `reltol` or the pair `m`,`\sigma`.
 
 The relation between `reltol`, `m`, and `σ` depends on the window function and the NFFT implementation. We use the formula
 ```math
 w = 2m + 1 = \left\lceil \text{log}_{10} \frac{1}{\text{reltol}} \right\rceil + 1
 ```
-independently of the chosen window.
+which was verified for `σ` and the default window function. If you change the window function, you should use the parameter `m`, and `σ` instead of `reltol`.
 
+## Window Functions
 
+It is possible to change the internal window function ``\hat{\varphi}``. Available are 
+* `:gauss`
+* `:spline`
+* `:kaiser_bessel_rev`
+* `:kaiser_bessel` 
+* `:cosh_type`
+and one can easily add more by extending the [windowFunctions.jl](https://github.com/JuliaMath/NFFT.jl/blob/master/src/windowFunctions.jl) file in Github.
+
+However, the possibility of changing the window function is only important for NFFT researcher and not for NFFT users. Right now `:kaiser_bessel` provides the best accuracy and thus there is no reason to change the parameter `window` to something different.
 
 ## Precomputation
 
-There are different pre-computation strategies available. Again you don't need to change this parameter since the default `NFFT.LINEAR` is the best choice in most situations. However, our GPU implementation requires `NFFT.FULL` and thus there sometimes is need to change this value. In addition, it allows NFFT researchers to enforce a certain precomputation strategy, which can be mandatory when comparing different implementations in benchmarks.
+There are different precomputation strategies available:
 
 | Value                          | Description      | 
 | :--------------------------------- | :--------------- | 
+| `NFFT.POLYNOMIAL`     | This option approximates the window function by a polynomial with high degree and evaluates the polynomial during the actual convolution. |   
 | `NFFT.LINEAR`      | This option uses a look-up table to first sample the window function and later use linear interpolation during the actual convolution. |  
-| `NFFT.FULL`      | This option precomputes the entire convolution matrix and stores it as a `SparseMatrixCSC`. This option requires more memory and the longest precomputation time. This allows simple GPU implementations see CuNFFT.  | 
-| `NFFT.TENSOR`      | This option calculates the window on demand but exploits the tensor structure for multi-dimensional plans. Hence, this option makes no approximation but reaches a similar performance as `NFFT.LINEAR`. This option is right now only available in the NFFT3 backend.  | 
+| `NFFT.FULL`      | This option precomputes the entire convolution matrix and stores it as a `SparseMatrixCSC`. This option requires more memory and the longest precomputation time. This allows simple GPU implementations like realized in CuNFFT.  | 
+| `NFFT.TENSOR`      | This option calculates the window on demand but exploits the tensor product structure for multi-dimensional plans.  | 
+
+Again you don't need to change this parameter since the default `NFFT.POLYNOMIAL` is a good choice in most situations. You may want to use `NFFT.TENSOR` if you are applying the same transform multiple times since it is a little bit faster than `NFFT.POLYNOMIAL` but has a higher pre-computation time.
+
+## Block Partitioning
+
+Internally NFFT can use block partitioning to speedup computation. It helps in two ways
+* It helps improving the memory efficiency by grouping sampling points together which allows for better use of CPU caches.
+* Block partitioning is a mandatory to enable multi-threading in the adjoint NFFT, which would otherwise not be possible because of a data dependency.
+
+We enable block partitioning by default since it helps also in the single-threaded case and thus, there usually is no reason to switch it off.
 
 ## Multi-Threading
 
@@ -133,21 +166,18 @@ julia -t T
 ```
 where `T` it the number of desired threads. NFFT.jl will use all threads that are specified. 
 
-Currently, the NFFT.LINEAR is fully multi-threaded while NFFT.LINEAR is multi-threaded in the precomputation
-and forward transformation, while the adjoint is not yet multi-threaded.
-
 ## Directional
 
 There are special methods for computing 1D NFFT's for each 1D slice along a particular dimension of a higher dimensional array.
 
 ```jldoctest dirtest; output = false, setup = :(using NFFT, Random; Random.seed!(1))
-M = 11
+J = 11
 
-y = rand(M) .- 0.5
+y = rand(J) .- 0.5
 N = (16,20)
-P1 = plan_nfft(y, N, dims=1)
-f = randn(ComplexF64,N)
-fHat = P1 * f
+p1 = plan_nfft(y, N, dims=1)
+f = randn(ComplexF64, N)
+fHat = p1 * f
 
 # output
 
@@ -169,8 +199,8 @@ Here `size(f) = (16,20)` and `size(fHat) = (11,20)` since we compute an NFFT alo
 To compute the NFFT along the second dimension
 
 ```jldoctest dirtest; output = false
-P2 = plan_nfft(y, N, dims=2)
-fHat = P2 * f
+p2 = plan_nfft(y, N, dims=2)
+fHat = p2 * f
 
 # output
 

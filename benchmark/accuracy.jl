@@ -1,4 +1,4 @@
-using NFFT, DataFrames, LinearAlgebra, LaTeXStrings, DelimitedFiles, CuNFFT
+using NFFT, DataFrames, LinearAlgebra, Statistics, LaTeXStrings, DelimitedFiles, CuNFFT
 using Plots; pgfplotsx()
 
 include("../Wrappers/NFFT3.jl")
@@ -24,28 +24,28 @@ const Ds = 1:3
 function nfft_accuracy_comparison(Ds, σs, ms)
   println("\n\n ##### nfft_accuracy_comparison ##### \n\n")
 
-  df = DataFrame(Package=String[], D=Int[], M=Int[], N=Int[], m = Int[], σ=Float64[],
+  df = DataFrame(Package=String[], D=Int[], J=Int[], N=Int[], m = Int[], σ=Float64[],
                    ErrorTrafo=Float64[], ErrorAdjoint=Float64[] )  
 
   for D in Ds
       N = ntuple(d->NBase[D], D)
-      M = prod(N)
+      J = prod(N)
       
       for σ in σs
         for m in ms
           @info "m=$m D=$D σ=$σ "
-          x = rand(D,M) .- 0.5
-          fHat = randn(ComplexF64, M)
+          k = rand(D,J) .- 0.5
+          fHat = randn(ComplexF64, J)
 
           # ground truth (numerical)
-          pNDFT = NDFTPlan(x, N)
+          pNDFT = NDFTPlan(k, N)
           f = adjoint(pNDFT) * fHat
           gHat = pNDFT * f
 
           for pl = 1:length(packagesStr)
             planner = packagesCtor[pl]
             if planner != FINUFFT || σ == 2.0 # FINUFFT is not included in sigma sweep
-              p = planner(x, N; m, σ, precompute=precomp[pl], blocking=blocking[pl])
+              p = planner(k, N; m, σ, precompute=precomp[pl], blocking=blocking[pl])
 
               #if planner == CuNFFT.CuNFFTPlan
               #  fApprox = Array(adjoint(p) * CuNFFT.CuArray(fHat))
@@ -57,10 +57,9 @@ function nfft_accuracy_comparison(Ds, σs, ms)
 
               eadjoint = norm(f[:] - fApprox[:]) / norm(f[:])
 
-
               etrafo = norm(gHat[:] - gHatApprox[:]) / norm(gHat[:])
               
-              push!(df, (packagesStr[pl], D, M, N[D], m, σ, etrafo, eadjoint))
+              push!(df, (packagesStr[pl], D, J, N[D], m, σ, etrafo, eadjoint))
             end
         end
       end
@@ -69,7 +68,8 @@ function nfft_accuracy_comparison(Ds, σs, ms)
   return df
 end
 
-function plot_accuracy_m(df, packagesStr, filename, D=1)
+function plot_accuracy_m(df, packagesStr, packagesStrShort, filename, D=1,
+      colors = [RGB(0.0,0.29,0.57), RGB(0.3,0.5,0.7), RGB(0.94,0.53,0.12), RGB(0.99,0.75,0.05)])
 
   σs = range(1.25, 4, length=12)
 
@@ -80,23 +80,26 @@ function plot_accuracy_m(df, packagesStr, filename, D=1)
   Plots.scalefontsizes(1.5)
   
 
-  colors = [:black, :orange, :green, :gray, :brown,  :blue, :purple, :yellow ]
-  ls = [:solid, :dashdot, :dash, :dashdotdot, :solid, :dash, :solid, :dash, :solid]
-  shape = [:xcross, :circle, :xcross, :cross, :circle, :xcross, :xcross, :circle]
+  ls = [:solid, :solid, :solid, :solid]
+  shape = [:circle, :xcross, :cross, :xcross ]
 
   p1 = plot(ms, df1_[df1_.Package.==packagesStr[1],:ErrorTrafo], 
-            yscale = :log10, label=packagesStr[1], lw=2, xlabel = "m", ylabel="Relative Error",
-            legend = (:topright), title=L"\textrm{NFFT}", shape=:circle, c=:black)
+            yscale = :log10, label=packagesStrShort[1], lw=2, xlabel = "m", ylabel="Relative Error",
+            legend = (:topright), title=L"\textrm{NFFT}", 
+            shape=shape[1], ls=ls[1], 
+            c=colors[1], msc=colors[1], mc=colors[1])
 
   for p=2:length(packagesStr)      
     plot!(p1, ms, df1_[df1_.Package.==packagesStr[p],:ErrorTrafo], 
-            yscale = :log10, label=packagesStr[p], lw=2, shape=shape[p], ls=ls[p], 
+            yscale = :log10, label=packagesStrShort[p], lw=2, shape=shape[p], ls=ls[p], 
             c=colors[p], msc=colors[p], mc=colors[p], ms=5, msw=2)
   end
 
   p2 = plot(ms, df1_[df1_.Package.==packagesStr[1],:ErrorAdjoint], 
-            yscale = :log10, lw=2, xlabel = "m", ylabel="Relative Error",
-            legend = nothing, title=L"\textrm{NFFT}^H", shape=:circle, c=:black)
+            yscale = :log10, lw=2, xlabel = "m", #ylabel="Relative Error",
+            legend = nothing, title=L"\textrm{NFFT}^H", 
+            shape=shape[1], ls=ls[1], 
+            c=colors[1], msc=colors[1], mc=colors[1])
 
   for p=2:length(packagesStr)      
     plot!(p2, ms, df1_[df1_.Package.==packagesStr[p],:ErrorAdjoint], 
@@ -104,15 +107,16 @@ function plot_accuracy_m(df, packagesStr, filename, D=1)
             c=colors[p], msc=colors[p], mc=colors[p], ms=5, msw=2)
   end
 
-  p = plot(p1, p2, layout=(1,2), size=(800,300), dpi=200)
+  p = plot(p1, p2, layout=(1,2), size=(800,200), dpi=200)
   #p = plot(p1, layout=(1,2), size=(800,450), dpi=200)
 
-  savefig(p, joinpath("../docs/src/assets/", filename))
+  mkpath("./img/")
+  savefig(p, joinpath("./img/",filename))
   return p
 end
 
 
-function plot_accuracy_sigma(df, packagesStr, filename,  D=1)
+function plot_accuracy_sigma(df, packagesStr, packagesStrShort, filename,  D=1)
 
   σs = range(1.25, 4, length=12)
 
@@ -127,18 +131,22 @@ function plot_accuracy_sigma(df, packagesStr, filename,  D=1)
   shape = [:xcross, :circle, :xcross, :cross, :circle, :xcross, :xcross, :circle]
 
   p1 = plot(σs, df1_[df1_.Package.==packagesStr[1],:ErrorTrafo], 
-            yscale = :log10, label=packagesStr[1], lw=2, xlabel = L"\sigma", ylabel="Relative Error",
-            legend = (:topright), title=L"\textrm{NFFT}", shape=:circle, c=:black)
+            yscale = :log10, label=packagesStrShort[1], lw=2, xlabel = L"\sigma", ylabel="Relative Error",
+            legend = (:topright), title=L"\textrm{NFFT}", 
+            shape=shape[1], ls=ls[1], 
+            c=colors[1], msc=colors[1], mc=colors[1])
 
   for p=2:length(packagesStr)      
     plot!(p1, σs, df1_[df1_.Package.==packagesStr[p],:ErrorTrafo], 
-            yscale = :log10, label=packagesStr[p], lw=2, shape=shape[p], ls=ls[p], 
+            yscale = :log10, label=packagesStrShort[p], lw=2, shape=shape[p], ls=ls[p], 
             c=colors[p], msc=colors[p], mc=colors[p]) #ms=5, msw=2
   end
 
   p2 = plot(σs, df1_[df1_.Package.==packagesStr[1],:ErrorAdjoint], 
-            yscale = :log10, lw=2, xlabel = L"\sigma", ylabel="Relative Error",
-            legend = nothing, title=L"\textrm{NFFT}^H", shape=:circle, c=:black)
+            yscale = :log10, lw=2, xlabel = L"\sigma", #ylabel="Relative Error",
+            legend = nothing, title=L"\textrm{NFFT}^H",
+            shape=shape[1], ls=ls[1], 
+            c=colors[1], msc=colors[1], mc=colors[1])
 
   for p=2:length(packagesStr)      
     plot!(p2, σs, df1_[df1_.Package.==packagesStr[p],:ErrorAdjoint], 
@@ -148,28 +156,42 @@ function plot_accuracy_sigma(df, packagesStr, filename,  D=1)
 
   p = plot(p1, p2, layout=(1,2), size=(800,300), dpi=200)
 
-  savefig(p, joinpath("../docs/src/assets/",filename))
+  mkpath("./img/")
+  savefig(p, joinpath("./img/",filename))
   return p
 end
 
 
-#dfm = nfft_accuracy_comparison(2, [2.0], ms)
-#dfσ = nfft_accuracy_comparison(2, σs, [4])
+dfm = nfft_accuracy_comparison(2, [2.0], ms)
+dfσ = nfft_accuracy_comparison(2, σs, [4])
 
-#writedlm("accuracy_m.csv", Iterators.flatten(([names(dfm)], eachrow(dfm))), ',')
-#writedlm("accuracy_sigma.csv", Iterators.flatten(([names(dfσ)], eachrow(dfσ))), ',')
+writedlm("data/accuracy_m.csv", Iterators.flatten(([names(dfm)], eachrow(dfm))), ',')
+writedlm("data/accuracy_sigma.csv", Iterators.flatten(([names(dfσ)], eachrow(dfσ))), ',')
 
-data, header = readdlm("accuracy_m.csv", ',', header=true);
+data, header = readdlm("data/accuracy_m.csv", ',', header=true);
 dfm = DataFrame(data, vec(header))
-data, header = readdlm("accuracy_sigma.csv", ',', header=true);
+data, header = readdlm("data/accuracy_sigma.csv", ',', header=true);
 dfσ = DataFrame(data, vec(header))
 
 
 
 
-plot_accuracy_m(dfm, ["NFFT.jl/TENSOR", "NFFT3/TENSOR", "FINUFFT"], "accuracy_m_D2.svg", 2)
-plot_accuracy_m(dfm, ["NFFT.jl/FULL", "NFFT.jl/LINEAR", "NFFT.jl/TENSOR", "NFFT.jl/POLY"], "accuracy_m_pre_D2.svg", 2)
-plot_accuracy_sigma(dfσ, ["NFFT.jl/TENSOR", "NFFT3/TENSOR"], "accuracy_sigma_D2.svg", 2)
+plot_accuracy_m(dfm, ["NFFT.jl/TENSOR", "NFFT3/TENSOR", "FINUFFT"],
+                     ["NFFT.jl", "NFFT3", "FINUFFT"], "accuracy_m_D2.pdf", 2,
+                     [RGB(0.0,0.29,0.57), RGB(0.94,0.53,0.12), RGB(0.99,0.75,0.05)])
+plot_accuracy_m(dfm, ["NFFT.jl/FULL", "NFFT.jl/TENSOR", "NFFT.jl/LINEAR", "NFFT.jl/POLY"], 
+                     ["FULL", "TENSOR", "LINEAR", "POLYNOMIAL"],
+                      "accuracy_m_pre_D2.pdf", 2,
+                      [RGB(0.7,0.13,0.16), RGB(0.3,0.5,0.7), RGB(0.5,0.48,0.45) ,RGB(0.0,0.29,0.57)])
+plot_accuracy_sigma(dfσ, ["NFFT.jl/TENSOR", "NFFT3/TENSOR"], 
+                         ["NFFT.jl", "NFFT3"], "accuracy_sigma_D2.pdf", 2)
+
+
+@info "Mean error deviation  NFFT.jl / NFFT3"
+mean((dfm[dfm.Package.=="NFFT.jl/POLY",:ErrorTrafo] ./ dfm[dfm.Package.=="NFFT3/TENSOR",:ErrorTrafo])[1:5])
+
+@info "Mean error deviation  FINUFFT / NFFT.jl"
+mean((dfm[dfm.Package.=="FINUFFT",:ErrorTrafo] ./ dfm[dfm.Package.=="NFFT.jl/POLY",:ErrorTrafo])[1:5])
 
 
 

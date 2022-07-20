@@ -10,29 +10,29 @@ planfunc = Symbol("plan_"*"$op")
 
 # The following automatically call the plan_* version for type Array
 
-$(planfunc)(x::AbstractArray, N::Union{Integer,NTuple{D,Int}}, args...; kargs...) where {D} =
-    $(planfunc)(Array, x, N, args...; kargs...)
+$(planfunc)(k::AbstractArray, N::Union{Integer,NTuple{D,Int}}, args...; kargs...) where {D} =
+    $(planfunc)(Array, k, N, args...; kargs...)
 
-$(planfunc)(x::AbstractArray, y::AbstractArray, args...; kargs...) where {D} =
-    $(planfunc)(Array, x, y, args...; kargs...)
+$(planfunc)(k::AbstractArray, y::AbstractArray, args...; kargs...) where {D} =
+    $(planfunc)(Array, k, y, args...; kargs...)
 
 # The follow convert 1D parameters into the format required by the plan
 
-$(planfunc)(Q::Type, x::AbstractVector, N::Integer, rest...; kwargs...) where {D}  =
-    $(planfunc)(Q, collect(reshape(x,1,length(x))), (N,), rest...; kwargs...)
+$(planfunc)(Q::Type, k::AbstractVector, N::Integer, rest...; kwargs...) where {D}  =
+    $(planfunc)(Q, collect(reshape(k,1,length(k))), (N,), rest...; kwargs...)
 
-$(planfunc)(Q::Type, x::AbstractVector, N::NTuple{D,Int}, rest...; kwargs...) where {D} =
-    $(planfunc)(Q, collect(reshape(x,1,length(x))), N, rest...; kwargs...) 
+$(planfunc)(Q::Type, k::AbstractVector, N::NTuple{D,Int}, rest...; kwargs...) where {D} =
+    $(planfunc)(Q, collect(reshape(k,1,length(k))), N, rest...; kwargs...) 
 
-$(planfunc)(Q::Type, x::AbstractMatrix, N::NTuple{D,Int}, rest...; kwargs...) where {D}  =
-    $(planfunc)(Q, collect(x), N, rest...; kwargs...)
+$(planfunc)(Q::Type, k::AbstractMatrix, N::NTuple{D,Int}, rest...; kwargs...) where {D}  =
+    $(planfunc)(Q, collect(k), N, rest...; kwargs...)
 
 end
 end
 
 ## NNFFT constructor
-plan_nnfft(Q::Type, x::AbstractVector, y::AbstractVector, rest...; kwargs...) where {D}  =
-    plan_nnfft(Q, collect(reshape(x,1,length(x))), collect(reshape(y,1,length(x))), rest...; kwargs...)
+plan_nnfft(Q::Type, k::AbstractVector, y::AbstractVector, rest...; kwargs...) where {D}  =
+    plan_nnfft(Q, collect(reshape(k,1,length(k))), collect(reshape(y,1,length(k))), rest...; kwargs...)
 
 
 
@@ -48,24 +48,24 @@ tfunc = Symbol("$(op)_$(trans)")
 
 # TODO fix comments (how?)
 """
-nfft(x, f, rest...; kwargs...)
+nfft(k, f, rest...; kwargs...)
 
-calculates the nfft of the array `f` for the nodes contained in the matrix `x`
+calculates the nfft of the array `f` for the nodes contained in the matrix `k`
 The output is a vector of length M=`size(nodes,2)`
 """
-function $(op)(x, f::AbstractArray; kargs...) 
-  p = $(planfunc)(x, size(f); kargs... )
+function $(op)(k, f::AbstractArray; kargs...) 
+  p = $(planfunc)(k, size(f); kargs... )
   return p * f
 end
 
 """
-nfft_adjoint(x, N, fHat, rest...; kwargs...)
+nfft_adjoint(k, N, fHat, rest...; kwargs...)
 
-calculates the adjoint nfft of the vector `fHat` for the nodes contained in the matrix `x`.
+calculates the adjoint nfft of the vector `fHat` for the nodes contained in the matrix `k`.
 The output is an array of size `N`
 """
-function $(tfunc)(x, N, fHat;  kargs...) 
-  p = $(planfunc)(x, N;  kargs...)
+function $(tfunc)(k, N, fHat;  kargs...) 
+  p = $(planfunc)(k, N;  kargs...)
   return $(trans)(p) * fHat
 end
 

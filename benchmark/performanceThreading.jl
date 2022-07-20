@@ -28,7 +28,7 @@ NFFT._use_threads[] = (Threads.nthreads() > 1)
 function nfft_performance_comparison(m = 4, σ = 2.0)
   println("\n\n ##### nfft_performance ##### \n\n")
 
-  df = DataFrame(Package=String[], Threads=Int[], D=Int[], M=Int[], N=Int[], 
+  df = DataFrame(Package=String[], Threads=Int[], D=Int[], J=Int[], N=Int[], 
                    Undersampled=Bool[], m = Int[], σ=Float64[],
                    TimePre=Float64[], TimeTrafo=Float64[], TimeAdjoint=Float64[] )  
 
@@ -37,15 +37,15 @@ function nfft_performance_comparison(m = 4, σ = 2.0)
 
   for D = 2:2
       NN = ntuple(d->NBase[D], D)
-      M = prod(NN) #÷ 8
+      J = prod(NN) #÷ 8
 
-        @info D, NN, M
+        @info D, NN, J
         
         T = Float64
 
-        x = T.(rand(T,D,M) .- 0.5)
+        k =T.(rand(T,D,J) .- 0.5)
         
-        fHat = randn(Complex{T}, M)
+        fHat = randn(Complex{T}, J)
         f = randn(Complex{T}, NN)
         
         for pl = 1:length(packagesStr)
@@ -55,7 +55,7 @@ function nfft_performance_comparison(m = 4, σ = 2.0)
           b = @benchmark $planner($x, $NN; m=$m, σ=$σ, window=:kaiser_bessel, 
                                  precompute=$(precomp[pl]), sortNodes=false, fftflags=$fftflags)
           tpre = minimum(b).time / 1e9
-          p = planner(x, NN; m=m, σ=σ, window=:kaiser_bessel, 
+          p = planner(k, NN; m=m, σ=σ, window=:kaiser_bessel, 
                       precompute=(precomp[pl]), sortNodes=false, fftflags=fftflags)
           BenchmarkTools.DEFAULT_PARAMETERS.seconds = benchmarkTime[2]                      
           b = @benchmark mul!($f, $(adjoint(p)), $fHat)
@@ -64,7 +64,7 @@ function nfft_performance_comparison(m = 4, σ = 2.0)
           b = @benchmark mul!($fHat, $p, $f)
           ttrafo = minimum(b).time / 1e9      
 
-          push!(df, (packagesStr[pl], Threads.nthreads(), D, M, NBase[D], false, m, σ,
+          push!(df, (packagesStr[pl], Threads.nthreads(), D, J, NBase[D], false, m, σ,
                    tpre, ttrafo, tadjoint))
 
     end
@@ -74,7 +74,7 @@ end
 
 
 
-function plot_performance(df; D=2, N=1024, M=N*N)
+function plot_performance(df; D=2, N=1024, J=N*N)
 
   Plots.scalefontsizes()
   Plots.scalefontsizes(1.5)
@@ -86,7 +86,7 @@ function plot_performance(df; D=2, N=1024, M=N*N)
   tadjoint = zeros(length(threads), length(labelsA))
   for (i,p) in enumerate(packagesStr)
     for (j,th) in enumerate(threads) #.&& df.Pre.==precomp[i] 
-      df_ = df[df.Threads .== th .&& df.Package.==p .&& df.D .== D .&& df.M .== M .&& df.N .==N ,:]
+      df_ = df[df.Threads .== th .&& df.Package.==p .&& df.D .== D .&& df.J.== M .&& df.N .==N ,:]
       tpre[j,i] = df_[1,:TimePre]
       ttrafo[j,i] = df_[1,:TimeTrafo]
       tadjoint[j,i] = df_[1,:TimeAdjoint]
@@ -125,7 +125,7 @@ end
 
 
 
-function plot_performance_speedup(df, packagesStr, packagesStrShort, colors; D=2, N=1024, M=N*N)
+function plot_performance_speedup(df, packagesStr, packagesStrShort, colors; D=2, N=1024, J=N*N)
 
   Plots.scalefontsizes()
   Plots.scalefontsizes(1.5)
@@ -137,7 +137,7 @@ function plot_performance_speedup(df, packagesStr, packagesStrShort, colors; D=2
   tadjoint = zeros(length(threads), length(labelsA))
   for (i,p) in enumerate(packagesStr)
     for (j,th) in enumerate(threads) #.&& df.Pre.==precomp[i] 
-      df_ = df[df.Threads .== th .&& df.Package.==p .&& df.D .== D .&& df.M .== M .&& df.N .==N ,:]
+      df_ = df[df.Threads .== th .&& df.Package.==p .&& df.D .== D .&& df.J.== M .&& df.N .==N ,:]
       tpre[j,i] = df_[1,:TimePre]
       ttrafo[j,i] = df_[1,:TimeTrafo]
       tadjoint[j,i] = df_[1,:TimeAdjoint]
@@ -259,16 +259,16 @@ else
   data, header = readdlm("./data/performance_mt.csv", ',', header=true);
   df = DataFrame(data, vec(header))
 
-  plot_performance(df, N=NBase[2], M=NBase[2]*NBase[2])
+  plot_performance(df, N=NBase[2], J=NBase[2]*NBase[2])
   plot_performance_speedup(df, [ "NFFT.jl/POLY", "NFFT.jl/TENSOR", "NFFT3", "FINUFFT"],
                                [ "NFFT.jl/POLY", "NFFT.jl/TENSOR", "NFFT3", "FINUFFT"],
                                [RGB(0.0,0.29,0.57), RGB(0.3,0.5,0.7), RGB(0.94,0.53,0.12), RGB(0.99,0.75,0.05)],
-                               N=NBase[2], M=NBase[2]*NBase[2])
+                               N=NBase[2], J=NBase[2]*NBase[2])
                               
   #plot_performance_speedup(df, [ "NFFT.jl/TENSOR", "NFFT3", "FINUFFT"],
   #                             [ "NFFT.jl", "NFFT3", "FINUFFT"],
   #                             [RGB(0.3,0.5,0.7), RGB(0.94,0.53,0.12), RGB(0.99,0.75,0.05)],
-  #                             N=NBase[2], M=NBase[2]*NBase[2])
+  #                             N=NBase[2], J=NBase[2]*NBase[2])
 end
 
 

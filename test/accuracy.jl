@@ -9,30 +9,30 @@ m = 5
   eps =  1e-3
   D = length(N)
 
-  M = prod(N)
-  x = rand(Float64,D,M) .- 0.5
+  J = prod(N)
+  k = rand(Float64,D,J) .- 0.5
 
-  fHat = rand(Float64,M) + rand(Float64,M)*im
-  f = ndft_adjoint(x, N, fHat,)
-  fApprox = nfft_adjoint(x, N, fHat, reltol=1e-9)
+  fHat = rand(Float64,J) + rand(Float64,J)*im
+  f = ndft_adjoint(k, N, fHat,)
+  fApprox = nfft_adjoint(k, N, fHat, reltol=1e-9)
   e = norm(f[:] - fApprox[:]) / norm(f[:])
   @debug "error adjoint nfft "  e
   @test e < eps
 
-  gHat = ndft(x, f)
-  gHatApprox = nfft(x, f, reltol=1e-9)
+  gHat = ndft(k, f)
+  gHatApprox = nfft(k, f, reltol=1e-9)
   e = norm(gHat[:] - gHatApprox[:]) / norm(gHat[:])
   @debug "error nfft "  e
   @test e < eps
 
-  f = ndft_adjoint(x, N, ComplexF32.(fHat))
-  fApprox = nfft_adjoint(x, N, ComplexF32.(fHat))
+  f = ndft_adjoint(k, N, ComplexF32.(fHat))
+  fApprox = nfft_adjoint(k, N, ComplexF32.(fHat))
   e = norm(f[:] - fApprox[:]) / norm(f[:])
   @debug "error adjoint nfft "  e
   @test e < eps
 
-  gHat = ndft(x, ComplexF32.(f))
-  gHatApprox = nfft(x, ComplexF32.(f))
+  gHat = ndft(k, ComplexF32.(f))
+  gHatApprox = nfft(k, ComplexF32.(f))
   e = norm(gHat[:] - gHatApprox[:]) / norm(gHat[:])
   @debug "error nfft "  e
   @test e < eps
@@ -48,14 +48,14 @@ end
             D = length(N)
             @info "Testing $D, window=$window, pre=$pre, storeDeconv=$storeDeconv, block=$blocking"
 
-            M = prod(N)
-            x = rand(Float64,D,M) .- 0.5
-            p = plan_nfft(x, N; m, σ, window, precompute = pre, storeDeconvolutionIdx = storeDeconv,
+            J = prod(N)
+            k = rand(Float64,D,J) .- 0.5
+            p = plan_nfft(k, N; m, σ, window, precompute = pre, storeDeconvolutionIdx = storeDeconv,
                          fftflags = FFTW.ESTIMATE, blocking)
 
-            pNDFT = NDFTPlan(x, N)
+            pNDFT = NDFTPlan(k, N)
 
-            fHat = rand(Float64,M) + rand(Float64,M)*im
+            fHat = rand(Float64,J) + rand(Float64,J)*im
             f = adjoint(pNDFT) * fHat
             fApprox = adjoint(p) * fHat
             e = norm(f[:] - fApprox[:]) / norm(f[:])
@@ -76,8 +76,8 @@ end
 @testset "Abstract sampling points" begin
   @info "Abstract sampling points"
     M, N = rand(100:2:200, 2)
-    x = range(-0.4, stop=0.4, length=M)
-    p = plan_nfft(x, N, fftflags = FFTW.ESTIMATE)
+    k =range(-0.4, stop=0.4, length=M)
+    p = plan_nfft(k, N, fftflags = FFTW.ESTIMATE)
 end
 
 @testset "Directional NFFT $D dim" for D in 2:3 begin
@@ -85,17 +85,17 @@ end
     # running a 1D NFFT on every slice along that dimension
         eps = 1e-4
         N = tuple( 2*rand(4:8,D)... )
-        M = prod(N)
+        J = prod(N)
         for d in 1:D
             @info "Testing in $D dimensions directional NFFT along dim=$d"
-            x = rand(M) .- 0.5
+            k = rand(J) .- 0.5
 
             f = rand(ComplexF64,N)
-            p_dir = plan_nfft(x, N, dims=d)
+            p_dir = plan_nfft(k, N, dims=d)
             fHat_dir = p_dir * f
             g_dir = adjoint(p_dir) * fHat_dir
 
-            p = plan_nfft(x, N[d])
+            p = plan_nfft(k, N[d])
             fHat = similar(fHat_dir)
             g = similar(g_dir)
 
@@ -125,18 +125,18 @@ end
   # running a 2D NFFT on every slice along that dimensions
       eps = 1e-4
       N = tuple( 2*rand(4:8,D)... )
-      M = prod(N)
+      J = prod(N)
       for d in 1:(D-1)
           dims = d:(d+1)
           @info "Testing in $D dimensions directional NFFT along dim=$(dims)"
-          x = rand(2,M) .- 0.5
+          k = rand(2,J) .- 0.5
 
           f = rand(ComplexF64, N)
-          p_dir = plan_nfft(x, N, dims=dims)
+          p_dir = plan_nfft(k, N, dims=dims)
           fHat_dir = p_dir * f
           g_dir = adjoint(p_dir) * fHat_dir
 
-          p = plan_nfft(x, N[dims])
+          p = plan_nfft(k, N[dims])
           fHat = similar(fHat_dir)
           g = similar(g_dir)
 

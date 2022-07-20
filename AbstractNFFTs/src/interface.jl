@@ -174,11 +174,11 @@ Note that this will be the input size for the transposed / adjoint operator.
 @mustimplement size_out(p::AbstractFTPlan{T,D,R}) where {T,D,R}
 
 """
-    nodes!(p, x) -> p
+    nodes!(p, k) -> p
 
-Change nodes `x` in the plan `p` operation and return the plan.
+Change nodes `k` in the plan `p` operation and return the plan.
 """
-@mustimplement nodes!(p::AbstractFTPlan{T}, x::Matrix{T}) where {T}
+@mustimplement nodes!(p::AbstractFTPlan{T}, k::Matrix{T}) where {T}
 
 
 ## Optional Interface ##

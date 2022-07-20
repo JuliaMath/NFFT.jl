@@ -34,11 +34,11 @@ using ProfileView
 include("performance_simple.jl")
 
 # run once
-nfft_performance_simple(N=1024, M=1024^2, m=4, threading=false, pre=NFFT.LINEAR, ctor=NFFTPlan)
+nfft_performance_simple(N=1024, J=1024^2, m=4, threading=false, pre=NFFT.LINEAR, ctor=NFFTPlan)
 
 # call the profiler
-@profview nfft_performance_simple(N=1024, M=1024^2, m=4, threading=false, pre=NFFT.LINEAR, ctor=NFFTPlan)
+@profview nfft_performance_simple(N=1024, J=1024^2, m=4, threading=false, pre=NFFT.LINEAR, ctor=NFFTPlan)
 
 # instead run with FINUFFT
-nfft_performance_simple(N=1024, M=1024^2, m=4, threading=false, pre=NFFT.LINEAR, ctor=FINUFFTPlan)
+nfft_performance_simple(N=1024, J=1024^2, m=4, threading=false, pre=NFFT.LINEAR, ctor=FINUFFTPlan)
 ```

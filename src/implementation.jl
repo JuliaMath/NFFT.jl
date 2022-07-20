@@ -16,9 +16,9 @@ end
 mutable struct NFFTPlan{T,D,R} <: AbstractNFFTPlan{T,D,R}
     N::NTuple{D,Int64}
     NOut::NTuple{R,Int64}
-    M::Int64
-    x::Matrix{T}
-    n::NTuple{D,Int64}
+    J::Int64
+    k::Matrix{T}
+    Ñ::NTuple{D,Int64}
     dims::UnitRange{Int64}
     params::NFFTParams{T,D}
     forwardFFT::FFTW.cFFTWPlan{Complex{T},-1,true,D,UnitRange{Int64}}
@@ -55,12 +55,12 @@ function Base.copy(p::NFFTPlan{T,D,R}) where {T,D,R}
     blockOffsets = copy(p.blockOffsets)
     idxInBlock = copy(p.idxInBlock)
     windowTensor = copy(p.windowTensor)
-    x = p.x
+    k =p.k
 
     FP = plan_fft!(tmpVec, p.dims; flags = p.forwardFFT.flags)
     BP = plan_bfft!(tmpVec, p.dims; flags = p.backwardFFT.flags)
 
-    return NFFTPlan{T,D,R}(p.N, p.NOut, p.M, x, p.n, p.dims, p.params, FP, BP, tmpVec,
+    return NFFTPlan{T,D,R}(p.N, p.NOut, p.J, k, p.Ñ, p.dims, p.params, FP, BP, tmpVec,
                            tmpVecHat, deconvolveIdx, windowHatInvLUT, windowLinInterp, windowPolyInterp,
                            blocks, nodesInBlock, blockOffsets, idxInBlock, windowTensor, B)
 end
@@ -70,18 +70,18 @@ end
 # constructor
 ################
 
-function NFFTPlan(x::Matrix{T}, N::NTuple{D,Int}; dims::Union{Integer,UnitRange{Int64}}=1:D,
+function NFFTPlan(k::Matrix{T}, N::NTuple{D,Int}; dims::Union{Integer,UnitRange{Int64}}=1:D,
                  fftflags=nothing, kwargs...) where {T,D}
 
-    checkNodes(x)
+    checkNodes(k)
 
-    params, N, NOut, M, n, dims_ = initParams(x, N, dims; kwargs...)
+    params, N, NOut, J, Ñ, dims_ = initParams(k, N, dims; kwargs...)
 
     if length(NOut) > 1
       params.precompute = LINEAR
     end
 
-    tmpVec = Array{Complex{T},D}(undef, n)
+    tmpVec = Array{Complex{T},D}(undef, Ñ)
 
     fftflags_ = (fftflags != nothing) ? (flags=fftflags,) : NamedTuple()
     FP = plan_fft!(tmpVec, dims_; fftflags_...)
@@ -92,25 +92,25 @@ function NFFTPlan(x::Matrix{T}, N::NTuple{D,Int}; dims::Union{Integer,UnitRange{
                   params.precompute == POLYNOMIAL ) &&
                      params.blocking && length(dims_) == D
 
-    blocks, nodesInBlocks, blockOffsets, idxInBlock, windowTensor = precomputeBlocks(x, n, params, calcBlocks)
+    blocks, nodesInBlocks, blockOffsets, idxInBlock, windowTensor = precomputeBlocks(k, Ñ, params, calcBlocks)
 
     windowLinInterp, windowPolyInterp, windowHatInvLUT, deconvolveIdx, B =
-            precomputation(x, N[dims_], n[dims_], params)
+            precomputation(k, N[dims_], Ñ[dims_], params)
 
     U = params.storeDeconvolutionIdx ? N : ntuple(d->0,D)
     tmpVecHat = Array{Complex{T},D}(undef, U)
 
-    NFFTPlan(N, NOut, M, x, n, dims_, params, FP, BP, tmpVec, tmpVecHat,
+    NFFTPlan(N, NOut, J, k, Ñ, dims_, params, FP, BP, tmpVec, tmpVecHat,
                        deconvolveIdx, windowHatInvLUT, windowLinInterp, windowPolyInterp,
                        blocks, nodesInBlocks, blockOffsets, idxInBlock, windowTensor, B)
 end
 
-function AbstractNFFTs.nodes!(p::NFFTPlan{T}, x::Matrix{T}) where {T}
-    checkNodes(x)
+function AbstractNFFTs.nodes!(p::NFFTPlan{T}, k::Matrix{T}) where {T}
+    checkNodes(k)
 
     # Sort nodes in lexicographic way
     if p.params.sortNodes
-        x .= sortslices(x, dims=2)
+        k .= sortslices(k, dims=2)
     end
 
     calcBlocks = (p.params.precompute == LINEAR ||
@@ -118,10 +118,10 @@ function AbstractNFFTs.nodes!(p::NFFTPlan{T}, x::Matrix{T}) where {T}
                   p.params.precompute == POLYNOMIAL ) &&
                      p.params.blocking && length(p.dims) == length(p.N)
 
-    blocks, nodesInBlocks, blockOffsets, idxInBlock, windowTensor = precomputeBlocks(x, p.n, p.params, calcBlocks)
+    blocks, nodesInBlocks, blockOffsets, idxInBlock, windowTensor = precomputeBlocks(k, p.Ñ, p.params, calcBlocks)
 
     windowLinInterp, windowPolyInterp, windowHatInvLUT, deconvolveIdx, B =
-       precomputation(x, p.N, p.n, p.params)
+       precomputation(k, p.N, p.Ñ, p.params)
 
     p.blocks = blocks
     p.nodesInBlock = nodesInBlocks
@@ -129,19 +129,19 @@ function AbstractNFFTs.nodes!(p::NFFTPlan{T}, x::Matrix{T}) where {T}
     p.idxInBlock = idxInBlock
     p.windowTensor = windowTensor
 
-    p.M = size(x, 2)
+    p.J= size(k, 2)
     p.windowLinInterp = windowLinInterp
     p.windowPolyInterp = windowPolyInterp
     p.windowHatInvLUT = windowHatInvLUT
     p.deconvolveIdx = deconvolveIdx
     p.B = B
-    p.x = x
+    p.k = k
 
     return p
 end
 
 function Base.show(io::IO, p::NFFTPlan{T,D,R}) where {T,D,R}
-    print(io, "NFFTPlan with ", p.M, " sampling points for an input array of size",
+    print(io, "NFFTPlan with ", p.J, " sampling points for an input array of size",
            p.N, " and an output array of size", p.NOut, " with dims ", p.dims)
 end
 

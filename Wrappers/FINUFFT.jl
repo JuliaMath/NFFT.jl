@@ -10,8 +10,8 @@ one "on demand" if the other one is needed. This is the purpose of the `isAdjoin
 
 mutable struct FINUFFTPlan{T,D} <: AbstractNFFTPlan{T,D,1} 
   N::NTuple{D,Int64}
-  M::Int64
-  x::Matrix{T}
+  J::Int64
+  k::Matrix{T}
   m::Int
   σ::T
   reltol::T
@@ -25,7 +25,7 @@ end
 # constructors
 ################
 
-function FINUFFTPlan(x::Matrix{T}, N::NTuple{D,Int}; 
+function FINUFFTPlan(k::Matrix{T}, N::NTuple{D,Int}; 
               dims::Union{Integer,UnitRange{Int64}}=1:D,
               fftflags=UInt32(NFFT.FFTW.ESTIMATE), 
               kargs...) where {D,T}
@@ -34,14 +34,14 @@ function FINUFFTPlan(x::Matrix{T}, N::NTuple{D,Int};
   error("FINUFFT directional plans not yet implemented!")
   end
 
-  M = size(x,2)
+  J = size(k,2)
 
   m, σ, reltol = accuracyParams(; kargs...)
 
   reltol = max(reltol, 1.0e-15)
 
-  x_ = T.(2π) * x 
-  nodes = ntuple(d->vec(x_[d,:]), D)
+  k_ = T.(2π) * k 
+  nodes = ntuple(d->vec(k_[d,:]), D)
 
   planTrafo = FINUFFT.finufft_makeplan(2, collect(N), -1, 1, reltol;
                           nthreads = Threads.nthreads(), dtype=T,
@@ -55,7 +55,7 @@ function FINUFFTPlan(x::Matrix{T}, N::NTuple{D,Int};
 
   FINUFFT.finufft_setpts!(planAdjoint, nodes...)
 
-  p = FINUFFTPlan(N, M, x_, m, T(σ), T(reltol), fftflags, planTrafo, planAdjoint)
+  p = FINUFFTPlan(N, J, k_, m, T(σ), T(reltol), fftflags, planTrafo, planAdjoint)
 
   finalizer(p -> begin
     #println("Run FINUFFT finalizer")
@@ -72,12 +72,12 @@ function Base.show(io::IO, p::FINUFFTPlan)
 end
 
 AbstractNFFTs.size_in(p::FINUFFTPlan) = Int.(p.N)
-AbstractNFFTs.size_out(p::FINUFFTPlan) = (Int(p.M),)
+AbstractNFFTs.size_out(p::FINUFFTPlan) = (Int(p.J),)
 
-function AbstractNFFTs.plan_nfft(::Type{<:Array}, x::Matrix{T}, N::NTuple{D,Int}, rest...;
+function AbstractNFFTs.plan_nfft(::Type{<:Array}, k::Matrix{T}, N::NTuple{D,Int}, rest...;
                    timing::Union{Nothing,TimingStats} = nothing, kargs...) where {T,D}
   t = @elapsed begin
-    p = FINUFFTPlan(x, N, rest...; kargs...)
+    p = FINUFFTPlan(k, N, rest...; kargs...)
   end
   if timing != nothing
     timing.pre = t
@@ -106,8 +106,8 @@ end
 
 mutable struct FINNUFFTPlan{T} <: AbstractNNFFTPlan{T,1,1} 
   N::Int64
-  M::Int64
-  x::Matrix{T}
+  J::Int64
+  k::Matrix{T}
   y::Matrix{T}
   m::Int
   σ::T
@@ -115,21 +115,21 @@ mutable struct FINNUFFTPlan{T} <: AbstractNNFFTPlan{T,1,1}
   fftflags::UInt32
 end
 
-function FINNUFFTPlan(x::Matrix{T}, y::Matrix{T}; 
+function FINNUFFTPlan(k::Matrix{T}, y::Matrix{T}; 
   fftflags=UInt32(NFFT.FFTW.ESTIMATE), 
   kargs...) where {T}
 
   N = size(y,2)
-  M = size(x,2)
+  J = size(k,2)
 
   m, σ, reltol = accuracyParams(; kargs...)
 
   reltol = max(reltol, 1.0e-15)
 
-  x_ = 2π * x 
+  k_ = 2π * k 
   y_ = y 
 
-  p = FINNUFFTPlan(N, M, x_, y_, m, T(σ), reltol, fftflags)
+  p = FINNUFFTPlan(N, J, k_, y_, m, T(σ), reltol, fftflags)
 
   return p
 end
@@ -140,18 +140,18 @@ function Base.show(io::IO, p::FINNUFFTPlan)
 end
 
 AbstractNFFTs.size_in(p::FINNUFFTPlan) = (Int.(p.N),)
-AbstractNFFTs.size_out(p::FINNUFFTPlan) = (Int(p.M),)
+AbstractNFFTs.size_out(p::FINNUFFTPlan) = (Int(p.J),)
 
 function LinearAlgebra.mul!(fHat::StridedArray, p::FINNUFFTPlan{T}, f::AbstractArray;
  verbose=false, timing::Union{Nothing,TimingStats} = nothing) where {T}
 
-  D = size(p.x,1)
+  D = size(p.k,1)
 
   forwardPlan = FINUFFT.finufft_makeplan(3,D,-1,1,p.reltol;
                               nthreads = Threads.nthreads(), 
                               fftw = p.fftflags)
 
-  nodesX = ntuple(d->vec(p.x[d,:]), D)
+  nodesX = ntuple(d->vec(p.k[d,:]), D)
   nodesY = ntuple(d->vec(p.y[d,:]), D)
 
   if D==1
@@ -173,13 +173,13 @@ function LinearAlgebra.mul!(f::StridedArray, pl::Adjoint{Complex{T},<:FINNUFFTPl
          verbose=false, timing::Union{Nothing,TimingStats} = nothing) where {T}
   p = pl.parent
 
-  D = size(p.x,1)       
+  D = size(p.k,1)       
 
   adjointPlan = FINUFFT.finufft_makeplan(3,D,1,1,p.reltol;
               nthreads = Threads.nthreads(), 
               fftw = p.fftflags)
 
-  nodesX = ntuple(d->vec(p.x[d,:]), D)
+  nodesX = ntuple(d->vec(p.k[d,:]), D)
   nodesY = ntuple(d->vec(p.y[d,:]), D)
 
   if D==1

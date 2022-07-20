@@ -17,7 +17,7 @@ end
 # constructors
 ################
 
-function NFFT3Plan(x::Matrix{T}, N::NTuple{D,Int}; 
+function NFFT3Plan(k::Matrix{T}, N::NTuple{D,Int}; 
               dims::Union{Integer,UnitRange{Int64}}=1:D,
               precompute::PrecomputeFlags=TENSOR, sortNodes=false, 
               fftflags=UInt32(NFFT3.FFTW_ESTIMATE), 
@@ -54,17 +54,17 @@ function NFFT3Plan(x::Matrix{T}, N::NTuple{D,Int};
 
   f2 = UInt32(fftflags | NFFT3.FFTW_DESTROY_INPUT)
 
-  n = ntuple(d -> (ceil(Int,σ*N[d])÷2)*2, D) # ensure that n is an even integer 
+  Ñ = ntuple(d -> (ceil(Int,σ*N[d])÷2)*2, D) # ensure that n is an even integer 
 
-  parent = NFFT3.NFFT(Int32.(reverse(N)), size(x,2), Int32.(reverse(n)), Int32(m), f1, f2)
+  parent = NFFT3.NFFT(Int32.(reverse(N)), size(k,2), Int32.(reverse(Ñ)), Int32(m), f1, f2)
 
-  xx = Float64.(reverse(x, dims=1))
+  xx = Float64.(reverse(k, dims=1))
   parent.x = D == 1 ? vec(xx) : xx
 
   return NFFT3Plan{T,D}(parent)
 end
 
-function NFCT3Plan(x::Matrix{T}, N::NTuple{D,Int}; 
+function NFCT3Plan(k::Matrix{T}, N::NTuple{D,Int}; 
               dims::Union{Integer,UnitRange{Int64}}=1:D,
               precompute::PrecomputeFlags=TENSOR, sortNodes=false, 
               fftflags=UInt32(NFFT3.FFTW_ESTIMATE), 
@@ -101,17 +101,17 @@ function NFCT3Plan(x::Matrix{T}, N::NTuple{D,Int};
 
   f2 = UInt32(fftflags | NFFT3.FFTW_DESTROY_INPUT)
 
-  n = ntuple(d -> (ceil(Int,σ*N[d])÷2)*2, D) # ensure that n is an even integer 
+  Ñ = ntuple(d -> (ceil(Int,σ*N[d])÷2)*2, D) # ensure that n is an even integer 
 
-  parent = NFFT3.NFCT(Int32.(reverse(N)), size(x,2), Int32.(reverse(n)), Int32(m), f1, f2)
+  parent = NFFT3.NFCT(Int32.(reverse(N)), size(k,2), Int32.(reverse(Ñ)), Int32(m), f1, f2)
 
-  xx = Float64.(reverse(x, dims=1))
+  xx = Float64.(reverse(k, dims=1))
   parent.x = D == 1 ? vec(xx) : xx
 
   return NFCT3Plan{T,D}(parent)
 end
 
-function NFST3Plan(x::Matrix{T}, N::NTuple{D,Int}; 
+function NFST3Plan(k::Matrix{T}, N::NTuple{D,Int}; 
               dims::Union{Integer,UnitRange{Int64}}=1:D,
               precompute::PrecomputeFlags=TENSOR, sortNodes=false, 
               fftflags=UInt32(NFFT3.FFTW_ESTIMATE), 
@@ -148,11 +148,11 @@ function NFST3Plan(x::Matrix{T}, N::NTuple{D,Int};
 
   f2 = UInt32(fftflags | NFFT3.FFTW_DESTROY_INPUT)
 
-  n = ntuple(d -> (ceil(Int,σ*N[d])÷2)*2, D) # ensure that n is an even integer 
+  Ñ = ntuple(d -> (ceil(Int,σ*N[d])÷2)*2, D) # ensure that n is an even integer 
 
-  parent = NFFT3.NFST(Int32.(reverse(N)), size(x,2), Int32.(reverse(n)), Int32(m), f1, f2)
+  parent = NFFT3.NFST(Int32.(reverse(N)), size(k,2), Int32.(reverse(Ñ)), Int32(m), f1, f2)
 
-  xx = Float64.(reverse(x, dims=1))
+  xx = Float64.(reverse(k, dims=1))
 
   parent.x = D == 1 ? vec(xx) : xx
 
@@ -180,10 +180,10 @@ AbstractNFFTs.size_out(p::NFCT3Plan) = (Int(p.parent.M),)
 AbstractNFFTs.size_in(p::NFST3Plan) = reverse(Int.(p.parent.N .- 1))
 AbstractNFFTs.size_out(p::NFST3Plan) = (Int(p.parent.M),)
 
-function AbstractNFFTs.plan_nfft(::Type{<:Array}, x::Matrix{T}, N::NTuple{D,Int}, rest...;
+function AbstractNFFTs.plan_nfft(::Type{<:Array}, k::Matrix{T}, N::NTuple{D,Int}, rest...;
                    timing::Union{Nothing,TimingStats} = nothing, kargs...) where {T,D}
   t = @elapsed begin
-    p = NFFT3Plan(x, N, rest...; kargs...)
+    p = NFFT3Plan(k, N, rest...; kargs...)
   end
   if timing != nothing
     timing.pre = t
@@ -191,10 +191,10 @@ function AbstractNFFTs.plan_nfft(::Type{<:Array}, x::Matrix{T}, N::NTuple{D,Int}
   return p
 end
 
-function AbstractNFFTs.plan_nfct(::Type{<:Array}, x::Matrix{T}, N::NTuple{D,Int}, rest...;
+function AbstractNFFTs.plan_nfct(::Type{<:Array}, k::Matrix{T}, N::NTuple{D,Int}, rest...;
                    timing::Union{Nothing,TimingStats} = nothing, kargs...) where {T,D}
   t = @elapsed begin
-    p = NFCT3Plan(x, N, rest...; kargs...)
+    p = NFCT3Plan(k, N, rest...; kargs...)
   end
   if timing != nothing
     timing.pre = t
@@ -202,10 +202,10 @@ function AbstractNFFTs.plan_nfct(::Type{<:Array}, x::Matrix{T}, N::NTuple{D,Int}
   return p
 end
 
-function AbstractNFFTs.plan_nfst(::Type{<:Array}, x::Matrix{T}, N::NTuple{D,Int}, rest...;
+function AbstractNFFTs.plan_nfst(::Type{<:Array}, k::Matrix{T}, N::NTuple{D,Int}, rest...;
                    timing::Union{Nothing,TimingStats} = nothing, kargs...) where {T,D}
   t = @elapsed begin
-    p = NFST3Plan(x, N, rest...; kargs...)
+    p = NFST3Plan(k, N, rest...; kargs...)
   end
   if timing != nothing
     timing.pre = t

@@ -14,25 +14,25 @@ end
 
 ### node related util functions
 
-function shiftNodes!(x::Matrix{T}) where T
-  @cthreads for k=1:size(x,2)
-    for d=1:size(x,1)
-      if x[d,k] < zero(T)
-        x[d,k] += one(T)
+function shiftNodes!(k::Matrix{T}) where T
+  @cthreads for j=1:size(k,2)
+    for d=1:size(k,1)
+      if k[d,j] < zero(T)
+        k[d,j] += one(T)
       end
-      if x[d,k] == one(T) # We need to ensure that the nodes are within [0,1)
-        x[d,k] -= eps(T)
+      if k[d,j] == one(T) # We need to ensure that the nodes are within [0,1)
+        k[d,j] -= eps(T)
       end
     end
   end 
   return
 end
 
-function checkNodes(x::Matrix{T}) where T
-  @cthreads for k=1:size(x,2)
-    for d=1:size(x,1)
-      if !(abs(x[d,k]) <= 0.5)
-        throw(ArgumentError("Nodes x need to be within the range [-1/2, 1/2) but x[$d,$k] = $(x[d,k])!"))
+function checkNodes(k::Matrix{T}) where T
+  @cthreads for j=1:size(k,2)
+    for d=1:size(k,1)
+      if !(abs(k[d,j]) <= 0.5)
+        throw(ArgumentError("Nodes k need to be within the range [-1/2, 1/2) but k[$d,$k] = $(k[d,j])!"))
       end
     end
   end 
@@ -93,19 +93,19 @@ end
 ### Threaded sparse matrix vector multiplications ###
 
 # not yet threaded ...
-function threaded_mul!(y::AbstractVector, A::SparseMatrixCSC{Tv}, x::AbstractVector) where {Tv}
+function threaded_mul!(y::AbstractVector, A::SparseMatrixCSC{Tv}, k::AbstractVector) where {Tv}
   nzv = nonzeros(A)
   rv = rowvals(A)
   fill!(y, zero(Tv))
 
   @inbounds @simd for col in 1:size(A, 2)
-       _threaded_mul!(y, A, x, nzv, rv, col)
+       _threaded_mul!(y, A, k, nzv, rv, col)
   end
    y
 end
 
-@inline function _threaded_mul!(y, A::SparseMatrixCSC{Tv}, x, nzv, rv, col) where {Tv}
-  tmp = x[col] 
+@inline function _threaded_mul!(y, A::SparseMatrixCSC{Tv}, k, nzv, rv, col) where {Tv}
+  tmp = k[col] 
 
   @inbounds @simd for j in nzrange(A, col)
       y[rv[j]] += nzv[j]*tmp

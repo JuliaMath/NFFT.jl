@@ -2,7 +2,7 @@
 function sdc(p::AbstractNFFTPlan{T,D,1}; iters=20) where {T,D}
     # Weights for sample density compensation.
     # Uses method of Pipe & Menon, 1999. Mag Reson Med, 186, 179.
-    weights = ones(Complex{T}, p.M)
+    weights = ones(Complex{T}, p.J)
     weights_tmp = similar(weights)
 
     pre = p.params.precompute

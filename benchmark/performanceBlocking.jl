@@ -23,22 +23,22 @@ const Ds = 2
 function nfft_accuracy_comparison(Ds=1:3)
   println("\n\n ##### nfft_performance blocking ##### \n\n")
 
-  df = DataFrame(Package=String[], D=Int[], M=Int[], N=Int[], m = Int[], σ=Float64[],
+  df = DataFrame(Package=String[], D=Int[], J=Int[], N=Int[], m = Int[], σ=Float64[],
                    ErrorTrafo=Float64[], ErrorAdjoint=Float64[], 
                    TimeTrafo=Float64[], TimeAdjoint=Float64[] )  
 
   for D in Ds
     @info "### Dimension D=$D ###"
     N = ntuple(d->NBase[D], D)
-    M = prod(N)
+    J = prod(N)
     
-    x = rand(D,M) .- 0.5
-    fHat = randn(ComplexF64, M)
+    k = rand(D,J) .- 0.5
+    fHat = randn(ComplexF64, J)
     fApprox = randn(ComplexF64, N)
-    gHatApprox = randn(ComplexF64, M)
+    gHatApprox = randn(ComplexF64, J)
 
     # ground truth (numerical)
-    pNDFT = NDFTPlan(x, N)
+    pNDFT = NDFTPlan(k, N)
     f = adjoint(pNDFT) * fHat
     gHat = pNDFT * f
 
@@ -48,7 +48,7 @@ function nfft_accuracy_comparison(Ds=1:3)
 
         for pl = 1:length(packagesStr)
           planner = packagesCtor[pl]
-          p = planner(x, N; m, σ, precompute=precomp[pl], blocking=blocking[pl])
+          p = planner(k, N; m, σ, precompute=precomp[pl], blocking=blocking[pl])
 
           @info "Adjoint accuracy: $(packagesStr[pl])"
           mul!(fApprox, adjoint(p), fHat)
@@ -68,7 +68,7 @@ function nfft_accuracy_comparison(Ds=1:3)
           b = @benchmark mul!($gHatApprox, $p, $f)
           ttrafo = minimum(b).time / 1e9
 
-          push!(df, (packagesStr[pl], D, M, N[D], m, σ, etrafo, eadjoint, ttrafo, tadjoint))
+          push!(df, (packagesStr[pl], D, J, N[D], m, σ, etrafo, eadjoint, ttrafo, tadjoint))
 
         end
       end

@@ -8,15 +8,15 @@ ccall(("omp_set_num_threads",NFFT3.lib_path_nfft),Nothing,(Int64,),convert(Int64
 @info ccall(("nfft_get_num_threads",NFFT3.lib_path_nfft),Int64,())
 NFFT._use_threads[] = (Threads.nthreads() > 1)
 
-function nfft_performance_simple(;N = (1024,1024), M = prod(N), m = 4, 
+function nfft_performance_simple(;N = (1024,1024), J = prod(N), m = 4, 
   σ = 2.0, threading=false, pre=NFFT.LINEAR, T=Float64, blocking=true,
   storeDeconvolutionIdx=false, fftflags=NFFT.FFTW.MEASURE, ctor=NFFTPlan)
 
   timing = TimingStats()
-  x = T.(rand(length(N),M) .- 0.5)
-  x .= sortslices(x, dims=2) # sort nodes to gain cache locality
+  k = T.(rand(length(N),J) .- 0.5)
+  k .= sortslices(k, dims=2) # sort nodes to gain cache locality
   
-  fHat = randn(Complex{T}, M)
+  fHat = randn(Complex{T}, J)
   f = randn(Complex{T}, N)
 
   #=if ctor == CuNFFT.CuNFFTPlan
@@ -27,7 +27,7 @@ function nfft_performance_simple(;N = (1024,1024), M = prod(N), m = 4,
   NFFT._use_threads[] = threading
   NFFT.FFTW.set_num_threads( threading ? Threads.nthreads() : 1)
 
-  tpre = @elapsed p = ctor(x, N; m, σ, window=:kaiser_bessel, precompute=pre, 
+  tpre = @elapsed p = ctor(k, N; m, σ, window=:kaiser_bessel, precompute=pre, 
                             fftflags, storeDeconvolutionIdx, blocking)
 
   tadjoint = @elapsed mul!(f, adjoint(p), fHat; timing)

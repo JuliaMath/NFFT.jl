@@ -24,24 +24,24 @@ const fftflags = NFFT.FFTW.MEASURE
 function nfft_block_size_comparison(Ds=1:3, m = 4, σ = 2.0)
   println("\n\n ##### nfft_block_size_comparison ##### \n\n")
 
-  df = DataFrame(Package=String[], Threads=Int[], D=Int[], M=Int[], N=Int[], m = Int[], σ=Float64[],
+  df = DataFrame(Package=String[], Threads=Int[], D=Int[], J=Int[], N=Int[], m = Int[], σ=Float64[],
                    TimeTrafo=Float64[], TimeAdjoint=Float64[], blocking=Bool[], blockSizeBase=Int[] )  
 
   for D in Ds
     @info "### Dimension D=$D ###"
     N = ntuple(d->NBase[D], D)
-    M = prod(N)
+    J = prod(N)
     
-    x = rand(D,M) .- 0.5
-    fHat = randn(ComplexF64, M)
+    k = rand(D,J) .- 0.5
+    fHat = randn(ComplexF64, J)
     fApprox = randn(ComplexF64, N)
-    gHatApprox = randn(ComplexF64, M)
+    gHatApprox = randn(ComplexF64, J)
 
     for bl in blockSizeBase[D]
         @info "b=$(bl) D=$D"
 
           blockSize = ntuple(d-> bl, D)
-          p = NFFTPlan(x, N; m, σ, precompute=POLYNOMIAL, blocking=true, blockSize=blockSize, fftflags=fftflags)
+          p = NFFTPlan(k, N; m, σ, precompute=POLYNOMIAL, blocking=true, blockSize=blockSize, fftflags=fftflags)
 
           @info "Adjoint benchmark:"
           BenchmarkTools.DEFAULT_PARAMETERS.seconds = benchmarkTime[1] 
@@ -53,11 +53,11 @@ function nfft_block_size_comparison(Ds=1:3, m = 4, σ = 2.0)
           b = @benchmark mul!($gHatApprox, $p, $fApprox)
           ttrafo = minimum(b).time / 1e9
 
-          push!(df, ("NFFT.jl", Threads.nthreads(), D, M, N[D], m, σ, ttrafo, tadjoint, true, bl))
+          push!(df, ("NFFT.jl", Threads.nthreads(), D, J, N[D], m, σ, ttrafo, tadjoint, true, bl))
     end
 
     # non blocking
-    p = NFFTPlan(x, N; m, σ, precompute=POLYNOMIAL, blocking=false)
+    p = NFFTPlan(k, N; m, σ, precompute=POLYNOMIAL, blocking=false)
 
     @info "Adjoint benchmark:"
     BenchmarkTools.DEFAULT_PARAMETERS.seconds = benchmarkTime[1] 
@@ -69,7 +69,7 @@ function nfft_block_size_comparison(Ds=1:3, m = 4, σ = 2.0)
     b = @benchmark mul!($gHatApprox, $p, $fApprox)
     ttrafo = minimum(b).time / 1e9
 
-    push!(df, ("NFFT.jl", Threads.nthreads(), D, M, N[D], m, σ, ttrafo, tadjoint, false, 0))
+    push!(df, ("NFFT.jl", Threads.nthreads(), D, J, N[D], m, σ, ttrafo, tadjoint, false, 0))
   end
   return df
 end

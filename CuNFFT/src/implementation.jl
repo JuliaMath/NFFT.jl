@@ -1,9 +1,9 @@
 mutable struct CuNFFTPlan{T,D} <: AbstractNFFTPlan{T,D,1} 
   N::NTuple{D,Int64}
   NOut::NTuple{1,Int64}
-  M::Int64
-  x::Matrix{T}
-  n::NTuple{D,Int64}
+  J::Int64
+  k::Matrix{T}
+  Ñ::NTuple{D,Int64}
   dims::UnitRange{Int64}
   params::NFFTParams{T}
   forwardFFT::CUDA.CUFFT.cCuFFTPlan{Complex{T},-1,true,D}
@@ -16,10 +16,10 @@ mutable struct CuNFFTPlan{T,D} <: AbstractNFFTPlan{T,D,1}
   B::CuSparseMatrixCSC{Complex{T}} # ::SparseMatrixCSC{T,Int64}
 end
 
-function AbstractNFFTs.plan_nfft(::Type{<:CuArray}, x::Matrix{T}, N::NTuple{D,Int}, rest...;
+function AbstractNFFTs.plan_nfft(::Type{<:CuArray}, k::Matrix{T}, N::NTuple{D,Int}, rest...;
   timing::Union{Nothing,TimingStats} = nothing, kargs...) where {T,D}
   t = @elapsed begin
-    p = CuNFFTPlan(x, N, rest...; kargs...)
+    p = CuNFFTPlan(k, N, rest...; kargs...)
   end
   if timing != nothing
     timing.pre = t
@@ -27,18 +27,18 @@ function AbstractNFFTs.plan_nfft(::Type{<:CuArray}, x::Matrix{T}, N::NTuple{D,In
   return p
 end
 
-function CuNFFTPlan(x::Matrix{T}, N::NTuple{D,Int}; dims::Union{Integer,UnitRange{Int64}}=1:D,
+function CuNFFTPlan(k::Matrix{T}, N::NTuple{D,Int}; dims::Union{Integer,UnitRange{Int64}}=1:D,
                  fftflags=nothing, kwargs...) where {T,D}
 
     if dims != 1:D
       error("CuNFFT does not work along directions right now!")
     end
 
-    params, N, NOut, M, n, dims_ = NFFT.initParams(x, N, dims; kwargs...)
+    params, N, NOut, J, Ñ, dims_ = NFFT.initParams(k, N, dims; kwargs...)
     params.storeDeconvolutionIdx = true # CuNFFT only works this way
     params.precompute = NFFT.FULL # CuNFFT only works this way
 
-    tmpVec = CuArray{Complex{T},D}(undef, n)
+    tmpVec = CuArray{Complex{T},D}(undef, Ñ)
 
     #fftflags_ = (fftflags != nothing) ? (flags=fftflags,) : NamedTuple()
     #FP = plan_fft!(tmpVec, dims_; fftflags_...)
@@ -46,7 +46,7 @@ function CuNFFTPlan(x::Matrix{T}, N::NTuple{D,Int}; dims::Union{Integer,UnitRang
     FP = plan_fft!(tmpVec, dims_)
     BP = plan_bfft!(tmpVec, dims_)
 
-    windowLinInterp, windowPolyInterp, windowHatInvLUT, deconvolveIdx, B = NFFT.precomputation(x, N[dims_], n[dims_], params)
+    windowLinInterp, windowPolyInterp, windowHatInvLUT, deconvolveIdx, B = NFFT.precomputation(k, N[dims_], Ñ[dims_], params)
 
     U = params.storeDeconvolutionIdx ? N : ntuple(d->0,D)
     tmpVecHat = CuArray{Complex{T},D}(undef, U)
@@ -55,7 +55,7 @@ function CuNFFTPlan(x::Matrix{T}, N::NTuple{D,Int}; dims::Union{Integer,UnitRang
     winHatInvLUT = CuArray(Complex{T}.(windowHatInvLUT[1])) 
     B_ = CuSparseMatrixCSC(Complex{T}.(B))
 
-    CuNFFTPlan{T,D}(N, NOut, M, x, n, dims_, params, FP, BP, tmpVec, tmpVecHat, 
+    CuNFFTPlan{T,D}(N, NOut, J, k, Ñ, dims_, params, FP, BP, tmpVec, tmpVecHat, 
                deconvIdx, windowLinInterp, winHatInvLUT, B_)
 end
 

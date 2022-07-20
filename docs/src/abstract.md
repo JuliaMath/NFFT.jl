@@ -1,19 +1,19 @@
 # Abstract Interface for NFFTs
 
-The package `AbstractNFFTs` provides the abstract interface for NFFT implementations. Defining an abstract interface has the advantage that different implementation can exist and be exchanged with 
-close to zero effort on the user side.
+The package `AbstractNFFTs` provides the abstract interface for NFFT implementations. Defining an abstract interface has the advantage that different implementations can be used and exchanging requires 
+close to zero effort.
 
 An overview about the current packages and their dependencies is shown in the following package tree:
 
-![Performance Multi-threaded](./assets/NFFTPackages.svg)
+![NFFT.jl package family structure](./assets/NFFTPackages.svg)
 
 ## Implementations
 
-Right now there are three implementations:
-1. **NFFT.jl**: This is the reference implementation running und the cpu.
+Right now there are four implementations:
+1. **NFFT.jl**: This is the reference implementation running und the CPU.
 2. **CuNFFT.jl**: An implementation running on graphics hardware of Nvidia exploiting CUDA.jl
-3. **NFFT3.jl**: In the `Wrapper` directory of `NFFT.jl` there is a wrapper around the NFFT3.jl package following the  `AbstractNFFTs` interface. `NFFT3.jl` is itself a wrapper around the high performance C library [nfft3](http://www.nfft.org).
-3. **FINUFFT.jl**: In the `Wrapper` directory of `NFFT.jl` there is a wrapper around the FINUFFT.jl package. `FINUFFT.jl` is itself a wrapper around the high performance C++ library [FINUFFT](https://finufft.readthedocs.io).
+3. **NFFT3.jl**: In the `Wrapper` directory of `NFFT.jl` there is a wrapper around the `NFFT3.jl` package following the  `AbstractNFFTs` interface. `NFFT3.jl` is itself a wrapper around the high performance C library [NFFT3](http://www.nfft.org).
+3. **FINUFFT.jl**: In the `Wrapper` directory of `NFFT.jl` there is a wrapper around the `FINUFFT.jl` package. `FINUFFT.jl` is itself a wrapper around the high performance C++ library [FINUFFT](https://finufft.readthedocs.io).
 
 ## Interface
 
@@ -36,7 +36,7 @@ size_out(p)
 size_out(p)
 mul!(fHat, p, f) -> fHat
 mul!(f, p::Adjoint{Complex{T},<:AbstractNFFTPlan{T}}, fHat) -> f
-nodes!(p, x) -> p
+nodes!(p, k) -> p
 ```
 All these functions are exported from `AbstractNFFTs` and we recommend to implement them by using the explicit `AbstractNFFTs.` prefix:
 
@@ -76,15 +76,15 @@ The transformation is applied along `D-R+1` dimensions specified in the plan `p`
 Both `f` and `fHat` must be complex arrays of element type `Complex{T}`.
 
 ```julia
-    nodes!(p, x)
+    nodes!(p, k)
 ```
-Change nodes `x` in the plan `p` operation and return the plan. The implementation of this function is optional.
+Change nodes `k` in the plan `p` operation and return the plan. The implementation of this function is optional.
 
 ## Plan Interface
 
 The constructor for an plan also has a defined interface. It should be implemented in this way:
 ```
-function MyNFFTPlan(x::Matrix{T}, N::NTuple{D,Int}; kwargs...) where {T,D}
+function MyNFFTPlan(k::Matrix{T}, N::NTuple{D,Int}; kwargs...) where {T,D}
   ...
 end
 ```
@@ -92,13 +92,13 @@ All parameters are put into keyword arguments that have to match as well. We des
 
 Additionally, to the constructor an `AbstractNFFTPlan` implementation can provide the factory
 ```
-plan_nfft(Q::Type, x::Matrix{T}, N::NTuple{D,Int}; kwargs...) where {D}
+plan_nfft(Q::Type, k::Matrix{T}, N::NTuple{D,Int}; kwargs...) where {D}
 ```
 where `Q` is the Array type, e.g. `Array`. The reason to require the array type is, that this allows for GPU implementations, which would use for instance `CuArray` here.
 
 The package `AbstractNFFTs` provides a convenient constructor
 ```
-plan_nfft(x::Matrix{T}, N::NTuple{D,Int}; kwargs...) where {D}
+plan_nfft(k::Matrix{T}, N::NTuple{D,Int}; kwargs...) where {D}
 ```
 defaulting to the `Array` type.
 
@@ -121,8 +121,8 @@ The following two functions allocate a fresh output vector an operate out of pla
 
 ...The NFFT can also be considered as a matrix vector multiplication. Julia provides the interface
 ```julia
-  *(A, x) -> b
-  mul!(b, A, x) -> b
+  *(A, k) -> b
+  mul!(b, A, k) -> b
 ```
 for this. Both operations are implemented for any `AbstractNFFTPlan`. To obtain the adjoint on
 needs to apply `adjoint(p)` to the plan `p` before multiplication.
@@ -132,8 +132,8 @@ needs to apply `adjoint(p)` to the plan `p` before multiplication.
 
 The following two functions perform an NFFT without a preallocated plan:
 ```julia
-nfft(x, f) -> fHat
-nfft_adjoint(x, N, fHat) -> f
+nfft(k, f) -> fHat
+nfft_adjoint(k, N, fHat) -> f
 ```
 Note that `N` needs only be specified for the adjoint. The direct NFFT can derive it from `f`.
 

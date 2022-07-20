@@ -39,14 +39,14 @@ include("precomputation.jl")
 #################
 
 """
-        plan_nfft(x::Matrix{T}, N::NTuple{D,Int}, rest...;  kargs...)
+        plan_nfft(k::Matrix{T}, N::NTuple{D,Int}, rest...;  kargs...)
 
-compute a plan for the NFFT of a size-`N` array at the nodes contained in `x`.
+compute a plan for the NFFT of a size-`N` array at the nodes contained in `k`.
 """
-function AbstractNFFTs.plan_nfft(::Type{<:Array}, x::Matrix{T}, N::NTuple{D,Int}, rest...;
+function AbstractNFFTs.plan_nfft(::Type{<:Array}, k::Matrix{T}, N::NTuple{D,Int}, rest...;
                    timing::Union{Nothing,TimingStats} = nothing, kargs...) where {T,D}
   t = @elapsed begin
-    p = NFFTPlan(x, N, rest...; kargs...)
+    p = NFFTPlan(k, N, rest...; kargs...)
   end
   if timing != nothing
     timing.pre = t

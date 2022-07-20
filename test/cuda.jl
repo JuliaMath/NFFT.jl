@@ -13,14 +13,14 @@ if CuNFFT.CUDA.functional()
             D = length(N)
             @info "Testing CuNFFT in $D dimensions using $window window"
 
-            M = prod(N)
-            x = rand(Float64,D,M) .- 0.5
-            p = plan_nfft(Array, x, N; m, σ, window, precompute = NFFT.FULL,
+            J = prod(N)
+            k = rand(Float64,D,J) .- 0.5
+            p = plan_nfft(Array, k, N; m, σ, window, precompute = NFFT.FULL,
                          fftflags = FFTW.ESTIMATE)
-            p_d = plan_nfft(CuArray, x, N; m, σ, window, precompute = NFFT.FULL)
-            pNDFT = NDFTPlan(x, N)
+            p_d = plan_nfft(CuArray, k, N; m, σ, window, precompute = NFFT.FULL)
+            pNDFT = NDFTPlan(k, N)
 
-            fHat = rand(Float64,M) + rand(Float64,M)*im
+            fHat = rand(Float64,J) + rand(Float64,J)*im
             f = adjoint(pNDFT) * fHat
             fHat_d = CuArray(fHat)
             fApprox_d = adjoint(p_d) * fHat_d

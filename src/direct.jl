@@ -1,97 +1,97 @@
 
 mutable struct NDFTPlan{T,D} <: AbstractNFFTPlan{T,D,1}
   N::NTuple{D,Int64}
-  M::Int64
-  x::Matrix{T}
+  J::Int64
+  k::Matrix{T}
 end
 
 AbstractNFFTs.size_in(p::NDFTPlan) = p.N
-AbstractNFFTs.size_out(p::NDFTPlan) = (p.M,)
+AbstractNFFTs.size_out(p::NDFTPlan) = (p.J,)
 
 mutable struct NDCTPlan{T,D} <: AbstractNFCTPlan{T,D,1}
   N::NTuple{D,Int64}
-  M::Int64
-  x::Matrix{T}
+  J::Int64
+  k::Matrix{T}
 end
 
 AbstractNFFTs.size_in(p::NDCTPlan) = p.N
-AbstractNFFTs.size_out(p::NDCTPlan) = (p.M,)
+AbstractNFFTs.size_out(p::NDCTPlan) = (p.J,)
 
 mutable struct NDSTPlan{T,D} <: AbstractNFSTPlan{T,D,1}
   N::NTuple{D,Int64}
-  M::Int64
-  x::Matrix{T}
+  J::Int64
+  k::Matrix{T}
 end
 
 AbstractNFFTs.size_in(p::NDSTPlan) = p.N .- 1
-AbstractNFFTs.size_out(p::NDSTPlan) = (p.M,)
+AbstractNFFTs.size_out(p::NDSTPlan) = (p.J,)
 
 mutable struct NNDFTPlan{T} <: AbstractNNFFTPlan{T,1,1}
   N::Int64
-  M::Int64
-  x::Matrix{T}
+  J::Int64
+  k::Matrix{T}
   y::Matrix{T}
 end
 
 AbstractNFFTs.size_in(p::NNDFTPlan) = (p.N,)
-AbstractNFFTs.size_out(p::NNDFTPlan) = (p.M,)
+AbstractNFFTs.size_out(p::NNDFTPlan) = (p.J,)
 
 ### constructors ###
 
-function NDFTPlan(x::Matrix{T}, N::NTuple{D,Int}; kwargs...) where {T,D}
+function NDFTPlan(k::Matrix{T}, N::NTuple{D,Int}; kwargs...) where {T,D}
 
-  if D != size(x,1)
-    throw(ArgumentError("Nodes x have dimension $(size(x,1)) != $D"))
+  if D != size(k,1)
+    throw(ArgumentError("Nodes x have dimension $(size(k,1)) != $D"))
   end
 
-  M = size(x, 2)
+  J = size(k, 2)
 
-  return NDFTPlan{T,D}(N, M, x)
+  return NDFTPlan{T,D}(N, J, k)
 end
 
-function NDCTPlan(x::Matrix{T}, N::NTuple{D,Int}; kwargs...) where {T,D}
+function NDCTPlan(k::Matrix{T}, N::NTuple{D,Int}; kwargs...) where {T,D}
 
-  if D != size(x,1)
-    throw(ArgumentError("Nodes x have dimension $(size(x,1)) != $D"))
+  if D != size(k,1)
+    throw(ArgumentError("Nodes x have dimension $(size(k,1)) != $D"))
   end
 
-  M = size(x, 2)
+  J = size(k, 2)
 
-  return NDCTPlan{T,D}(N, M, x)
+  return NDCTPlan{T,D}(N, J, k)
 end
 
-function NDSTPlan(x::Matrix{T}, N::NTuple{D,Int}; kwargs...) where {T,D}
+function NDSTPlan(k::Matrix{T}, N::NTuple{D,Int}; kwargs...) where {T,D}
 
-  if D != size(x,1)
-    throw(ArgumentError("Nodes x have dimension $(size(x,1)) != $D"))
+  if D != size(k,1)
+    throw(ArgumentError("Nodes x have dimension $(size(k,1)) != $D"))
   end
 
-  M = size(x, 2)
+  J = size(k, 2)
 
-  return NDSTPlan{T,D}(N, M, x)
+  return NDSTPlan{T,D}(N, J, k)
 end
 
-function NNDFTPlan(x::Matrix{T}, y::Matrix{T}; kwargs...) where {T}
+function NNDFTPlan(k::Matrix{T}, y::Matrix{T}; kwargs...) where {T}
 
-  M = size(x, 2)
+  J = size(k, 2)
   N = size(y, 2)
 
-  return NNDFTPlan{T}(N, M, x, y)
+  return NNDFTPlan{T}(N, J, k, y)
 end
 
 ### ndft functions ###
 
-ndft(x::AbstractArray, f::AbstractArray; kargs...) =
-    NDFTPlan(x, size(f); kargs...) * f
+ndft(k::AbstractArray, f::AbstractArray; kargs...) =
+    NDFTPlan(k, size(f); kargs...) * f
 
-ndft_adjoint(x, N, fHat::AbstractVector; kargs...) =
-    adjoint(NDFTPlan(x, N; kargs...)) * fHat
+ndft_adjoint(k, N, fHat::AbstractVector; kargs...) =
+    adjoint(NDFTPlan(k, N; kargs...)) * fHat
 
-ndct(x::AbstractArray, f::AbstractArray; kargs...) =
-    NDCTPlan(x, size(f); kargs...) * f
+ndct(k::AbstractArray, f::AbstractArray; kargs...) =
+    NDCTPlan(k, size(f); kargs...) * f
 
-ndct_transposed(x, N, fHat::AbstractVector; kargs...) =
-    transpose(NDCTPlan(x, N; kargs...)) * fHat
+ndct_transposed(k, N, fHat::AbstractVector; kargs...) =
+    transpose(NDCTPlan(k, N; kargs...)) * fHat
 
 
 
@@ -100,7 +100,7 @@ function LinearAlgebra.mul!(g::AbstractArray{Tg}, plan::NDFTPlan{Tp,D}, f::Abstr
 
     plan.N == size(f) ||
         throw(DimensionMismatch("Data f is not consistent with NDFTPlan"))
-    plan.M == length(g) ||
+    plan.J== length(g) ||
         throw(DimensionMismatch("Output g is inconsistent with NDFTPlan"))
 
     g .= zero(Tg)
@@ -108,12 +108,12 @@ function LinearAlgebra.mul!(g::AbstractArray{Tg}, plan::NDFTPlan{Tp,D}, f::Abstr
     for l=1:prod(plan.N)
         idx = CartesianIndices(plan.N)[l]
 
-        for k=1:plan.M
+        for j=1:plan.J
             arg = zero(T)
             for d=1:D
-                arg += plan.x[d,k] * ( idx[d] - 1 - plan.N[d] / 2 )
+                arg += plan.k[d,j] * ( idx[d] - 1 - plan.N[d] / 2 )
             end
-            g[k] += f[l] * cis(-2*pi*arg)
+            g[j] += f[l] * cis(-2*pi*arg)
         end
     end
 
@@ -124,7 +124,7 @@ end
 function LinearAlgebra.mul!(g::AbstractArray{Tg,D}, pl::Adjoint{Complex{Tp},<:NDFTPlan{Tp,D}}, fHat::AbstractVector{T}) where {D,Tp,T,Tg}
   p = pl.parent
 
-  p.M == length(fHat) ||
+  p.J== length(fHat) ||
       throw(DimensionMismatch("Data f inconsistent with NDFTPlan"))
   p.N == size(g) ||
       throw(DimensionMismatch("Output g inconsistent with NDFTPlan"))
@@ -134,12 +134,12 @@ function LinearAlgebra.mul!(g::AbstractArray{Tg,D}, pl::Adjoint{Complex{Tp},<:ND
   for l=1:prod(p.N)
       idx = CartesianIndices(p.N)[l]
 
-      for k=1:p.M
+      for j=1:p.J
           arg = zero(T)
           for d=1:D
-              arg += p.x[d,k] * ( idx[d] - 1 - p.N[d] / 2 )
+              arg += p.k[d,j] * ( idx[d] - 1 - p.N[d] / 2 )
           end
-          g[l] += fHat[k] * cis(2*pi*arg)
+          g[l] += fHat[j] * cis(2*pi*arg)
       end
   end
 
@@ -150,7 +150,7 @@ function LinearAlgebra.mul!(g::AbstractArray{Tg}, p::NDCTPlan{Tp,D}, f::Abstract
 
     p.N == size(f) ||
         throw(DimensionMismatch("Data f is not consistent with NDCTPlan"))
-    p.M == length(g) ||
+    p.J== length(g) ||
         throw(DimensionMismatch("Output g is inconsistent with NDCTPlan"))
 
     g .= zero(Tg)
@@ -158,12 +158,12 @@ function LinearAlgebra.mul!(g::AbstractArray{Tg}, p::NDCTPlan{Tp,D}, f::Abstract
     for l=1:prod(p.N)
         idx = CartesianIndices(p.N)[l]
 
-        for k=1:p.M
+        for j=1:p.J
             arg = one(T)
             for d=1:D
-                arg *= cos( 2 * pi * p.x[d,k] * ( idx[d] - 1 ) )
+                arg *= cos( 2 * pi * p.k[d,j] * ( idx[d] - 1 ) )
             end
-            g[k] += f[l] * arg
+            g[j] += f[l] * arg
         end
     end
 
@@ -174,7 +174,7 @@ end
 function LinearAlgebra.mul!(g::AbstractArray{Tg,D}, pl::Transpose{Tp,<:NDCTPlan{Tp,D}}, fHat::AbstractVector{T}) where {D,Tp,T,Tg}
   p = pl.parent
 
-  p.M == length(fHat) ||
+  p.J== length(fHat) ||
       throw(DimensionMismatch("Data f inconsistent with NDCTPlan"))
   p.N == size(g) ||
       throw(DimensionMismatch("Output g inconsistent with NDCTPlan"))
@@ -184,12 +184,12 @@ function LinearAlgebra.mul!(g::AbstractArray{Tg,D}, pl::Transpose{Tp,<:NDCTPlan{
   for l=1:prod(p.N)
       idx = CartesianIndices(p.N)[l]
 
-      for k=1:p.M
+      for j=1:p.J
           arg = one(T)
           for d=1:D
-              arg *= cos( 2 * pi * p.x[d,k] * ( idx[d] - 1 ) )
+              arg *= cos( 2 * pi * p.k[d,j] * ( idx[d] - 1 ) )
           end
-          g[l] += fHat[k] * arg
+          g[l] += fHat[j] * arg
       end
   end
 
@@ -201,7 +201,7 @@ function LinearAlgebra.mul!(g::AbstractArray{Tg}, p::NDSTPlan{Tp,D}, f::Abstract
 
     p.N == size(f) .+ 1 ||
         throw(DimensionMismatch("Data f is not consistent with NDSTPlan"))
-    p.M == length(g) ||
+    p.J== length(g) ||
         throw(DimensionMismatch("Output g is inconsistent with NDSTPlan"))
 
     g .= zero(Tg)
@@ -209,12 +209,12 @@ function LinearAlgebra.mul!(g::AbstractArray{Tg}, p::NDSTPlan{Tp,D}, f::Abstract
     for l=1:prod(p.N .- 1)
         idx = CartesianIndices(p.N .- 1)[l]
 
-        for k=1:p.M
+        for j=1:p.J
             arg = one(T)
             for d=1:D
-                arg *= sin( 2 * pi * p.x[d,k] * ( idx[d] ) )
+                arg *= sin( 2 * pi * p.k[d,j] * ( idx[d] ) )
             end
-            g[k] += f[l] * arg
+            g[j] += f[l] * arg
         end
     end
 
@@ -225,7 +225,7 @@ end
 function LinearAlgebra.mul!(g::AbstractArray{Tg,D}, pl::Transpose{Tp,<:NDSTPlan{Tp,D}}, fHat::AbstractVector{T}) where {D,Tp,T,Tg}
   p = pl.parent
 
-  p.M == length(fHat) ||
+  p.J== length(fHat) ||
       throw(DimensionMismatch("Data f inconsistent with NDSTPlan"))
   p.N == size(g) .+ 1 ||
       throw(DimensionMismatch("Output g inconsistent with NDSTPlan"))
@@ -235,12 +235,12 @@ function LinearAlgebra.mul!(g::AbstractArray{Tg,D}, pl::Transpose{Tp,<:NDSTPlan{
   for l=1:prod(p.N .- 1)
       idx = CartesianIndices(p.N .- 1)[l]
 
-      for k=1:p.M
+      for j=1:p.J
           arg = one(T)
           for d=1:D
-              arg *= sin( 2 * pi * p.x[d,k] * ( idx[d] ) )
+              arg *= sin( 2 * pi * p.k[d,j] * ( idx[d] ) )
           end
-          g[l] += fHat[k] * arg
+          g[l] += fHat[j] * arg
       end
   end
 
@@ -253,12 +253,12 @@ function LinearAlgebra.mul!(g::AbstractArray{Tg}, p::NNDFTPlan{Tp}, f::AbstractA
   g .= zero(Tg)
 
   for l=1:p.N
-      for k=1:p.M
+      for j=1:p.J
           arg = zero(T)
-          for d=1:size(p.x,1)
-              arg += p.x[d,k] * p.y[d,l]
+          for d=1:size(p.k,1)
+              arg += p.k[d,j] * p.y[d,l]
           end
-          g[k] += f[l] * cis(-2*pi*arg)
+          g[j] += f[l] * cis(-2*pi*arg)
       end
   end
 
@@ -270,12 +270,12 @@ function LinearAlgebra.mul!(g::AbstractArray{Tg}, pl::Adjoint{Complex{Tp},<:NNDF
   g .= zero(Tg)
 
   for l=1:p.N
-      for k=1:p.M
+      for j=1:p.J
           arg = zero(T)
-          for d=1:size(p.x,1)
-            arg += p.x[d,k] * p.y[d,l]
+          for d=1:size(p.k,1)
+            arg += p.k[d,j] * p.y[d,l]
           end
-          g[l] += fHat[k] * cis(2*pi*arg)
+          g[l] += fHat[j] * cis(2*pi*arg)
       end
   end
 

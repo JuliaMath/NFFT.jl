@@ -6,5 +6,10 @@ benchmark/*.png
 benchmark/*.csv
 benchmark/paper/data/*.csv
 benchmark/paper/img/*.pdf
-settings.json
+benchmark/data/*.csv
+benchmark/data/*.dat
+benchmark/img/*.pdf
+benchmark/img/*.svg
+benchmark/data/
+benchmark/img/
 Manifest.toml

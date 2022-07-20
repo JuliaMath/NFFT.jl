@@ -10,12 +10,12 @@ include("../Wrappers/FINUFFT.jl")
     D = length(N)
     @info "Testing in $D dimensions"
 
-    M = prod(N)
-    x = rand(Float64,D,M) .- 0.5
-    p = FINUFFTPlan(x, N) #; m, σ, precompute = pre, fftflags = FFTW.ESTIMATE)
-    pNDFT = NDFTPlan(x, N)
+    J = prod(N)
+    k = rand(Float64,D,J) .- 0.5
+    p = FINUFFTPlan(k, N) #; m, σ, precompute = pre, fftflags = FFTW.ESTIMATE)
+    pNDFT = NDFTPlan(k, N)
 
-    fHat = rand(Float64,M) + rand(Float64,M)*im
+    fHat = rand(Float64,J) + rand(Float64,J)*im
     f = adjoint(pNDFT) * fHat
     fApprox = adjoint(p) * fHat
 
@@ -40,14 +40,14 @@ end
     eps = 1e-7
     D = N[2]
 
-    M = N[1]
-    x = rand(Float64,D,M) .- 0.5
+    J =N[1]
+    k = rand(Float64,D,J) .- 0.5
     y = (rand(Float64,D,N[1]) .- 0.5) .* 10
 
-    p = FINNUFFTPlan(x, y) 
-    pNNDFT = NNDFTPlan(x, y)
+    p = FINNUFFTPlan(k, y) 
+    pNNDFT = NNDFTPlan(k, y)
 
-    fHat = rand(Float64,M) + rand(Float64,M)*im
+    fHat = rand(Float64,J) + rand(Float64,J)*im
     f = adjoint(pNNDFT) * fHat
     fApprox = adjoint(p) * fHat
 
@@ -85,13 +85,13 @@ include("../Wrappers/NFFT3.jl")
       D = length(N)
       @info "Testing in $D dimensions"
 
-      M = prod(N)
-      x = rand(Float64,D,M) .- 0.5
-      p = NFFT3Plan(x, N; m, σ, precompute = pre,
+      J = prod(N)
+      k = rand(Float64,D,J) .- 0.5
+      p = NFFT3Plan(k, N; m, σ, precompute = pre,
                     fftflags = FFTW.ESTIMATE)
-      pNDFT = NDFTPlan(x, N)
+      pNDFT = NDFTPlan(k, N)
 
-      fHat = rand(Float64,M) + rand(Float64,M)*im
+      fHat = rand(Float64,J) + rand(Float64,J)*im
       f = adjoint(pNDFT) * fHat
       fApprox = adjoint(p) * fHat
       e = norm(f[:] - fApprox[:]) / norm(f[:])
@@ -120,12 +120,12 @@ end
     D = length(N)
     @info "Testing in $D dimensions"
 
-    M = prod(N)
-    x = 0.5.*rand(Float64,D,M) 
-    p = NFCT3Plan(x, N; m, σ)
-    pNDCT = NDCTPlan(x, N)
+    J = prod(N)
+    k =0.5.*rand(Float64,D,J) 
+    p = NFCT3Plan(k, N; m, σ)
+    pNDCT = NDCTPlan(k, N)
 
-    fHat = rand(Float64,M) 
+    fHat = rand(Float64,J) 
     f = transpose(pNDCT) * fHat
     fApprox = transpose(p) * fHat
     e = norm(f[:] - fApprox[:]) / norm(f[:])
@@ -152,12 +152,12 @@ end
     D = length(N)
     @info "Testing in $D dimensions"
 
-    M = prod(N)
-    x = 0.5.*rand(Float64,D,M) 
-    p = NFST3Plan(x, N .+ 1; m, σ)
-    pNDST = NDSTPlan(x, N .+ 1)
+    J = prod(N)
+    k =0.5.*rand(Float64,D,J) 
+    p = NFST3Plan(k, N .+ 1; m, σ)
+    pNDST = NDSTPlan(k, N .+ 1)
 
-    fHat = rand(Float64,M) 
+    fHat = rand(Float64,J) 
     f = transpose(pNDST) * fHat
     fApprox = transpose(p) * fHat
     e = norm(f[:] - fApprox[:]) / norm(f[:])

@@ -5,16 +5,17 @@
 ## Introduction
 
 This package provides a Julia implementation of the Non-equidistant Fast Fourier Transform (NFFT).
-For a detailed introduction into the NFFT and its application please have a look at [www.nfft.org](http://www.nfft.org).
+For a detailed introduction into the NFFT and its application please have a look at the [software paper](http://LinkToArXiv.com) on the `NFFT.jl`. Further resources are [nfft.org](http://www.nfft.org) and [finufft.readthedocs.io](https://finufft.readthedocs.io).
 
 The NFFT is a fast implementation of the Non-equidistant Discrete Fourier Transform (NDFT) that is
-basically a DFT with non-equidistant sampling nodes in either Fourier or time/space domain.
-In contrast to the FFT, the NFFT is an approximative algorithm whereas the accuracy can be controlled
-by two parameters: the window width `m` and the oversampling factor `σ`.
+basically a Discrete Fourier Transform (DFT) with non-equidistant sampling nodes in either Fourier or time/space domain.
+In contrast to the Fast Fourier Transform (FFT), the NFFT is an approximative algorithm whereas the accuracy can be controlled
+by two parameters: the window width parameter `m` and the oversampling factor `σ`.
 
 The `NFFT.jl` project serves two different purposes:
 * Provide a package `AbstractNFFTs.jl` that allows to use any NFFT Julia package such as [NFFT3.jl](https://github.com/NFFT/NFFT3.jl) or [FINUFFT.jl](https://github.com/ludvigak/FINUFFT.jl) using the same interface
-* Provide a high-performance, parallel reference implementation in pure Julia.
+* Provide a high-performance, multi-threaded reference implementation in pure Julia. This is realized in the Julia package `NFFT.jl`.
+The term `NFFT.jl` thus may either mean the entire Github project consisting of several packages or the concrete reference implementation.
 
 ## Installation
 

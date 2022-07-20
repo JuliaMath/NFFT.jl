@@ -21,16 +21,16 @@ end
 function _convolve_nonblocking!(p::NFFTPlan, g, fHat, L, winPoly)
   scale = Int(p.params.LUTSize/(p.params.m))
 
-  @cthreads for k in 1:p.M
-      fHat[k] = _convolve_nonblocking(p, g, L, winPoly, scale, k)
+  @cthreads for j in 1:p.J
+      fHat[j] = _convolve_nonblocking(p, g, L, winPoly, scale, j)
   end
 end
 
 
-@generated function _convolve_nonblocking(p::NFFTPlan{T,D,1}, g::AbstractArray{Complex{T},D}, L::Val{Z}, winPoly, scale, k) where {D,T,Z}
+@generated function _convolve_nonblocking(p::NFFTPlan{T,D,1}, g::AbstractArray{Complex{T},D}, L::Val{Z}, winPoly, scale, j) where {D,T,Z}
   quote
-    @nexprs $(D) d -> ((tmpIdx_d, tmpWin_d) = precomputeOneNode(p.windowLinInterp, winPoly, p.x, p.n, 
-                                                 p.params.m, p.params.σ, scale, k, d, L, p.params.LUTSize)  )
+    @nexprs $(D) d -> ((tmpIdx_d, tmpWin_d) = precomputeOneNode(p.windowLinInterp, winPoly, p.k, p.Ñ, 
+                                                 p.params.m, p.params.σ, scale, j, d, L, p.params.LUTSize)  )
   
     fHat = zero(Complex{T})
 
@@ -78,16 +78,16 @@ function _convolve_transpose_nonblocking!(p::NFFTPlan{T,D,1}, fHat, g, L, winPol
   fill!(g, zero(T))
   scale = Int(p.params.LUTSize/(p.params.m))
 
-  @inbounds @simd for k in 1:p.M
-    __convolve_transpose_nonblocking!(p, fHat, g, L, winPoly, scale, k)
+  @inbounds @simd for j in 1:p.J
+    __convolve_transpose_nonblocking!(p, fHat, g, L, winPoly, scale, j)
   end
 end
 
 
-@generated function __convolve_transpose_nonblocking!(p::NFFTPlan{T,D,1}, fHat::AbstractVector{U}, g::StridedArray{Complex{T},D}, L::Val{Z}, winPoly, scale, k) where {D,T,U,Z}
+@generated function __convolve_transpose_nonblocking!(p::NFFTPlan{T,D,1}, fHat::AbstractVector{U}, g::StridedArray{Complex{T},D}, L::Val{Z}, winPoly, scale, j) where {D,T,U,Z}
   quote
-    @nexprs $(D) d -> ((tmpIdx_d, tmpWin_d) = precomputeOneNode(p.windowLinInterp, winPoly, p.x, p.n, 
-                                                 p.params.m, p.params.σ, scale, k, d, L, p.params.LUTSize)  )
+    @nexprs $(D) d -> ((tmpIdx_d, tmpWin_d) = precomputeOneNode(p.windowLinInterp, winPoly, p.k, p.Ñ, 
+                                                 p.params.m, p.params.σ, scale, j, d, L, p.params.LUTSize)  )
 
     @nexprs 1 d -> prodWin_{$D} = one(T)
     @nloops_ $D l d -> 1:$Z d->begin
@@ -96,7 +96,7 @@ end
       gidx_d = tmpIdx_d[l_d] 
     end begin
       # bodyexpr
-      (@nref $D g gidx) += prodWin_0 * fHat[k] 
+      (@nref $D g gidx) += prodWin_0 * fHat[j] 
     end
   end
 end
@@ -136,7 +136,7 @@ function _convolve_blocking!(p::NFFTPlan{T,D,1}, g, fHat, L, winPoly) where {D,T
     if !isempty(p.nodesInBlock[l])
       toBlock!(p, g, p.blocks[l], p.blockOffsets[l])
       winTensor = (p.params.precompute == TENSOR) ? p.windowTensor[l] : nothing
-      calcOneNode!(p, fHat, p.nodesInBlock[l], p.blocks[l], p.blockOffsets[l], L, 
+      calcOneBlock!(p, fHat, p.nodesInBlock[l], p.blocks[l], p.blockOffsets[l], L, 
                    scale, p.idxInBlock[l], winTensor, winPoly)
     end
   end
@@ -162,7 +162,7 @@ quote
   
   @nloops_ $(D-1)  (d->l_{d+1})  (d -> 1:size(block,d+1)) d->begin
     # preexpr
-    idx_{d+1} = ( rem(l_{d+1}  + off[d+1] + p.n[d+1], p.n[d+1]) + 1)
+    idx_{d+1} = ( rem(l_{d+1}  + off[d+1] + p.Ñ[d+1], p.Ñ[d+1]) + 1)
   end begin
     # bodyexpr
     @inbounds for l_1 = 1:LA
@@ -182,20 +182,20 @@ quote
  end
 end
 
-@noinline function calcOneNode!(p::NFFTPlan{T,D,1}, fHat, nodesInBlock, block,
+@noinline function calcOneBlock!(p::NFFTPlan{T,D,1}, fHat, nodesInBlock, block,
          off, L, scale, idxInBlock, winTensor, winPoly) where {D,T}
-  for (kLocal,k) in enumerate(nodesInBlock)
-    fHat[k] = _convolve_nonblocking(p, block, off, L, scale, k, kLocal, 
+  for (jLocal,j) in enumerate(nodesInBlock)
+    fHat[j] = calcOneNode!(p, block, off, L, scale, j, jLocal, 
                                idxInBlock, winTensor, winPoly)
   end
   return
 end
 
-@generated function _convolve_nonblocking(p::NFFTPlan{T,D,1}, block, off, L::Val{Z}, scale, 
-                   k, kLocal, idxInBlock, winTensor, winPoly) where {D,T,Z}
+@generated function calcOneNode!(p::NFFTPlan{T,D,1}, block, off, L::Val{Z}, scale, 
+                   j, jLocal, idxInBlock, winTensor, winPoly) where {D,T,Z}
   quote
     @nexprs $(D) d -> ((off_d, tmpWin_d) =  precomputeOneNodeBlocking(p.windowLinInterp, winTensor, winPoly, scale, 
-                      kLocal, d, L, idxInBlock) )
+                      jLocal, d, L, idxInBlock) )
 
     fHat = zero(Complex{T})
 
@@ -280,7 +280,7 @@ end
     
     @nloops_ $(D-1)  (d->l_{d+1})  (d -> 1:size(block,d+1)) d->begin
       # preexpr
-      idx_{d+1} = ( rem(l_{d+1}  + off[d+1] + p.n[d+1], p.n[d+1]) + 1)
+      idx_{d+1} = ( rem(l_{d+1}  + off[d+1] + p.Ñ[d+1], p.Ñ[d+1]) + 1)
     end begin
       # bodyexpr
       @inbounds for l_1 = 1:LA
@@ -304,12 +304,12 @@ end
                               idxInBlock, winTensor, winPoly) where {T,D,Z}
   if (Threads.nthreads() == 1 || !NFFT._use_threads[]) &&
       (D >= 3 && Z >= 16) || (D == 2 && Z >= 16) # magic 
-    for (kLocal,k) in enumerate(nodesInBlock)
-      fillOneNode2!(p, fHat, block, off, L, scale, k, kLocal, idxInBlock, winTensor, winPoly)
+    for (jLocal,j) in enumerate(nodesInBlock)
+      fillOneNode2!(p, fHat, block, off, L, scale, j, jLocal, idxInBlock, winTensor, winPoly)
     end
   else
-    for (kLocal,k) in enumerate(nodesInBlock)
-      fillOneNode!(p, fHat, block, off, L, scale, k, kLocal, idxInBlock, winTensor, winPoly)
+    for (jLocal,j) in enumerate(nodesInBlock)
+      fillOneNode!(p, fHat, block, off, L, scale, j, jLocal, idxInBlock, winTensor, winPoly)
     end
   end
   return
@@ -317,11 +317,11 @@ end
 
 
 @generated function fillOneNode!(p::NFFTPlan{T,D,1}, fHat, block, off, L::Val{Z}, scale, 
-              k, kLocal, idxInBlock, winTensor, winPoly) where {D,T,Z}
+              j, jLocal, idxInBlock, winTensor, winPoly) where {D,T,Z}
   quote
-    fHat_ = fHat[k]
+    fHat_ = fHat[j]
 
-    @nexprs $(D) d -> ((off_d, tmpWin_d) = precomputeOneNodeBlocking(p.windowLinInterp, winTensor, winPoly, scale, kLocal, d, L,
+    @nexprs $(D) d -> ((off_d, tmpWin_d) = precomputeOneNodeBlocking(p.windowLinInterp, winTensor, winPoly, scale, jLocal, d, L,
                                              idxInBlock) )
 
     innerWin = @ntuple $(Z) l -> tmpWin_1[l] * fHat_
@@ -343,11 +343,11 @@ end
 end
 
 @generated function fillOneNode2!(p::NFFTPlan{T,D,1}, fHat, block, off, L::Val{Z}, scale, 
-              k, kLocal, idxInBlock, winTensor, winPoly) where {D,T,Z}
+              j, jLocal, idxInBlock, winTensor, winPoly) where {D,T,Z}
   quote
-    fHat_ = fHat[k]
+    fHat_ = fHat[j]
 
-    @nexprs $(D) d -> ((off_d, tmpWin_d) = precomputeOneNodeBlocking(p.windowLinInterp, winTensor, winPoly, scale, kLocal, d, L,
+    @nexprs $(D) d -> ((off_d, tmpWin_d) = precomputeOneNodeBlocking(p.windowLinInterp, winTensor, winPoly, scale, jLocal, d, L,
                                              idxInBlock) )
 
     @nexprs 1 d -> prodWin_{$D} = one(T)
@@ -368,12 +368,12 @@ end
 
 
 
-@generated function fillOneNodeReal!(p::NFFTPlan{T,D,1}, fHat, block, off, L::Val{Z}, scale, k, 
-                kLocal, idxInBlock, winTensor, winPoly) where {D,T,Z}
+@generated function fillOneNodeReal!(p::NFFTPlan{T,D,1}, fHat, block, off, L::Val{Z}, scale, j, 
+                jLocal, idxInBlock, winTensor, winPoly) where {D,T,Z}
   quote
-    fHat_ = fHat[k]
+    fHat_ = fHat[j]
 
-    @nexprs $(D) d -> ((off_d, tmpWin_d) =  precomputeOneNodeBlocking(p.windowLinInterp, winTensor, winPoly, scale, kLocal, 
+    @nexprs $(D) d -> ((off_d, tmpWin_d) =  precomputeOneNodeBlocking(p.windowLinInterp, winTensor, winPoly, scale, jLocal, 
                                               d, L, idxInBlock) )
 
     innerWin = Vector{Float64}(undef,$(2*Z)) # Probably cache me somewhere
