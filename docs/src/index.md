@@ -40,10 +40,9 @@ This requires that you first `add` the package you want to use.
 
 * The documentation starts with the [Mathematical Background](@ref) that properly defines the NDFT, the NFFT and its directional variants. You might want to skip this part if you are familiar with the notation and concepts of the NFFT. 
 * Then, an [Overview](@ref) about the usage of the NFFT functions is given in a tutorial style manner.  
-* In the section about the [Abstract Interface for NFFTs](@ref) we outline how the package is divided into an interface package and implementation packages. This part is useful if you plan to use different NFFT implementations, e.g. one for the CPU and another for the GPU and would like to switch.
-* The section about [Tools](@ref) introduced some high-level functions that build upon the NFFT. For instance NFFT inversion is discussed in that section.
 * Then, an overview about [Accuracy and Performance](@ref) is given.
-* [Implementation](@ref) outlines some implementation details.
+* The section about [Tools](@ref) introduced some high-level functions that build upon the NFFT. For instance NFFT inversion is discussed in that section.
+* In the section about the [Abstract Interface for NFFTs](@ref) we outline how the package is divided into an interface package and implementation packages. This part is useful if you plan to use different NFFT implementations, e.g. one for the CPU and another for the GPU and would like to switch.
 * Finally, the documentation contains an [API](@ref) index.
 
 

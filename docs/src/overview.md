@@ -90,7 +90,8 @@ fHat = nfft(k, f)
 y = nfft_adjoint(k, N, fHat)
 ```
 These forms are more forgiving about the types of the input arguments.
-The versions based on a plan are more optimized for repeated use with the same sampling nodes `k`.
+The versions based on a plan are more optimized for repeated use with the same sampling nodes `k`. 
+Note that `nfft_adjoint` requires the extra argument `N` since this cannot be derived from the input vector as can be done for `nfft`. 
 
 !!! note
     The constructor `plan_nfft` is meant to be a generic factory function that can be implemented in different packages. If you want to use a concrete constructor of `NFFT.jl` use `NFFTPlan` instead. 
