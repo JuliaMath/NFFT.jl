@@ -1,5 +1,6 @@
 [deps]
 Documenter = "e30172f5-a6a5-5a46-863b-614d45cd2de4"
+NFFTTools = "7424e34d-94f7-41d6-98a0-85abaf1b6c91"
 
 [compat]
 Documenter = "0.25"
