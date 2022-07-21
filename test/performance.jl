@@ -3,8 +3,6 @@ using FFTW
 import NFFT3
 using DataFrames
 
-FFTW.set_num_threads(Threads.nthreads())
-
 ### performance test ###
 function nfft_performance_1()
   println("\n\n ##### nfft_performance_1 - simple ##### \n\n")

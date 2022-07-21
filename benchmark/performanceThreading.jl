@@ -5,9 +5,8 @@ pgfplotsx()
 #gr()
 
 
-
-include("../../Wrappers/NFFT3.jl")
-include("../../Wrappers/FINUFFT.jl")
+include("../Wrappers/NFFT3.jl")
+include("../Wrappers/FINUFFT.jl")
 mkpath("./img/")
 mkpath("./data/")
 
@@ -17,10 +16,10 @@ const precomp = [NFFT.POLYNOMIAL, NFFT.TENSOR, NFFT.POLYNOMIAL, NFFT.TENSOR]
 const packagesCtor = [NFFTPlan, NFFTPlan, FINUFFTPlan, NFFT3Plan]
 const packagesStr = ["NFFT.jl/POLY", "NFFT.jl/TENSOR", "FINUFFT", "NFFT3"]
 const benchmarkTime = [1, 60, 60]
+#const benchmarkTime = [1, 2, 2]
 #const NBase = [4*4096, 256, 32]
 const NBase = [512*512, 512, 64]
 
-NFFT.FFTW.set_num_threads(Threads.nthreads())
 ccall(("omp_set_num_threads",NFFT3.lib_path_nfft),Nothing,(Int64,),convert(Int64,Threads.nthreads()))
 @info ccall(("nfft_get_num_threads",NFFT3.lib_path_nfft),Int64,())
 NFFT._use_threads[] = (Threads.nthreads() > 1)
@@ -52,7 +51,7 @@ function nfft_performance_comparison(m = 4, σ = 2.0)
 
           planner = packagesCtor[pl]
           BenchmarkTools.DEFAULT_PARAMETERS.seconds = benchmarkTime[1]
-          b = @benchmark $planner($x, $NN; m=$m, σ=$σ, window=:kaiser_bessel, 
+          b = @benchmark $planner($k, $NN; m=$m, σ=$σ, window=:kaiser_bessel, 
                                  precompute=$(precomp[pl]), sortNodes=false, fftflags=$fftflags)
           tpre = minimum(b).time / 1e9
           p = planner(k, NN; m=m, σ=σ, window=:kaiser_bessel, 
@@ -86,7 +85,7 @@ function plot_performance(df; D=2, N=1024, J=N*N)
   tadjoint = zeros(length(threads), length(labelsA))
   for (i,p) in enumerate(packagesStr)
     for (j,th) in enumerate(threads) #.&& df.Pre.==precomp[i] 
-      df_ = df[df.Threads .== th .&& df.Package.==p .&& df.D .== D .&& df.J.== M .&& df.N .==N ,:]
+      df_ = df[df.Threads .== th .&& df.Package.==p .&& df.D .== D .&& df.J.== J .&& df.N .==N ,:]
       tpre[j,i] = df_[1,:TimePre]
       ttrafo[j,i] = df_[1,:TimeTrafo]
       tadjoint[j,i] = df_[1,:TimeAdjoint]
@@ -137,7 +136,7 @@ function plot_performance_speedup(df, packagesStr, packagesStrShort, colors; D=2
   tadjoint = zeros(length(threads), length(labelsA))
   for (i,p) in enumerate(packagesStr)
     for (j,th) in enumerate(threads) #.&& df.Pre.==precomp[i] 
-      df_ = df[df.Threads .== th .&& df.Package.==p .&& df.D .== D .&& df.J.== M .&& df.N .==N ,:]
+      df_ = df[df.Threads .== th .&& df.Package.==p .&& df.D .== D .&& df.J.== J .&& df.N .== N ,:]
       tpre[j,i] = df_[1,:TimePre]
       ttrafo[j,i] = df_[1,:TimeTrafo]
       tadjoint[j,i] = df_[1,:TimeAdjoint]
@@ -245,7 +244,7 @@ if haskey(ENV, "NFFT_PERF")
   writedlm("./data/performance_mt.csv", Iterators.flatten(([names(df)], eachrow(df))), ',')
 
 else
-  if true
+  if false
     rm("./data/performance_mt.csv", force=true)
     ENV["NFFT_PERF"] = 1
     for t in threads

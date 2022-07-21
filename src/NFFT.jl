@@ -60,7 +60,6 @@ include("convolution.jl")
 
 function __init__()
   NFFT._use_threads[] = (Threads.nthreads() > 1)
-  FFTW.set_num_threads(Threads.nthreads())
 end
 
 end

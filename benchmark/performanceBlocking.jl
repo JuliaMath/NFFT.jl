@@ -11,9 +11,7 @@ const blocking = [false, true]
 
 const benchmarkTime = [10, 10]
 
-NFFT.FFTW.set_num_threads(Threads.nthreads())
 NFFT._use_threads[] = (Threads.nthreads() > 1)
-
 
 const σs = [2.0] 
 const ms = 3:8

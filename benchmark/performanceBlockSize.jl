@@ -4,7 +4,6 @@ using Plots; pgfplotsx()
 
 const benchmarkTime = [20, 20]
 
-NFFT.FFTW.set_num_threads(Threads.nthreads())
 NFFT._use_threads[] = (Threads.nthreads() > 1)
 
 const threads = [1,2,4,8] 

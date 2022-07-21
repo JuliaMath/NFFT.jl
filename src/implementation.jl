@@ -84,8 +84,8 @@ function NFFTPlan(k::Matrix{T}, N::NTuple{D,Int}; dims::Union{Integer,UnitRange{
     tmpVec = Array{Complex{T},D}(undef, Ñ)
 
     fftflags_ = (fftflags != nothing) ? (flags=fftflags,) : NamedTuple()
-    FP = plan_fft!(tmpVec, dims_; fftflags_...)
-    BP = plan_bfft!(tmpVec, dims_; fftflags_...)
+    FP = plan_fft!(tmpVec, dims_; num_threads=Threads.nthreads(), fftflags_...)
+    BP = plan_bfft!(tmpVec, dims_; num_threads=Threads.nthreads(), fftflags_...)
 
     calcBlocks = (params.precompute == LINEAR ||
                   params.precompute == TENSOR ||
