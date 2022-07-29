@@ -124,7 +124,7 @@ function plot_accuracy(df, packagesStr, packagesStrShort, filename)
     p1 = plot(df1_[df1_.Package.==packagesStr[1],:ErrorTrafo], 
               df1_[df1_.Package.==packagesStr[1],:TimeTrafo], ylims=(0.0,maxTimeTrafo),
               label = packagesStrShort[1],
-              xscale = :log10, legend = (i==length(Ds)) ? (0.0, -0.5) : nothing, 
+              xscale = :log10, legend = (i==length(Ds)) ? (0.0, -0.5) : nothing, legend_column=4,
               lw=2, xlabel = xlabel, ylabel="Runtime / s",
               title=titleTrafo, shape=shape[1], ls=ls[1], 
               c=colors[1], msc=colors[1], mc=colors[1], ms=4, msw=2,

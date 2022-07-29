@@ -145,9 +145,7 @@ function plot_performance_speedup(df, packagesStr, packagesStrShort, colors; D=2
   
   efftrafo = 1 ./ ttrafo .* ttrafo[1:1,:] ./ threads
   effadjoint = 1 ./ tadjoint .* tadjoint[1:1,:] ./ threads
-  
-  ttrafo = 1 ./ ttrafo .* ttrafo[1:1,:]  #ttrafo[1,3]
-  tadjoint = 1 ./ tadjoint .* tadjoint[1:1,:] # tadjoint[1,3]
+
 
   Plots.scalefontsizes()
   Plots.scalefontsizes(1.5)
@@ -161,9 +159,9 @@ function plot_performance_speedup(df, packagesStr, packagesStrShort, colors; D=2
     titleAdjoint = L"\textrm{NFFT}^H"
 
     p1 = plot(threads, 
-              ttrafo[:,1], ylims=(0.0,maximum(threads)),
-              label=packagesStrShort[1], lw=2, ylabel="Speedup", #xlabel = "# threads",
-              legend = :topleft, title=titleTrafo, 
+              ttrafo[:,1], #ylims=(0.0,maximum(threads)),
+              label=packagesStrShort[1], lw=2, ylabel="Runtime / s", #xlabel = "# threads",
+              legend = :topright, title=titleTrafo, 
               shape=shape[1], ls=ls[1], 
               c=colors[1], msc=colors[1], mc=colors[1], ms=4, msw=2)
 
@@ -174,7 +172,7 @@ function plot_performance_speedup(df, packagesStr, packagesStrShort, colors; D=2
               c=colors[p], msc=colors[p], mc=colors[p], ms=4, msw=2)
     end
 
-    p2 = plot(threads, tadjoint[:,1],  ylims=(0.0,maximum(threads)),
+    p2 = plot(threads, tadjoint[:,1],  #ylims=(0.0,maximum(threads)),
               lw=2, #xlabel = "# threads", 
               label=packagesStr[1],
               #legend = i==2 ? :topright : nothing, 
