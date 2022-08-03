@@ -1,7 +1,7 @@
 
 # Mathematical Background
 
-On this page we give a brief overview of the mathematical background of the NFFT. For a full background including a derivation of the NFFT we refer to the [NFFT.jl paper](http://LinkToArXiv.com).
+On this page we give a brief overview of the mathematical background of the NFFT. For a full background including a derivation of the NFFT we refer to the [NFFT.jl paper](https://arxiv.org/pdf/2208.00049.pdf).
 
 !!! note
     In the literature the NFFT has different names. Often it is called NUFFT, and in the MRI context gridding.
