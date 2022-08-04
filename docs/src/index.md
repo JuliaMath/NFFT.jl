@@ -45,13 +45,16 @@ This requires that you first `add` the package you want to use.
 * In the section about the [Abstract Interface for NFFTs](@ref) we outline how the package is divided into an interface package and implementation packages. This part is useful if you plan to use different NFFT implementations, e.g. one for the CPU and another for the GPU and would like to switch.
 * Finally, the documentation contains an [API](@ref) index.
 
-
-
 ## License / Terms of Usage
 
 The source code of this project is licensed under the MIT license. This implies that
 you are free to use, share, and adapt it. However, please give appropriate credit
-by citing the project.
+by citing the project. You can do so by citing the publication
+
+T. Knopp, M. Boberg and M. Grosser, NFFT.jl: Generic and Fast Julia Implementation of the Nonequidistant
+ Fast Fourier Transform, 2022 [*arXiv:2208.00049*](http://arxiv.org/abs/2208.00049)
+
+A BibTeX file `NFFT.bib` can be found in the root folder of the Github repository.
 
 ## Contact
 
