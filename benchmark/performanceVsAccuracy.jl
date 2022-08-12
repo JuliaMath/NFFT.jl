@@ -22,8 +22,8 @@ NFFT._use_threads[] = (Threads.nthreads() > 1)
 const σs = [2.0] 
 const ms = 3:8
 #const NBase = [65536, 256, 32] #[4*4096, 128, 32]
-const NBase = [4*4096, 128, 32]
-#const NBase = [512*512, 512, 64]
+#const NBase = [4*4096, 128, 32]
+const NBase = [512*512, 512, 64]
 const Ds = 1:3
 const fftflags = NFFT.FFTW.MEASURE
 
@@ -47,7 +47,8 @@ function nfft_accuracy_comparison(Ds=1:3)
     if !isfile(filenameCache)
       k = rand(D,J) .- 0.5
       fHat = randn(ComplexF64, J)
-      pNDFT = NDFTPlan(k, N)
+      #pNDFT = NDFTPlan(k, N)
+      pNDFT = NFFTPlan(k, N; m=10, σ=2, precompute= NFFT.POLYNOMIAL, blocking=true, fftflags=fftflags)
       f = adjoint(pNDFT) * fHat
       gHat = pNDFT * f
       serialize(filenameCache, (k, f, fHat, gHat))
@@ -107,7 +108,7 @@ function plot_accuracy(df, packagesStr, packagesStrShort, filename)
   ls = [:solid, :solid, :solid, :solid]
   shape = [:xcross, :circle, :xcross, :cross]
 
-  xlims = [(4e-13,1e-5), (4e-15,1e-4),(4e-15,1e-4)]
+  xlims = [(4e-15,1e-5), (4e-15,1e-4),(4e-15,1e-4)]
 
   pl = Matrix{Any}(undef, 3, length(Ds))
   for (i,D) in enumerate(Ds)
@@ -194,7 +195,7 @@ function plot_accuracy_small(df, packagesStr, packagesStrShort, filename)
   ls = [:solid, :solid, :solid, :solid]
   shape = [:xcross, :circle, :xcross, :cross]
 
-  xlims = [(4e-13,1e-5), (4e-15,1e-4),(4e-15,1e-4)]
+  xlims = [(4e-15,1e-5), (4e-15,1e-4),(4e-15,1e-4)]
 
   pl = Matrix{Any}(undef, 3, length(Ds))
   for (i,D) in enumerate(Ds)

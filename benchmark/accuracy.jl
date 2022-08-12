@@ -84,7 +84,7 @@ function plot_accuracy_m(df, packagesStr, packagesStrShort, filename, D=1,
   shape = [:circle, :xcross, :cross, :xcross ]
 
   p1 = plot(ms, df1_[df1_.Package.==packagesStr[1],:ErrorTrafo], 
-            yscale = :log10, label=packagesStrShort[1], lw=2, xlabel = "m", ylabel="Relative Error",
+            yscale = :log10, label=packagesStrShort[1], lw=2, xlabel = L"m", ylabel="Relative Error",
             legend = (:topright), title=L"\textrm{NFFT}", 
             shape=shape[1], ls=ls[1], 
             c=colors[1], msc=colors[1], mc=colors[1])
@@ -96,7 +96,7 @@ function plot_accuracy_m(df, packagesStr, packagesStrShort, filename, D=1,
   end
 
   p2 = plot(ms, df1_[df1_.Package.==packagesStr[1],:ErrorAdjoint], 
-            yscale = :log10, lw=2, xlabel = "m", #ylabel="Relative Error",
+            yscale = :log10, lw=2, xlabel = L"m", #ylabel="Relative Error",
             legend = nothing, title=L"\textrm{NFFT}^H", 
             shape=shape[1], ls=ls[1], 
             c=colors[1], msc=colors[1], mc=colors[1])
@@ -162,11 +162,11 @@ function plot_accuracy_sigma(df, packagesStr, packagesStrShort, filename,  D=1)
 end
 
 
-dfm = nfft_accuracy_comparison(2, [2.0], ms)
-dfσ = nfft_accuracy_comparison(2, σs, [4])
+#dfm = nfft_accuracy_comparison(2, [2.0], ms)
+#dfσ = nfft_accuracy_comparison(2, σs, [4])
 
-writedlm("data/accuracy_m.csv", Iterators.flatten(([names(dfm)], eachrow(dfm))), ',')
-writedlm("data/accuracy_sigma.csv", Iterators.flatten(([names(dfσ)], eachrow(dfσ))), ',')
+#writedlm("data/accuracy_m.csv", Iterators.flatten(([names(dfm)], eachrow(dfm))), ',')
+#writedlm("data/accuracy_sigma.csv", Iterators.flatten(([names(dfσ)], eachrow(dfσ))), ',')
 
 data, header = readdlm("data/accuracy_m.csv", ',', header=true);
 dfm = DataFrame(data, vec(header))
