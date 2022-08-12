@@ -191,6 +191,7 @@ end
   return
 end
 
+
 @generated function calcOneNode!(p::NFFTPlan{T,D,1}, block, off, L::Val{Z}, scale, 
                    j, jLocal, idxInBlock, winTensor, winPoly) where {D,T,Z}
   quote
@@ -206,16 +207,16 @@ end
       block_idx_{d+1} = off_{d+1} + l_{d+1} 
     end begin
       # bodyexpr
-      @inbounds for l_1 = 1:$Z
+      fHat_ = zero(Complex{T})
+      @inbounds @simd for l_1 = 1:$Z
         block_idx_1 = off_1 + l_1 
-        prodWin_0 = prodWin_1 * tmpWin_1[l_1]
-        fHat += prodWin_0 * (@nref $D block block_idx)
+        fHat_ += tmpWin_1[l_1] * (@nref $D block block_idx)
       end
+      fHat += prodWin_1 * fHat_
     end
     return fHat
   end
 end
-
 
 ##########################
 
