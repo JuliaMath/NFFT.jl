@@ -41,6 +41,13 @@ jobs:
             ${{ runner.os }}-test-${{ env.cache-name }}-
             ${{ runner.os }}-test-
             ${{ runner.os }}-
+      - name: Install subpackages
+        shell: julia --color=yes --project=. {0}
+        run: |
+          using Pkg
+          Pkg.add(PackageSpec(path=pwd(), subdir="AbstractNFFTs", rev="master"))
+          Pkg.add(PackageSpec(path=pwd(), subdir="NFFTTools", rev="master"))
+          Pkg.add(PackageSpec(path=pwd(), subdir="CuNFFT", rev="master"))
       - uses: julia-actions/julia-buildpkg@v1
       - uses: julia-actions/julia-runtest@v1
         env:
@@ -57,6 +64,13 @@ jobs:
       - uses: julia-actions/setup-julia@v1
         with:
           version: '1'
+      - name: Install subpackages
+        shell: julia --color=yes --project=. {0}
+        run: |
+          using Pkg
+          Pkg.add(PackageSpec(path=pwd(), subdir="AbstractNFFTs", rev="master"))
+          Pkg.add(PackageSpec(path=pwd(), subdir="NFFTTools", rev="master"))
+          Pkg.add(PackageSpec(path=pwd(), subdir="CuNFFT", rev="master"))
       - uses: julia-actions/julia-buildpkg@latest
       - uses: julia-actions/julia-docdeploy@latest
         env:
