@@ -62,4 +62,6 @@ function __init__()
   NFFT._use_threads[] = (Threads.nthreads() > 1)
 end
 
+include("precompile.jl")
+
 end

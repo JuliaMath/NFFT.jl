@@ -17,6 +17,7 @@ SparseArrays = "2f01184e-e22b-5df5-ae63-d93ebab69eaf"
 SpecialFunctions = "276daf66-3868-5448-9aa4-cd146d93841b"
 BasicInterpolators = "26cce99e-4866-4b6d-ab74-862489e035e0"
 #StaticArrays = "90137ffa-7385-5640-81b9-e52037218182"
+SnoopPrecompile = "66db9d55-30c0-4569-8b51-7e840670fc0c"
 
 [compat]
 AbstractNFFTs = "0.8"
@@ -29,6 +30,7 @@ Reexport = "1.0"
 SpecialFunctions = "0.8, 0.10, 1, 2"
 julia = "1.6"
 FINUFFT = "3.0.1"
+SnoopPrecompile = "1"
 #StaticArrays = "1.4"
 
 [extras]
