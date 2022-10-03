@@ -165,15 +165,15 @@ quote
     idx_{d+1} = ( rem(l_{d+1}  + off[d+1] + p.Ñ[d+1], p.Ñ[d+1]) + 1)
   end begin
     # bodyexpr
-    @inbounds for l_1 = 1:LA
+    @inbounds @simd for l_1 = 1:LA
       idx_1 = l_1 + offA
       (@nref $D block l) = (@nref $D g idx)
     end
-    @inbounds for l_1 = (LA+1):LB 
-      idx_1 = l_1 + offB
+    @inbounds @simd for l_1 = (LA+1):LB 
+        idx_1 = l_1 + offB
       (@nref $D block l) = (@nref $D g idx)
     end
-    @inbounds for l_1 = (LB+1):size(block,1) 
+    @inbounds @simd for l_1 = (LB+1):size(block,1) 
       idx_1 = l_1 + offC
       (@nref $D block l) = (@nref $D g idx)
     end
@@ -198,22 +198,24 @@ end
     @nexprs $(D) d -> ((off_d, tmpWin_d) =  precomputeOneNodeBlocking(p.windowLinInterp, winTensor, winPoly, scale, 
                       jLocal, d, L, idxInBlock) )
 
-    fHat = zero(Complex{T})
-
     @nexprs 1 d -> prodWin_{$D} = one(T)
+    @nexprs 1 d -> fHat_{$D} = zero(Complex{T})
     @nloops_ $(D-1)  (d->l_{d+1})  (d -> 1:$Z) d->begin
       # preexpr
-      prodWin_{d} = prodWin_{d+1} * tmpWin_{d+1}[l_{d+1}]
       block_idx_{d+1} = off_{d+1} + l_{d+1} 
+      fHat_{d} = zero(Complex{T})
+    end d->begin
+      # postexpr
+      fHat_{d+1} += tmpWin_{d+1}[l_{d+1}] * fHat_{d}
     end begin
       # bodyexpr
-      fHat_ = zero(Complex{T})
       @inbounds @simd for l_1 = 1:$Z
-        block_idx_1 = off_1 + l_1 
-        fHat_ += tmpWin_1[l_1] * (@nref $D block block_idx)
+        block_idx_1 = off_1 + l_1
+        fHat_1 += tmpWin_1[l_1] * (@nref $D block block_idx)
       end
-      fHat += prodWin_1 * fHat_
     end
+
+    @nexprs 1 d -> fHat = fHat_{$D} 
     return fHat
   end
 end
@@ -284,15 +286,15 @@ end
       idx_{d+1} = ( rem(l_{d+1}  + off[d+1] + p.Ñ[d+1], p.Ñ[d+1]) + 1)
     end begin
       # bodyexpr
-      @inbounds for l_1 = 1:LA
+      @inbounds @simd for l_1 = 1:LA
         idx_1 = l_1 + offA
         (@nref $D g idx) += (@nref $D block l)
       end
-      @inbounds for l_1 = (LA+1):LB 
+      @inbounds @simd for l_1 = (LA+1):LB 
         idx_1 = l_1 + offB
         (@nref $D g idx) += (@nref $D block l)
       end
-      @inbounds for l_1 = (LB+1):size(block,1) 
+      @inbounds @simd for l_1 = (LB+1):size(block,1) 
         idx_1 = l_1 + offC
         (@nref $D g idx) += (@nref $D block l)
       end
