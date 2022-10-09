@@ -1,6 +1,5 @@
 module AbstractNFFTs
 
-using Graphics: @mustimplement
 using LinearAlgebra
 using Printf
 
