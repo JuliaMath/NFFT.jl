@@ -180,32 +180,25 @@ function precomputeOneNodeBlocking(winLin, winTensor::Nothing, winPoly::Nothing,
   return (y, tmpWin)
 end
 
-@generated function shiftedWindowEntries(winLin::Vector, idx::T, scale, d, L::Val{Z}) where {T,Z}
+@generated function shiftedWindowEntries(winLin::Vector, idx, scale, d, L::Val{Z}) where {Z}
   quote
     idxInt = floor(Int,idx)
     α = ( idx-idxInt )
 
-    if α != zero(T) 
-      tmpWin = @ntuple $(Z) l -> begin
-        # Uncommented code: This is the version where we pull in l into the abs.
-        # We pulled this out of the iteration.
-        # idx = abs((kscale - (l-1)  - off)*LUTSize)/(m)
+    tmpWin = @ntuple $(Z) l -> begin
+      # Uncommented code: This is the version where we pull in l into the abs.
+      # We pulled this out of the iteration.
+      # idx = abs((kscale - (l-1)  - off)*LUTSize)/(m)
 
-        # The second +1 is because Julia has 1-based indexing
-        # The first +1 is part of the index calculation and needs(!)
-        # to be part of the abs. The abs is shifting to the positive interval
-        # and this +1 matches the `floor` above, which rounds down. In turn
-        # for positive and negative indices a different neighbour is calculated
-        idxInt1 = abs( idxInt - (l-1)*scale ) +1
-        idxInt2 = abs( idxInt - (l-1)*scale +1) +1
+      # The second +1 is because Julia has 1-based indexing
+      # The first +1 is part of the index calculation and needs(!)
+      # to be part of the abs. The abs is shifting to the positive interval
+      # and this +1 matches the `floor` above, which rounds down. In turn
+      # for positive and negative indices a different neighbour is calculated
+      idxInt1 = abs( idxInt - (l-1)*scale ) +1
+      idxInt2 = abs( idxInt - (l-1)*scale +1) +1
 
-        (winLin[idxInt1] + α * (winLin[idxInt2] - winLin[idxInt1]))
-      end
-    else
-      tmpWin = @ntuple $(Z) l -> begin
-        idxInt1 = abs( idxInt - (l-1)*scale ) + 1
-        winLin[idxInt1]
-      end
+      (winLin[idxInt1] + α * (winLin[idxInt2] - winLin[idxInt1]))
     end
     return tmpWin
   end
@@ -300,10 +293,10 @@ Remarks:
   an error while the later variant would silently error.
 """
 function precomputeLinInterp(win, m, σ, K, T)
-  windowLinInterp = Vector{T}(undef, K+1)
+  windowLinInterp = Vector{T}(undef, K+2)
 
   step = (m) / (K)
-  @cthreads for l = 1:(K+1)
+  @cthreads for l = 1:(K+2)
       y = ( (l-1) * step )
       windowLinInterp[l] = win(y, 1, m, σ)
   end

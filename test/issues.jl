@@ -7,7 +7,7 @@
   img_shape_os = (2Nz,)
   λ = Array{Complex{T}}(undef, img_shape_os)
   
-  trj = Matrix{T}(undef, 1, 2)
+  trj = zeros(T, 1, 2)
   nfftplan = plan_nfft(trj, img_shape_os; precompute = LINEAR, blocking = false, fftflags = FFTW.ESTIMATE)
   
   trj[1,:] .= 0.008333333 # throws error
