@@ -1,13 +1,6 @@
 using LinearAlgebra
 import FINUFFT
 
-#=
-General comment: FINUFFT requires dedicated plans for forward and the adjoint NFFT.
-However, it is right now not possible to cache two plans in parallel since the plan
-seem to have global state. We therefore only cache one plan and need to create a new
-one "on demand" if the other one is needed. This is the purpose of the `isAdjoint` flag.
-=#
-
 mutable struct FINUFFTPlan{T,D} <: AbstractNFFTPlan{T,D,1} 
   N::NTuple{D,Int64}
   J::Int64
@@ -19,7 +12,6 @@ mutable struct FINUFFTPlan{T,D} <: AbstractNFFTPlan{T,D,1}
   planTrafo::FINUFFT.finufft_plan{T}
   planAdjoint::FINUFFT.finufft_plan{T}
 end
-
 
 ################
 # constructors
