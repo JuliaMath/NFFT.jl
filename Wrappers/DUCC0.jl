@@ -3,31 +3,6 @@ import ducc0_jll
 
 const libducc = ducc0_jll.libducc_julia
 
- function ducc_nu2u(coord::Array{Cdouble,2}, data::Vector{Complex{Cdouble}}, res::Array{Complex{Cdouble},D}; epsilon::AbstractFloat, nthreads::Int=1, 
-                    verbosity::Int=0, periodicity::AbstractFloat=1., forward::Int=0) where D
-   shape = size(res)
-   shp = Array{Csize_t}([x for x in shape])
-   ccall((:nufft_nu2u_julia_double,libducc),
-     Cvoid, (Csize_t,Csize_t,Ptr{Csize_t},Ptr{Cdouble},Ptr{Cdouble},Cint,Cdouble,Csize_t,Ptr{Cdouble},Csize_t,Cdouble,Cdouble,Cdouble,Cint),
-     size(coord)[1], size(coord)[2], pointer(shp), pointer(data), pointer(coord),
-     forward, epsilon, nthreads, pointer(res), verbosity, 1.99, 2.001,
-     periodicity, 0)
-   return res
- end
-
- function ducc_u2nu(coord::Array{Cdouble,2}, data::Array{Complex{Cdouble},D}, res::Vector{Complex{Cdouble}}; epsilon::AbstractFloat, nthreads::Int=1, 
-                    verbosity::Int=0, periodicity::AbstractFloat=1., forward::Int=1) where D
-   shape = size(data)
-   shp = Array{Csize_t}([x for x in shape])
-   ccall((:nufft_u2nu_julia_double,libducc),
-     Cvoid, (Csize_t,Csize_t,Ptr{Csize_t},Ptr{Cdouble},Ptr{Cdouble},Cint,Cdouble,Csize_t,Ptr{Cdouble},Csize_t,Cdouble,Cdouble,Cdouble,Cint),
-     size(coord)[1], size(coord)[2], pointer(shp), pointer(data), pointer(coord),
-     forward, epsilon, nthreads, pointer(res), verbosity, 1.99, 2.001,
-     periodicity, 0)
-   return res
- end
-
-
 mutable struct DUCC0Plan{T,D} <: AbstractNFFTPlan{T,D,1} 
   N::NTuple{D,Int64}
   J::Int64
@@ -87,8 +62,13 @@ end
 function LinearAlgebra.mul!(fHat::StridedArray, p::DUCC0Plan{T,D}, f::AbstractArray;
              verbose=false, timing::Union{Nothing,TimingStats} = nothing) where {T,D}
 
-  ducc_u2nu(p.k, f, fHat;
-     epsilon = p.reltol, nthreads=1, verbosity=Int64(verbose), periodicity=1.0, forward=1)
+  nthreads = 1
+  forward = 1
+  ccall((:nufft_u2nu_julia_double,libducc),
+     Cvoid, (Csize_t,Csize_t, Ref{NTuple{D,Csize_t}},Ptr{Cdouble},Ptr{Cdouble},Cint,Cdouble,Csize_t,Ptr{Cdouble},Csize_t,Cdouble,Cdouble,Cdouble,Cint),
+     D, p.J, size(f), pointer(f), pointer(p.k),
+     forward, p.reltol, nthreads, pointer(fHat), Int64(verbose), 1.99, 2.001,
+     1.0, 0)
 
   return fHat
 end
@@ -97,8 +77,13 @@ function LinearAlgebra.mul!(f::StridedArray, pl::Adjoint{Complex{T},<:DUCC0Plan{
                      verbose=false, timing::Union{Nothing,TimingStats} = nothing) where {T,D}
   p = pl.parent
 
-  ducc_nu2u(p.k, fHat, f;
-     epsilon = p.reltol, nthreads=1, verbosity=Int64(verbose), periodicity=1.0, forward=0)
+  nthreads = 1
+  forward = 0
+  ccall((:nufft_nu2u_julia_double,libducc),
+     Cvoid, (Csize_t,Csize_t, Ref{NTuple{D,Csize_t}},Ptr{Cdouble},Ptr{Cdouble},Cint,Cdouble,Csize_t,Ptr{Cdouble},Csize_t,Cdouble,Cdouble,Cdouble,Cint),
+     D, p.J, size(f), pointer(fHat), pointer(p.k),
+     forward, p.reltol, nthreads, pointer(f), Int64(verbose), 1.99, 2.001,
+     1.0, 0)
 
   return f
 end
