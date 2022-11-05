@@ -10,7 +10,7 @@ const libducc = ducc0_jll.libducc_julia
    ccall((:nufft_nu2u_julia_double,libducc),
      Cvoid, (Csize_t,Csize_t,Ptr{Csize_t},Ptr{Cdouble},Ptr{Cdouble},Cint,Cdouble,Csize_t,Ptr{Cdouble},Csize_t,Cdouble,Cdouble,Cdouble,Cint),
      size(coord)[1], size(coord)[2], pointer(shp), pointer(data), pointer(coord),
-     forward, epsilon, nthreads, pointer(res), verbosity, 1.1, 2.6,
+     forward, epsilon, nthreads, pointer(res), verbosity, 1.99, 2.001,
      periodicity, 0)
    return res
  end
@@ -22,7 +22,7 @@ const libducc = ducc0_jll.libducc_julia
    ccall((:nufft_u2nu_julia_double,libducc),
      Cvoid, (Csize_t,Csize_t,Ptr{Csize_t},Ptr{Cdouble},Ptr{Cdouble},Cint,Cdouble,Csize_t,Ptr{Cdouble},Csize_t,Cdouble,Cdouble,Cdouble,Cint),
      size(coord)[1], size(coord)[2], pointer(shp), pointer(data), pointer(coord),
-     forward, epsilon, nthreads, pointer(res), verbosity, 1.1, 2.6,
+     forward, epsilon, nthreads, pointer(res), verbosity, 1.99, 2.001,
      periodicity, 0)
    return res
  end
@@ -52,12 +52,15 @@ function DUCC0Plan(k::Matrix{T}, N::NTuple{D,Int};
   J = size(k,2)
 
   m, σ, reltol = accuracyParams(; kargs...)
+  reltol
 
-  k_ = k
+  reltol = max(reltol, 1.0e-14)
 
-  reltol = max(reltol, 1.0e-15)
+  p = DUCC0Plan(N, J, k, m, T(σ), T(reltol))
 
-  p = DUCC0Plan(N, J, k_, m, T(σ), T(reltol))
+  finalizer(p -> begin
+    #println("Run DUCC0Plan finalizer")
+  end, p)
 
   return p
 end
