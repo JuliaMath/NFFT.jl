@@ -45,9 +45,9 @@ jobs:
         shell: julia --color=yes --project=. {0}
         run: |
           using Pkg
-          Pkg.add(PackageSpec(path=pwd(), subdir="AbstractNFFTs", rev="master"))
-          Pkg.add(PackageSpec(path=pwd(), subdir="NFFTTools", rev="master"))
-          Pkg.add(PackageSpec(path=pwd(), subdir="CuNFFT", rev="master"))
+          Pkg.add(PackageSpec(path=pwd(), subdir="AbstractNFFTs"))
+          Pkg.add(PackageSpec(path=pwd(), subdir="NFFTTools"))
+          Pkg.add(PackageSpec(path=pwd(), subdir="CuNFFT"))
       - uses: julia-actions/julia-buildpkg@v1
       - uses: julia-actions/julia-runtest@v1
         env:
@@ -68,9 +68,9 @@ jobs:
         shell: julia --color=yes --project=. {0}
         run: |
           using Pkg
-          Pkg.add(PackageSpec(path=pwd(), subdir="AbstractNFFTs", rev="master"))
-          Pkg.add(PackageSpec(path=pwd(), subdir="NFFTTools", rev="master"))
-          Pkg.add(PackageSpec(path=pwd(), subdir="CuNFFT", rev="master"))
+          Pkg.add(PackageSpec(path=pwd(), subdir="AbstractNFFTs"))
+          Pkg.add(PackageSpec(path=pwd(), subdir="NFFTTools"))
+          Pkg.add(PackageSpec(path=pwd(), subdir="CuNFFT"))
       - uses: julia-actions/julia-buildpkg@latest
       - uses: julia-actions/julia-docdeploy@latest
         env:
