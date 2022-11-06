@@ -1,5 +1,6 @@
 @testset "Accuracy Wrappers" begin
 
+if !Sys.iswindows()
 
 include("../Wrappers/DUCC0.jl")
 
@@ -31,6 +32,8 @@ include("../Wrappers/DUCC0.jl")
     @test e < eps
 
   end
+end
+
 end
 
 include("../Wrappers/FINUFFT.jl")
