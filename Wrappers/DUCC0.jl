@@ -19,7 +19,7 @@ end
 
 function DUCC0Plan(k::Matrix{T}, N::NTuple{D,Int}; 
               dims::Union{Integer,UnitRange{Int64}}=1:D,
-              kargs...) where {D,T}
+              kargs...) where {D,T<:Float64}
 
   if dims != 1:D
     error("DUCC0Plan directional plans not yet implemented!")
@@ -69,27 +69,25 @@ function AbstractNFFTs.plan_nfft(::Type{<:Array}, k::Matrix{T}, N::NTuple{D,Int}
   return p
 end
 
-function LinearAlgebra.mul!(fHat::StridedArray, p::DUCC0Plan{T,D}, f::AbstractArray;
-             verbose=false, timing::Union{Nothing,TimingStats} = nothing) where {T,D}
+function LinearAlgebra.mul!(fHat::Vector{Complex{T}}, p::DUCC0Plan{T,D}, f::Array{Complex{T},D};
+             verbose=false, timing::Union{Nothing,TimingStats} = nothing) where {T<:Float64,D}
 
   forward = 1
   ccall((:planned_u2nu,libducc),
          Cvoid, (Ptr{Cvoid}, Cint, Csize_t, Ptr{Cdouble}, Ptr{Cdouble}),
          p.cplan, forward, Int64(verbose), pointer(f), pointer(fHat))
 
-
   return fHat
 end
 
-function LinearAlgebra.mul!(f::StridedArray, pl::Adjoint{Complex{T},<:DUCC0Plan{T,D}}, fHat::AbstractArray;
-                     verbose=false, timing::Union{Nothing,TimingStats} = nothing) where {T,D}
+function LinearAlgebra.mul!(f::Array{Complex{T},D}, pl::Adjoint{Complex{T},<:DUCC0Plan{T,D}}, fHat::Vector{Complex{T}};
+                     verbose=false, timing::Union{Nothing,TimingStats} = nothing) where {T<:Float64,D}
   p = pl.parent
 
   forward = 0
   ccall((:planned_nu2u,libducc),
          Cvoid, (Ptr{Cvoid}, Cint, Csize_t, Ptr{Cdouble}, Ptr{Cdouble}),
          p.cplan, forward, Int64(verbose), pointer(fHat), pointer(f))
-
 
   return f
 end
