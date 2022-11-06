@@ -43,7 +43,7 @@ function DUCC0Plan(k::Matrix{T}, N::NTuple{D,Int};
   p = DUCC0Plan(N, J, k, m, T(σ), T(reltol), ptr)
 
   finalizer(p -> begin
-    println("finalize!")
+    # println("finalize!")
     ccall((:delete_nufft_plan_double, libducc), Cvoid, (Ptr{Cvoid},), p.cplan)
   end, p)
 
