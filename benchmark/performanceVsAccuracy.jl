@@ -194,7 +194,7 @@ function plot_accuracy_small(df, packagesStr, packagesStrShort, filename)
   #colors = [RGB(0.0,0.29,0.57), RGB(0.3,0.5,0.7), RGB(0.95,0.59,0.22), RGB(1.0,0.87,0.0)]
   #colors = [RGB(0.0,0.29,0.57), RGB(0.3,0.5,0.7),  RGB(0.7,0.13,0.16), RGB(0.72,0.84,0.48)]
   #colors = [RGB(0.0,0.29,0.57), RGB(0.3,0.5,0.7), RGB(1.0,0.87,0.0), RGB(0.95,0.59,0.22)]
-  colors = [ RGB(0.3,0.5,0.7), RGB(0.94,0.53,0.12), RGB(0.99,0.75,0.05)]
+  colors = [ RGB(0.3,0.5,0.7), RGB(0.94,0.53,0.12), RGB(0.99,0.75,0.05), RGB(1.0,0.87,0.0)]
   ls = [:solid, :solid, :solid, :solid]
   shape = [:xcross, :circle, :xcross, :cross]
 
@@ -271,11 +271,11 @@ function plot_accuracy_small(df, packagesStr, packagesStrShort, filename)
 end
 
 
-df = nfft_accuracy_comparison(Ds)
-writedlm("data/performanceVsAccuracy.csv", Iterators.flatten(([names(df)], eachrow(df))), ',')
+#df = nfft_accuracy_comparison(Ds)
+#writedlm("data/performanceVsAccuracy.csv", Iterators.flatten(([names(df)], eachrow(df))), ',')
 
-#data, header = readdlm("data/performanceVsAccuracy.csv", ',', header=true);
-#df = DataFrame(data, vec(header))
+data, header = readdlm("data/performanceVsAccuracy.csv", ',', header=true);
+df = DataFrame(data, vec(header))
 
 plot_accuracy(df, [ "NFFT.jl/POLY", "NFFT.jl/TENSOR", "NFFT3/TENSOR", "FINUFFT", "DUCC0"],
                   [ "NFFT.jl/POLY", "NFFT.jl/TENSOR", "NFFT3", "FINUFFT", "DUCC0"], "./img/performanceVsAccuracy")
