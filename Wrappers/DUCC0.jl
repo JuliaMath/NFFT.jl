@@ -29,7 +29,7 @@ function DUCC0Plan(k::Matrix{T}, N::NTuple{D,Int};
   m, σ, reltol = accuracyParams(; kargs...)
   reltol
 
-  reltol = max(reltol, 1.0e-14)
+  reltol = max(reltol, 1e-15 * (10)^D ) # otherwise ducc0 will crash
 
   p = DUCC0Plan(N, J, k, m, T(σ), T(reltol))
 
@@ -62,12 +62,12 @@ end
 function LinearAlgebra.mul!(fHat::StridedArray, p::DUCC0Plan{T,D}, f::AbstractArray;
              verbose=false, timing::Union{Nothing,TimingStats} = nothing) where {T,D}
 
-  nthreads = 1
+  nthreads = Threads.nthreads()
   forward = 1
   ccall((:nufft_u2nu_julia_double,libducc),
      Cvoid, (Csize_t,Csize_t, Ref{NTuple{D,Csize_t}},Ptr{Cdouble},Ptr{Cdouble},Cint,Cdouble,Csize_t,Ptr{Cdouble},Csize_t,Cdouble,Cdouble,Cdouble,Cint),
      D, p.J, size(f), pointer(f), pointer(p.k),
-     forward, p.reltol, nthreads, pointer(fHat), Int64(verbose), 1.99, 2.001,
+     forward, p.reltol, nthreads, pointer(fHat), Int64(verbose), p.σ-0.026, p.σ+0.026, #1.99, 2.001,
      1.0, 0)
 
   return fHat
@@ -77,12 +77,12 @@ function LinearAlgebra.mul!(f::StridedArray, pl::Adjoint{Complex{T},<:DUCC0Plan{
                      verbose=false, timing::Union{Nothing,TimingStats} = nothing) where {T,D}
   p = pl.parent
 
-  nthreads = 1
+  nthreads = Threads.nthreads()
   forward = 0
   ccall((:nufft_nu2u_julia_double,libducc),
      Cvoid, (Csize_t,Csize_t, Ref{NTuple{D,Csize_t}},Ptr{Cdouble},Ptr{Cdouble},Cint,Cdouble,Csize_t,Ptr{Cdouble},Csize_t,Cdouble,Cdouble,Cdouble,Cint),
      D, p.J, size(f), pointer(fHat), pointer(p.k),
-     forward, p.reltol, nthreads, pointer(f), Int64(verbose), 1.99, 2.001,
+     forward, p.reltol, nthreads, pointer(f), Int64(verbose), p.σ-0.026, p.σ+0.026, #1.99, 2.001,
      1.0, 0)
 
   return f
