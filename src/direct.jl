@@ -105,13 +105,15 @@ function LinearAlgebra.mul!(g::AbstractArray{Tg}, plan::NDFTPlan{Tp,D}, f::Abstr
 
     g .= zero(Tg)
 
+    offset = ntuple(d-> iseven(plan.N[d]) ? (-1-plan.N[d]÷2) : (-1-(plan.N[d]-1)÷2), D)
+
     for l=1:prod(plan.N)
         idx = CartesianIndices(plan.N)[l]
 
         for j=1:plan.J
             arg = zero(T)
             for d=1:D
-                arg += plan.k[d,j] * ( idx[d] - 1 - plan.N[d] / 2 )
+                arg += plan.k[d,j] * ( idx[d] + offset[d] )
             end
             g[j] += f[l] * cis(-2*pi*arg)
         end
@@ -131,13 +133,15 @@ function LinearAlgebra.mul!(g::AbstractArray{Tg,D}, pl::Adjoint{Complex{Tp},<:ND
 
   g .= zero(Tg)
 
+  offset = ntuple(d-> iseven(p.N[d]) ? (-1-p.N[d]÷2) : (-1-(p.N[d]-1)÷2), D)
+
   for l=1:prod(p.N)
       idx = CartesianIndices(p.N)[l]
 
       for j=1:p.J
           arg = zero(T)
           for d=1:D
-              arg += p.k[d,j] * ( idx[d] - 1 - p.N[d] / 2 )
+              arg += p.k[d,j] * ( idx[d] + offset[d] )
           end
           g[l] += fHat[j] * cis(2*pi*arg)
       end
