@@ -271,8 +271,8 @@ function plot_accuracy_small(df, packagesStr, packagesStrShort, filename)
 end
 
 
-#df = nfft_accuracy_comparison(Ds)
-#writedlm("data/performanceVsAccuracy.csv", Iterators.flatten(([names(df)], eachrow(df))), ',')
+df = nfft_accuracy_comparison(Ds)
+writedlm("data/performanceVsAccuracy.csv", Iterators.flatten(([names(df)], eachrow(df))), ',')
 
 data, header = readdlm("data/performanceVsAccuracy.csv", ',', header=true);
 df = DataFrame(data, vec(header))

@@ -70,7 +70,7 @@ function AbstractNFFTs.plan_nfft(::Type{<:Array}, k::Matrix{T}, N::NTuple{D,Int}
 end
 
 function LinearAlgebra.mul!(fHat::StridedArray, p::DUCC0Plan{T,D}, f::AbstractArray;
-             verbose=true, timing::Union{Nothing,TimingStats} = nothing) where {T,D}
+             verbose=false, timing::Union{Nothing,TimingStats} = nothing) where {T,D}
 
   forward = 1
   ccall((:planned_u2nu,libducc),
@@ -82,7 +82,7 @@ function LinearAlgebra.mul!(fHat::StridedArray, p::DUCC0Plan{T,D}, f::AbstractAr
 end
 
 function LinearAlgebra.mul!(f::StridedArray, pl::Adjoint{Complex{T},<:DUCC0Plan{T,D}}, fHat::AbstractArray;
-                     verbose=true, timing::Union{Nothing,TimingStats} = nothing) where {T,D}
+                     verbose=false, timing::Union{Nothing,TimingStats} = nothing) where {T,D}
   p = pl.parent
 
   forward = 0
