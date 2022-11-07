@@ -159,6 +159,15 @@ quote
   else
     LB = size(block,1)
   end
+
+  if LB != size(block,1) && offC + size(block,1) > size(g,1)
+    # out of bounds indices: second (or first) wrapping
+    LC = size(g,1) - (offC)  
+    offD = -LC
+  else
+    # no out of bounds indices
+    LC = size(block,1)
+  end
   
   @nloops_ $(D-1)  (d->l_{d+1})  (d -> 1:size(block,d+1)) d->begin
     # preexpr
@@ -173,8 +182,12 @@ quote
         idx_1 = l_1 + offB
       (@nref $D block l) = (@nref $D g idx)
     end
-    @inbounds @simd for l_1 = (LB+1):size(block,1) 
+    @inbounds @simd for l_1 = (LB+1):LC
       idx_1 = l_1 + offC
+      (@nref $D block l) = (@nref $D g idx)
+    end
+    @inbounds @simd for l_1 = (LC+1):size(block,1) 
+      idx_1 = l_1 + offD
       (@nref $D block l) = (@nref $D g idx)
     end
   end
@@ -280,6 +293,15 @@ end
       # no out of bounds indices
       LB = size(block,1)
     end
+
+    if LB != size(block,1) && offC + size(block,1) > size(g,1)
+      # out of bounds indices: second (or first) wrapping
+      LC = size(g,1) - (offC)  
+      offD = -LC
+    else
+      # no out of bounds indices
+      LC = size(block,1)
+    end
     
     @nloops_ $(D-1)  (d->l_{d+1})  (d -> 1:size(block,d+1)) d->begin
       # preexpr
@@ -294,8 +316,12 @@ end
         idx_1 = l_1 + offB
         (@nref $D g idx) += (@nref $D block l)
       end
-      @inbounds @simd for l_1 = (LB+1):size(block,1) 
+      @inbounds @simd for l_1 = (LB+1):LC
         idx_1 = l_1 + offC
+        (@nref $D g idx) += (@nref $D block l)
+      end
+      @inbounds @simd for l_1 = (LC+1):size(block,1) 
+        idx_1 = l_1 + offD
         (@nref $D g idx) += (@nref $D block l)
       end
     end
