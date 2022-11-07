@@ -5,7 +5,7 @@ m = 5
 
 @testset "High-level NFFT" begin
   @info "High-level NFFT"
-  N = (32,32)
+  N = (33,35)
   eps =  1e-3
   D = length(N)
 
@@ -13,7 +13,7 @@ m = 5
   k = rand(Float64,D,J) .- 0.5
 
   fHat = rand(Float64,J) + rand(Float64,J)*im
-  f = ndft_adjoint(k, N, fHat,)
+  f = ndft_adjoint(k, N, fHat)
   fApprox = nfft_adjoint(k, N, fHat, reltol=1e-9)
   e = norm(f[:] - fApprox[:]) / norm(f[:])
   @debug "error adjoint nfft "  e
@@ -39,7 +39,7 @@ m = 5
 end
 
 @testset "NFFT in multiple dimensions" begin
-    for (u,N) in enumerate([(256,), (30,32), (10,12,14), (6,6,6,6)])
+    for (u,N) in enumerate([(255,), (31,33), (11,12,14), (6,5,6,6)])
       for (pre, storeDeconv, blocking) in zip([ NFFT.LINEAR, NFFT.LINEAR, NFFT.LINEAR, NFFT.FULL, NFFT.TENSOR, NFFT.POLYNOMIAL, NFFT.POLYNOMIAL],
                                            [false, true, false, false, false, false, false],
                                            [true, true, false, false, true, true, false])

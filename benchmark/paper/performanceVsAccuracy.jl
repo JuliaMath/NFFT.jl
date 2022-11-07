@@ -5,11 +5,10 @@ using Plots.Measures
 
 include("../Wrappers/NFFT3.jl")
 include("../Wrappers/FINUFFT.jl")
-include("../Wrappers/DUCC0.jl")
 
-const packagesCtor = [NFFTPlan, NFFTPlan, NFFT3Plan, FINUFFTPlan, DUCC0Plan]
-const packagesStr = [ "NFFT.jl/TENSOR", "NFFT.jl/POLY", "NFFT3/TENSOR", "FINUFFT", "DUCC0"]
-const precomp = [NFFT.TENSOR, NFFT.POLYNOMIAL, NFFT.TENSOR, NFFT.LINEAR, NFFT.LINEAR]
+const packagesCtor = [NFFTPlan, NFFTPlan, NFFT3Plan, FINUFFTPlan] #, NFFTPlan
+const packagesStr = [ "NFFT.jl/TENSOR", "NFFT.jl/POLY", "NFFT3/TENSOR", "FINUFFT"] #"NFFT.jl/LINEAR"
+const precomp = [NFFT.TENSOR, NFFT.POLYNOMIAL, NFFT.TENSOR, NFFT.LINEAR] #NFFT.LINEAR
 const blocking = [true, true, true, true, true]
 
 #const benchmarkTime = [120, 120]
@@ -105,11 +104,9 @@ function plot_accuracy(df, packagesStr, packagesStrShort, filename)
   #colors = [RGB(0.0,0.29,0.57), RGB(0.3,0.5,0.7), RGB(0.95,0.59,0.22), RGB(1.0,0.87,0.0)]
   #colors = [RGB(0.0,0.29,0.57), RGB(0.3,0.5,0.7),  RGB(0.7,0.13,0.16), RGB(0.72,0.84,0.48)]
   #colors = [RGB(0.0,0.29,0.57), RGB(0.3,0.5,0.7), RGB(1.0,0.87,0.0), RGB(0.95,0.59,0.22)]
-  #colors = [RGB(0.0,0.29,0.57), RGB(0.3,0.5,0.7), RGB(0.94,0.53,0.12), RGB(0.99,0.75,0.05)]
-  colors = [RGB(0.0,0.29,0.57), RGB(0.3,0.5,0.7), RGB(0.94,0.53,0.12), RGB(0.99,0.75,0.05), RGB(1.0,0.87,0.0)]
-
-  ls = [:solid, :solid, :solid, :solid, :solid]
-  shape = [:xcross, :circle, :xcross, :cross, :cross]
+  colors = [RGB(0.0,0.29,0.57), RGB(0.3,0.5,0.7), RGB(0.94,0.53,0.12), RGB(0.99,0.75,0.05)]
+  ls = [:solid, :solid, :solid, :solid]
+  shape = [:xcross, :circle, :xcross, :cross]
 
   xlims = [(4e-15,1e-5), (4e-15,1e-4),(4e-15,1e-4)]
 
@@ -128,7 +125,7 @@ function plot_accuracy(df, packagesStr, packagesStrShort, filename)
     p1 = plot(df1_[df1_.Package.==packagesStr[1],:ErrorTrafo], 
               df1_[df1_.Package.==packagesStr[1],:TimeTrafo], ylims=(0.0,maxTimeTrafo),
               label = packagesStrShort[1],
-              xscale = :log10, legend = (i==length(Ds)) ? (0.67, -0.5) : nothing, legend_column=length(packagesStr),
+              xscale = :log10, legend = (i==length(Ds)) ? (0.67, -0.5) : nothing, legend_column=4,
               lw=2, xlabel = xlabel, ylabel="Runtime / s",
               title=titleTrafo, shape=shape[1], ls=ls[1], 
               c=colors[1], msc=colors[1], mc=colors[1], ms=4, msw=2,
@@ -194,7 +191,7 @@ function plot_accuracy_small(df, packagesStr, packagesStrShort, filename)
   #colors = [RGB(0.0,0.29,0.57), RGB(0.3,0.5,0.7), RGB(0.95,0.59,0.22), RGB(1.0,0.87,0.0)]
   #colors = [RGB(0.0,0.29,0.57), RGB(0.3,0.5,0.7),  RGB(0.7,0.13,0.16), RGB(0.72,0.84,0.48)]
   #colors = [RGB(0.0,0.29,0.57), RGB(0.3,0.5,0.7), RGB(1.0,0.87,0.0), RGB(0.95,0.59,0.22)]
-  colors = [ RGB(0.3,0.5,0.7), RGB(0.94,0.53,0.12), RGB(0.99,0.75,0.05), RGB(1.0,0.87,0.0)]
+  colors = [ RGB(0.3,0.5,0.7), RGB(0.94,0.53,0.12), RGB(0.99,0.75,0.05)]
   ls = [:solid, :solid, :solid, :solid]
   shape = [:xcross, :circle, :xcross, :cross]
 
@@ -271,17 +268,17 @@ function plot_accuracy_small(df, packagesStr, packagesStrShort, filename)
 end
 
 
-df = nfft_accuracy_comparison(Ds)
-writedlm("data/performanceVsAccuracy.csv", Iterators.flatten(([names(df)], eachrow(df))), ',')
+#df = nfft_accuracy_comparison(Ds)
+#writedlm("data/performanceVsAccuracy.csv", Iterators.flatten(([names(df)], eachrow(df))), ',')
 
 data, header = readdlm("data/performanceVsAccuracy.csv", ',', header=true);
 df = DataFrame(data, vec(header))
 
-plot_accuracy(df, [ "NFFT.jl/POLY", "NFFT.jl/TENSOR", "NFFT3/TENSOR", "FINUFFT", "DUCC0"],
-                  [ "NFFT.jl/POLY", "NFFT.jl/TENSOR", "NFFT3", "FINUFFT", "DUCC0"], "./img/performanceVsAccuracy")
+plot_accuracy(df, [ "NFFT.jl/POLY", "NFFT.jl/TENSOR", "NFFT3/TENSOR", "FINUFFT"],
+                  [ "NFFT.jl/POLY", "NFFT.jl/TENSOR", "NFFT3", "FINUFFT"], "./img/performanceVsAccuracy")
                   
-plot_accuracy_small(df, [ "NFFT.jl/TENSOR", "NFFT3/TENSOR", "FINUFFT", "DUCC0"],
-                  [ "NFFT.jl", "NFFT3", "FINUFFT", "DUCC0"], "./img/performanceVsAccuracy")
+plot_accuracy_small(df, [ "NFFT.jl/TENSOR", "NFFT3/TENSOR", "FINUFFT"],
+                  [ "NFFT.jl", "NFFT3", "FINUFFT"], "./img/performanceVsAccuracy")
 
 #plot_accuracy(df, [ "NFFT.jl/POLY", "NFFT.jl/TENSOR" ], #"NFFT.jl/LINEAR"  , "LINEAR"
 #                  [ "POLYNOMIAL", "TENSOR"], "./img/performanceVsAccuracyPrecomp.pdf")

@@ -1,9 +1,11 @@
 @testset "Accuracy Wrappers" begin
 
-include("../Wrappers/FINUFFT.jl")
+if !Sys.iswindows()
 
-@testset "FINUFFT Wrapper in multiple dimensions" begin
-  for (u,N) in enumerate([(256,), (30,32), (10,12,14)]) # can only do D=1:3
+include("../Wrappers/DUCC0.jl")
+
+@testset "DUCC0 Wrapper in multiple dimensions" begin
+  for (u,N) in enumerate([(255,), (31,33), (11,12,14)]) # can only do D=1:3
     
     eps = 1e-7
       
@@ -12,7 +14,7 @@ include("../Wrappers/FINUFFT.jl")
 
     J = prod(N)
     k = rand(Float64,D,J) .- 0.5
-    p = FINUFFTPlan(k, N) #; m, σ, precompute = pre, fftflags = FFTW.ESTIMATE)
+    p = DUCC0Plan(k, N) #; m, σ, precompute = pre, fftflags = FFTW.ESTIMATE)
     pNDFT = NDFTPlan(k, N)
 
     fHat = rand(Float64,J) + rand(Float64,J)*im
@@ -32,7 +34,39 @@ include("../Wrappers/FINUFFT.jl")
   end
 end
 
+end
 
+include("../Wrappers/FINUFFT.jl")
+
+@testset "FINUFFT Wrapper in multiple dimensions" begin
+  for (u,N) in enumerate([(255,), (31,33), (11,12,14)]) # can only do D=1:3
+    
+    eps = 1e-7
+      
+    D = length(N)
+    @info "Testing in $D dimensions"
+
+    J = prod(N)
+    k = rand(Float64,D,J) .- 0.5
+    p = FINUFFTPlan(k, N)
+    pNDFT = NDFTPlan(k, N)
+
+    fHat = rand(Float64,J) + rand(Float64,J)*im
+    f = adjoint(pNDFT) * fHat
+    fApprox = adjoint(p) * fHat
+
+    e = norm(f[:] - fApprox[:]) / norm(f[:])
+    @debug "error adjoint nfft "  e
+    @test e < eps
+
+    gHat = pNDFT * f
+    gHatApprox = p * f
+    e = norm(gHat[:] - gHatApprox[:]) / norm(gHat[:])
+    @debug "error nfft "  e
+    @test e < eps
+
+  end
+end
 
 @testset "FINNUFFT Wrapper in multiple dimensions" begin
   for (u,N) in enumerate([(40,1), (40,2), (40,3)])
@@ -64,11 +98,6 @@ end
 
   end
 end
-
-
-
-end
-
 
 
 include("../Wrappers/NFFT3.jl")
@@ -170,4 +199,7 @@ end
     @debug "error ndct "  e
     @test e < eps
   end
+end
+
+
 end

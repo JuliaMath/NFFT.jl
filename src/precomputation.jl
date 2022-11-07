@@ -20,10 +20,6 @@ function initParams(k::Matrix{T}, N::NTuple{D,Int}, dims::Union{Integer,UnitRang
       throw(ArgumentError("Nodes x have dimension $(size(k,1)) != $(length(dims_))"))
   end
 
-  if any(isodd.(N[dims]))
-    throw(ArgumentError("N = $N needs to consist of even integers along dims = $(dims)!"))
-  end
-
   doTrafo = ntuple(d->d ∈ dims_, D)
 
   Ñ = ntuple(d -> doTrafo[d] ?
@@ -182,9 +178,8 @@ end
 
 @generated function shiftedWindowEntries(winLin::Vector, idx, scale, d, L::Val{Z}) where {Z}
   quote
-    idxL = floor(Int,idx)
-    idxInt = Int(idxL)
-    α = ( idx-idxL )
+    idxInt = floor(Int,idx)
+    α = ( idx-idxInt )
 
     tmpWin = @ntuple $(Z) l -> begin
       # Uncommented code: This is the version where we pull in l into the abs.
@@ -294,10 +289,10 @@ Remarks:
   an error while the later variant would silently error.
 """
 function precomputeLinInterp(win, m, σ, K, T)
-  windowLinInterp = Vector{T}(undef, K+1)
+  windowLinInterp = Vector{T}(undef, K+2)
 
   step = (m) / (K)
-  @cthreads for l = 1:(K+1)
+  @cthreads for l = 1:(K+2)
       y = ( (l-1) * step )
       windowLinInterp[l] = win(y, 1, m, σ)
   end
@@ -347,16 +342,17 @@ function testPrecomputePoly(win, m, σ, T)
   return winTrue, winApprox
 end
 
+indexOffset(N) = iseven(N) ? (-1-N÷2) : (-1-(N-1)÷2)
 
 function precomputeWindowHatInvLUT(windowHatInvLUT, win_hat, N, Ñ, m, σ, T)
 
   for d=1:length(windowHatInvLUT)
-      κ = n -> win_hat(n-1-N[d]÷2, Ñ[d], m, σ)
+      κ = n -> win_hat(n + indexOffset(N[d]), Ñ[d], m, σ)
       cheb = ChebyshevInterpolator(κ, 1, N[d], 30)
 
       windowHatInvLUT[d] = zeros(T, N[d])
       @cthreads for j=1:N[d]
-          windowHatInvLUT[d][j] = 1. / cheb(j) #win_hat(k-1-N[d]÷2, Ñ[d], m, σ)
+          windowHatInvLUT[d][j] = 1. / cheb(j) #win_hat(k + indexOffset(N[d]), Ñ[d], m, σ)
       end
   end
 end
@@ -432,24 +428,26 @@ end
   quote
     linIdx = LinearIndices(Ñ)
 
-    @nexprs 1 d -> gidx_{$D-1} = rem(o+Ñ[$D] - N[$D]÷2 - 1, Ñ[$D]) + 1
+    @nexprs 1 d -> gidx_{$D-1} = rem(o+Ñ[$D] + indexOffset(N[$D]), Ñ[$D]) + 1
     @nexprs 1 d -> l_{$D-1} = o
     @nloops $(D-2) l d->(1:N[d+1]) d-> begin
-        gidx_d = rem(l_d+Ñ[d+1] - N[d+1]÷2 - 1, Ñ[d+1]) + 1
+        gidx_d = rem(l_d+Ñ[d+1] + indexOffset(N[d+1]), Ñ[d+1]) + 1
       end begin
-      N2 = N[1]÷2
-      @inbounds @simd for i = 1:N2
+      Na = N[1]÷2
+      @inbounds @simd for i = 1:Na
         deconvIdx[i, CartesianIndex(@ntuple $(D-1) l)] =
-           linIdx[i-N2+Ñ[1], CartesianIndex(@ntuple $(D-1) gidx)]
+           linIdx[i-Na+Ñ[1], CartesianIndex(@ntuple $(D-1) gidx)]
         v = windowHatInvLUT_[1][i]
         @nexprs $(D-1) d -> v *= windowHatInvLUT_[d+1][l_d]
         windowHatInvLUT[i, CartesianIndex(@ntuple $(D-1) l)] = v
-
-        deconvIdx[i+N2, CartesianIndex(@ntuple $(D-1) l)] =
+      end
+      Nb = (N[1]+1)÷2
+      @inbounds @simd for i = 1:Nb
+        deconvIdx[i+Na, CartesianIndex(@ntuple $(D-1) l)] =
            linIdx[i, CartesianIndex(@ntuple $(D-1) gidx)]
-        v = windowHatInvLUT_[1][i+N2]
+        v = windowHatInvLUT_[1][i+Na]
         @nexprs $(D-1) d -> v *= windowHatInvLUT_[d+1][l_d]
-        windowHatInvLUT[i+N2, CartesianIndex(@ntuple $(D-1) l)] = v
+        windowHatInvLUT[i+Na, CartesianIndex(@ntuple $(D-1) l)] = v
       end
     end
     return

@@ -7,6 +7,7 @@ using NFFTTools
 
 Random.seed!(123)
 
+include("issues.jl")
 include("accuracy.jl")
 include("constructors.jl")
 include("performance.jl")

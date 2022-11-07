@@ -1,6 +1,9 @@
 *.DS_Store
 docs/build/*
 *.h5
+*.aux
+*.log
+*.gz
 test/*.png
 benchmark/*.png
 benchmark/*.csv
