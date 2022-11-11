@@ -300,7 +300,7 @@ function precomputeLinInterp(win, m, σ, K, T)
 end
 
 function precomputePolyInterp(win, m, σ, T)
-  deg = 2*m # 2*m #+ 2   # Certainly depends on Window
+  deg = 2*m+1 # Certainly depends on Window
   K = 2*m
   NSamples = 2*deg # Sample more densely!!!
   windowPolyInterp = Matrix{T}(undef, deg, K)
