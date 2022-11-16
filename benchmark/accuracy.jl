@@ -55,9 +55,9 @@ function nfft_accuracy_comparison(Ds, σs, ms)
                 gHatApprox = p * f
               #end
 
-              eadjoint = norm(f[:] - fApprox[:]) / norm(f[:])
+              eadjoint = norm(f[:] - fApprox[:], Inf) / norm(f[:], Inf)
 
-              etrafo = norm(gHat[:] - gHatApprox[:]) / norm(gHat[:])
+              etrafo = norm(gHat[:] - gHatApprox[:], Inf) / norm(gHat[:], Inf)
               
               push!(df, (packagesStr[pl], D, J, N[D], m, σ, etrafo, eadjoint))
             end
@@ -162,11 +162,11 @@ function plot_accuracy_sigma(df, packagesStr, packagesStrShort, filename,  D=1)
 end
 
 
-#dfm = nfft_accuracy_comparison(2, [2.0], ms)
-#dfσ = nfft_accuracy_comparison(2, σs, [4])
+dfm = nfft_accuracy_comparison(2, [2.0], ms)
+dfσ = nfft_accuracy_comparison(2, σs, [4])
 
-#writedlm("data/accuracy_m.csv", Iterators.flatten(([names(dfm)], eachrow(dfm))), ',')
-#writedlm("data/accuracy_sigma.csv", Iterators.flatten(([names(dfσ)], eachrow(dfσ))), ',')
+writedlm("data/accuracy_m.csv", Iterators.flatten(([names(dfm)], eachrow(dfm))), ',')
+writedlm("data/accuracy_sigma.csv", Iterators.flatten(([names(dfσ)], eachrow(dfσ))), ',')
 
 data, header = readdlm("data/accuracy_m.csv", ',', header=true);
 dfm = DataFrame(data, vec(header))

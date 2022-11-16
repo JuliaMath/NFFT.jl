@@ -8,9 +8,9 @@ On this page we give a brief overview of the mathematical background of the NFFT
 
 ## NDFT
 
-We first define the non-equidistant discrete Fourier transform (NDFT) that corresponds to the ordinary DFT. Let ``\bm{N} \in (2\mathbb{N})^D`` with ``D \in \mathbb{N}`` be the size of the ``D``-dimensional  equidistantly sampled signal ``\bm{f} = (f_{\bm{n}})_{\bm{n} \in I_{\bm{N}}}``. ``\bm{f}`` can for instance be a time or spatial domain signal. The signal is indexed using the multi-index set
+We first define the non-equidistant discrete Fourier transform (NDFT) that corresponds to the ordinary DFT. Let ``\bm{N} \in \mathbb{N}^D`` with ``D \in \mathbb{N}`` be the size of the ``D``-dimensional  equidistantly sampled signal ``\bm{f} = (f_{\bm{n}})_{\bm{n} \in I_{\bm{N}}}``. ``\bm{f}`` can for instance be a time or spatial domain signal. The signal is indexed using the multi-index set
 ```math
-I_{\bm{N}} := \left\lbrace \pmb{n} \in \mathbb{Z}^D: -\frac{N_d}{2} \leq n_d \leq \frac{N_d}{2}-1, d=1,2,\ldots,D \right\rbrace
+I_{\bm{N}} := \mathbb{Z}^D \cap \prod_{d=1}^D \left[-\frac{N_d}{2},\frac{N_d}{2}\right)
 ```
 and thus represents a regular sampling that would also be considered when applying an ordinary DFT. The NDFT now maps from the equidistant domain to the non-equidistant domain and is defined as
 ```math
@@ -70,7 +70,7 @@ where
 * ``\bm{D} \in \mathbb{C}^{|\tilde{\mathbf{N}}| \times |\mathbf{N}|}`` is a diagonal matrix that additionally includes zero filling and the fftshift. We call this the *deconvolution* matrix.
 * ``\bm{B} \in \mathbb{C}^{M \times |\tilde{\mathbf{N}}|}`` is a sparse matrix implementing the discrete convolution with a window function ``\hat{\varphi}``. We call this the *convolution* matrix.
 
-The NFFT is based on the convolution theorem. It applies a convolution in the non-equidistant domain, which is evaluated at equidistant sampling nodes. This convolution is then corrected in the the equidistant domain by division with the inverse Fourier transform ``\hat{\varphi}``. 
+The NFFT is based on the convolution theorem. It applies a convolution in the non-equidistant domain, which is evaluated at equidistant sampling nodes. This convolution is then corrected in the equidistant domain by division with the inverse Fourier transform ``\hat{\varphi}``. 
 
 The adjoint NFFT matrix approximates ``\bm{A}^{\mathsf{H}}`` by
 

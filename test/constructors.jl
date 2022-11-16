@@ -1,7 +1,6 @@
 @testset "Constructors" begin
 
   @test_throws ArgumentError NFFTPlan(zeros(1,4), (2,2))
-  @test_throws ArgumentError NFFTPlan(zeros(2,4), (2,3))
 
   p = NFFTPlan(zeros(2,4), (2,2))
   pCopy = copy(p)
