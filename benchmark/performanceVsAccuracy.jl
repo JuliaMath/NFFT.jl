@@ -12,8 +12,7 @@ const packagesStr = [ "NFFT.jl/TENSOR", "NFFT.jl/POLY", "NFFT3/TENSOR", "FINUFFT
 const precomp = [NFFT.TENSOR, NFFT.POLYNOMIAL, NFFT.TENSOR, NFFT.LINEAR, NFFT.LINEAR]
 const blocking = [true, true, true, true, true]
 
-#const benchmarkTime = [120, 120]
-const benchmarkTime = [1, 1]
+const benchmarkTime = [10, 30, 30]
 
 ccall(("omp_set_num_threads",NFFT3.lib_path_nfft),Nothing,(Int64,),convert(Int64,Threads.nthreads()))
 @info ccall(("nfft_get_num_threads",NFFT3.lib_path_nfft),Int64,())
@@ -64,24 +63,25 @@ function nfft_accuracy_comparison(Ds=1:3)
         for pl = 1:length(packagesStr)
           planner = packagesCtor[pl]
           p = planner(k, N; m, σ, precompute=precomp[pl], blocking=blocking[pl], fftflags=fftflags)
+          BenchmarkTools.DEFAULT_PARAMETERS.seconds = benchmarkTime[1] 
           b = @benchmark $planner($k, $N; m=$m, σ=$σ, precompute=$(precomp[pl]), blocking=$(blocking[pl]), fftflags=$(fftflags))
           tpre = minimum(b).time / 1e9
 
           @info "Adjoint accuracy: $(packagesStr[pl])"
           mul!(fApprox, adjoint(p), fHat)
-          eadjoint = norm(f[:] - fApprox[:]) / norm(f[:])
+          eadjoint = norm(f[:] - fApprox[:],Inf) / norm(f[:],Inf)
 
           @info "Adjoint benchmark: $(packagesStr[pl])"
-          BenchmarkTools.DEFAULT_PARAMETERS.seconds = benchmarkTime[1] 
+          BenchmarkTools.DEFAULT_PARAMETERS.seconds = benchmarkTime[2] 
           b = @benchmark mul!($fApprox, $(adjoint(p)), $fHat)
           tadjoint = minimum(b).time / 1e9
 
           @info "Trafo accuracy: $(packagesStr[pl])"
           mul!(gHatApprox, p, f)
-          etrafo = norm(gHat[:] - gHatApprox[:]) / norm(gHat[:])
+          etrafo = norm(gHat[:] - gHatApprox[:],Inf) / norm(gHat[:],Inf)
 
           @info "Trafo benchmark: $(packagesStr[pl])"
-          BenchmarkTools.DEFAULT_PARAMETERS.seconds = benchmarkTime[2]
+          BenchmarkTools.DEFAULT_PARAMETERS.seconds = benchmarkTime[3]
           b = @benchmark mul!($gHatApprox, $p, $f)
           ttrafo = minimum(b).time / 1e9
 
@@ -111,7 +111,11 @@ function plot_accuracy(df, packagesStr, packagesStrShort, filename)
   ls = [:solid, :solid, :solid, :solid, :solid]
   shape = [:xcross, :circle, :xcross, :cross, :cross]
 
-  xlims = [(4e-15,1e-5), (4e-15,1e-4),(4e-15,1e-4)]
+  xlims = [(1e-14,1e-4), (1e-14,1e-4),(1e-14,1e-4)]
+  ylims = [(0,0.053), (0,0.21),(0,2.6)]
+  xticks = ([1e-14, 1e-12, 1e-10, 1e-8, 1e-6 ,1e-4],
+            [L"10^{-14}", L"10^{-12}", L"10^{-10}", L"10^{-8}", L"10^{-6}" , L"10^{-4}"])
+  
 
   pl = Matrix{Any}(undef, 3, length(Ds))
   for (i,D) in enumerate(Ds)
@@ -126,13 +130,13 @@ function plot_accuracy(df, packagesStr, packagesStrShort, filename)
     maxTimePre = maximum( maximum(df1_[df1_.Package.==pStr,:TimePre]) for pStr in packagesStr)
 
     p1 = plot(df1_[df1_.Package.==packagesStr[1],:ErrorTrafo], 
-              df1_[df1_.Package.==packagesStr[1],:TimeTrafo], ylims=(0.0,maxTimeTrafo),
+              df1_[df1_.Package.==packagesStr[1],:TimeTrafo], ylims=ylims[i],
               label = packagesStrShort[1],
-              xscale = :log10, legend = (i==length(Ds)) ? (0.67, -0.5) : nothing, legend_column=length(packagesStr),
+              xscale = :log10, legend = (i==length(Ds)) ? (0.5, -0.5) : nothing, legend_column=length(packagesStr),
               lw=2, xlabel = xlabel, ylabel="Runtime / s",
               title=titleTrafo, shape=shape[1], ls=ls[1], 
               c=colors[1], msc=colors[1], mc=colors[1], ms=4, msw=2,
-              xlims=xlims[i])
+              xlims=xlims[i], xticks=xticks)
 
     for p=2:length(packagesStr)      
       plot!(p1, df1_[df1_.Package.==packagesStr[p],:ErrorTrafo], 
@@ -143,11 +147,11 @@ function plot_accuracy(df, packagesStr, packagesStrShort, filename)
     end
 
     p2 = plot(df1_[df1_.Package.==packagesStr[1],:ErrorAdjoint], 
-              df1_[df1_.Package.==packagesStr[1],:TimeAdjoint], ylims=(0.0,maxTimeAdjoint),
+              df1_[df1_.Package.==packagesStr[1],:TimeAdjoint], ylims=ylims[i],
               xscale = :log10,  lw=2, xlabel = xlabel, #ylabel="Runtime / s", #label=packagesStr[1],
               legend = nothing, title=titleAdjoint, shape=shape[1], ls=ls[1], 
               c=colors[1], msc=colors[1], mc=colors[1], ms=4, msw=2,
-              xlims=xlims[i])
+              xlims=xlims[i], xticks=xticks)
 
     for p=2:length(packagesStr)      
       plot!(p2, df1_[df1_.Package.==packagesStr[p],:ErrorAdjoint], 
@@ -163,7 +167,7 @@ function plot_accuracy(df, packagesStr, packagesStrShort, filename)
               title=titlePre, shape=shape[1], ls=ls[1], 
               c=colors[1], msc=colors[1], mc=colors[1], ms=4, msw=2,
               legend = nothing,
-              xlims=xlims[i] )
+              xlims=xlims[i], xticks=xticks )
 
     for p=2:length(packagesStr)      
       plot!(p3, df1_[df1_.Package.==packagesStr[p],:ErrorAdjoint], 
@@ -175,11 +179,12 @@ function plot_accuracy(df, packagesStr, packagesStrShort, filename)
     pl[1,i] = p1; pl[2,i] = p2; pl[3,i] = p3; 
   end
 
-  p = plot(vec(pl)..., layout=(length(Ds),3), size=(900,600), dpi=200, margin = 1mm)
-
+  p = plot(vec(pl)..., layout=(length(Ds),3), size=(900,600), dpi=200, margin = 1mm, tex_output_standalone = true)
+  
   mkpath("./img/")
   savefig(p, filename*".pdf")
   savefig(p, filename*".svg")
+  #savefig(p, filename*".tex")
   return p
 end
 
@@ -199,7 +204,9 @@ function plot_accuracy_small(df, packagesStr, packagesStrShort, filename)
   shape = [:xcross, :circle, :xcross, :cross]
 
   xlims = [(4e-15,1e-5), (4e-15,1e-4),(4e-15,1e-4)]
-
+  xticks = ([1e-14, 1e-12, 1e-10, 1e-8, 1e-6 ,1e-4],
+            [L"10^{-14}", L"10^{-12}", L"10^{-10}", L"10^{-8}", L"10^{-6}" , L"10^{-4}"])
+  
   pl = Matrix{Any}(undef, 3, length(Ds))
   for (i,D) in enumerate(Ds)
     titleTrafo = L"\textrm{NFFT}, \textrm{%$(D)D}"
@@ -219,7 +226,7 @@ function plot_accuracy_small(df, packagesStr, packagesStrShort, filename)
               lw=2, xlabel = xlabel, ylabel="Runtime / s",
               title=titleTrafo, shape=shape[1], ls=ls[1], 
               c=colors[1], msc=colors[1], mc=colors[1], ms=4, msw=2,
-              xlims=xlims[i])
+              xlims=xlims[i], xticks=xticks)
 
     for p=2:length(packagesStr)      
       plot!(p1, df1_[df1_.Package.==packagesStr[p],:ErrorTrafo], 
@@ -234,7 +241,7 @@ function plot_accuracy_small(df, packagesStr, packagesStrShort, filename)
               xscale = :log10,  lw=2, xlabel = xlabel, #ylabel="Runtime / s", #label=packagesStr[1],
               legend = nothing, title=titleAdjoint, shape=shape[1], ls=ls[1], 
               c=colors[1], msc=colors[1], mc=colors[1], ms=4, msw=2,
-              xlims=xlims[i])
+              xlims=xlims[i], xticks=xticks)
 
     for p=2:length(packagesStr)      
       plot!(p2, df1_[df1_.Package.==packagesStr[p],:ErrorAdjoint], 
@@ -250,7 +257,7 @@ function plot_accuracy_small(df, packagesStr, packagesStrShort, filename)
               title=titlePre, shape=shape[1], ls=ls[1], 
               c=colors[1], msc=colors[1], mc=colors[1], ms=4, msw=2,
               legend = nothing,
-              xlims=xlims[i] )
+              xlims=xlims[i], xticks=xticks )
 
     for p=2:length(packagesStr)      
       plot!(p3, df1_[df1_.Package.==packagesStr[p],:ErrorAdjoint], 
@@ -271,8 +278,8 @@ function plot_accuracy_small(df, packagesStr, packagesStrShort, filename)
 end
 
 
-df = nfft_accuracy_comparison(Ds)
-writedlm("data/performanceVsAccuracy.csv", Iterators.flatten(([names(df)], eachrow(df))), ',')
+#df = nfft_accuracy_comparison(Ds)
+#writedlm("data/performanceVsAccuracy.csv", Iterators.flatten(([names(df)], eachrow(df))), ',')
 
 data, header = readdlm("data/performanceVsAccuracy.csv", ',', header=true);
 df = DataFrame(data, vec(header))
