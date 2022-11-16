@@ -5,8 +5,8 @@ pgfplotsx()
 #gr()
 
 
-include("../Wrappers/NFFT3.jl")
-include("../Wrappers/FINUFFT.jl")
+include("../../Wrappers/NFFT3.jl")
+include("../../Wrappers/FINUFFT.jl")
 mkpath("./img/")
 mkpath("./data/")
 
@@ -15,7 +15,7 @@ const threads = [1,2,4,8]
 const precomp = [NFFT.POLYNOMIAL, NFFT.TENSOR, NFFT.POLYNOMIAL, NFFT.TENSOR]
 const packagesCtor = [NFFTPlan, NFFTPlan, FINUFFTPlan, NFFT3Plan]
 const packagesStr = ["NFFT.jl/POLY", "NFFT.jl/TENSOR", "FINUFFT", "NFFT3"]
-const benchmarkTime = [1, 60, 60]
+const benchmarkTime = [1, 120, 120]
 #const benchmarkTime = [1, 2, 2]
 #const NBase = [4*4096, 256, 32]
 const NBase = [512*512, 512, 64]
@@ -48,7 +48,8 @@ function nfft_performance_comparison(m = 4, σ = 2.0)
         f = randn(Complex{T}, NN)
         
         for pl = 1:length(packagesStr)
-
+          @info packagesStr[pl]
+          
           planner = packagesCtor[pl]
           BenchmarkTools.DEFAULT_PARAMETERS.seconds = benchmarkTime[1]
           b = @benchmark $planner($k, $NN; m=$m, σ=$σ, window=:kaiser_bessel, 
@@ -116,9 +117,10 @@ function plot_performance(df; D=2, N=1024, J=N*N)
           bar_width = 0.67, ylims=(0,maxtime),
           lw = 0, framestyle = :box, size=(800,600), title = L"\textrm{Precompute}")
   
-  p = plot(p1, p2, p3, layout=(3,1), size=(800,600), dpi=200)
+  p = plot(p1, p2, p3, layout=(3,1), size=(800,600), dpi=200, tex_output_standalone = true)
 
   savefig(p, "./img/performance_mt.pdf")
+  savefig(p, "./img/performance_mt.tex")
   return p
 end
 
@@ -159,7 +161,7 @@ function plot_performance_speedup(df, packagesStr, packagesStrShort, colors; D=2
     titleAdjoint = L"\textrm{NFFT}^H"
 
     p1 = plot(threads, 
-              ttrafo[:,1], #ylims=(0.0,maximum(threads)),
+              ttrafo[:,1], ylims=(0,0.135),
               label=packagesStrShort[1], lw=2, ylabel="Runtime / s", #xlabel = "# threads",
               legend = :topright, title=titleTrafo, 
               shape=shape[1], ls=ls[1], 
@@ -172,7 +174,7 @@ function plot_performance_speedup(df, packagesStr, packagesStrShort, colors; D=2
               c=colors[p], msc=colors[p], mc=colors[p], ms=4, msw=2)
     end
 
-    p2 = plot(threads, tadjoint[:,1],  #ylims=(0.0,maximum(threads)),
+    p2 = plot(threads, tadjoint[:,1], ylims=(0,0.135),
               lw=2, #xlabel = "# threads", 
               label=packagesStr[1],
               #legend = i==2 ? :topright : nothing, 
@@ -187,11 +189,9 @@ function plot_performance_speedup(df, packagesStr, packagesStrShort, colors; D=2
               c=colors[p], msc=colors[p], mc=colors[p], ms=4, msw=2)
     end
 
-   p = plot(p1, p2, layout=(1,2), size=(800,300), dpi=200)
-
   
-  p3 = plot(threads, 
-              efftrafo[:,1], ylims=(0.0,1.2),
+    p3 = plot(threads, 
+              efftrafo[:,1], ylims=(0.0,1.1),
               label=packagesStrShort[1], lw=2, ylabel="Efficiency", xlabel = "# threads",
               legend = nothing, title=titleTrafo, 
               shape=shape[1], ls=ls[1], 
@@ -204,7 +204,7 @@ function plot_performance_speedup(df, packagesStr, packagesStrShort, colors; D=2
               c=colors[p], msc=colors[p], mc=colors[p], ms=4, msw=2)
     end
 
-    p4 = plot(threads, effadjoint[:,1],  ylims=(0.0,1.2),
+    p4 = plot(threads, effadjoint[:,1],  ylims=(0.0,1.1),
               lw=2, xlabel = "# threads", label=packagesStr[1],
               #legend = i==2 ? :topright : nothing, 
               legend = nothing,
@@ -218,10 +218,11 @@ function plot_performance_speedup(df, packagesStr, packagesStrShort, colors; D=2
               c=colors[p], msc=colors[p], mc=colors[p], ms=4, msw=2)
     end
 
-   p = plot(p1, p2, p3, p4, layout=(2,2), size=(800,500), dpi=200)
+   p = plot(p1, p2, p3, p4, layout=(2,2), size=(800,500), dpi=200, tex_output_standalone = true)
 
 
   savefig(p, "./img/performance_mt_speedup.pdf")
+  savefig(p, "./img/performance_mt_speedup.tex")
   
   return 
 end
