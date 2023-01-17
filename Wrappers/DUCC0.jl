@@ -1,16 +1,16 @@
+# FIXME: will be replaced once Ducc0.jl is officially released
+include("/home/martin/codes/Ducc0.jl/src/Ducc0.jl")
+
 using LinearAlgebra
-import ducc0_jll
 
-const libducc = ducc0_jll.libducc_julia
-
-mutable struct DUCC0Plan{T,D} <: AbstractNFFTPlan{T,D,1} 
+mutable struct DUCC0Plan{T,D} <: AbstractNFFTPlan{T,D,1}
   N::NTuple{D,Int64}
   J::Int64
-  k::Matrix{T} 
+  k::Matrix{T}
   m::Int
   σ::T
   reltol::T
-  cplan::Ptr{Cvoid}
+  plan::Ducc0.Nufft.NufftPlan
 end
 
 ################
@@ -29,25 +29,30 @@ function DUCC0Plan(k::Matrix{T}, N::NTuple{D,Int};
 
   m, σ, reltol = accuracyParams(; kargs...)
 
-  reltol = max(reltol, 1e-15 * (10)^D ) # otherwise ducc0 will crash
-  nthreads = Threads.nthreads()
-  sigma_min = σ-0.026 # try match σ   # 1.1
-  sigma_max =  σ+0.026 # try match σ  # 2.6
-  periodicity = 1.0
-  fft_order = 0
+  # simple switch whether or not to follow the requested oversampling factor
+  # Free choice of oversampling factor improves performance in many cases
+  # and allows better accuracy in others.
+  match_sigma = true
+  if match_sigma
+    sigma_min = σ - 0.026 # try match σ
+    sigma_max = σ + 0.026 # try match σ
+  else
+    sigma_min = 1.1
+    sigma_max = 2.6
+  end
+  reltol = max(reltol, 1.1*Ducc0.Nufft.best_epsilon(UInt64(D), false, sigma_min=sigma_min, sigma_max=sigma_max))
 
-  ptr = ccall((:make_nufft_plan_double,libducc), Ptr{Cvoid}, 
-                (Cint, Csize_t, Csize_t, Ref{NTuple{D,Csize_t}}, Ptr{Cdouble}, Cdouble, Csize_t, Cdouble, Cdouble, Cdouble, Cint), 
-                0, D, J, N, pointer(k), reltol, nthreads, sigma_min, sigma_max, periodicity, fft_order)
-
-  p = DUCC0Plan(N, J, k, m, T(σ), T(reltol), ptr)
-
-  finalizer(p -> begin
-    # println("finalize!")
-    ccall((:delete_nufft_plan_double, libducc), Cvoid, (Ptr{Cvoid},), p.cplan)
-  end, p)
-
-  return p
+  plan = Ducc0.Nufft.make_plan(
+    k,
+    N,
+    epsilon=reltol,
+    nthreads=UInt64(Threads.nthreads()),
+    sigma_min=sigma_min,
+    sigma_max=sigma_max,
+    periodicity=1.0,
+    fft_order=false,
+  )
+  return DUCC0Plan(N, J, k, m, T(σ), T(reltol), plan)
 end
 
 
@@ -72,11 +77,7 @@ end
 function LinearAlgebra.mul!(fHat::Vector{Complex{T}}, p::DUCC0Plan{T,D}, f::Array{Complex{T},D};
              verbose=false, timing::Union{Nothing,TimingStats} = nothing) where {T<:Float64,D}
 
-  forward = 1
-  ccall((:planned_u2nu,libducc),
-         Cvoid, (Ptr{Cvoid}, Cint, Csize_t, Ptr{Cdouble}, Ptr{Cdouble}),
-         p.cplan, forward, Int64(verbose), pointer(f), pointer(fHat))
-
+  Ducc0.Nufft.u2nu_planned!(p.plan, f, fHat, forward=true, verbose=verbose)
   return fHat
 end
 
@@ -84,10 +85,6 @@ function LinearAlgebra.mul!(f::Array{Complex{T},D}, pl::Adjoint{Complex{T},<:DUC
                      verbose=false, timing::Union{Nothing,TimingStats} = nothing) where {T<:Float64,D}
   p = pl.parent
 
-  forward = 0
-  ccall((:planned_nu2u,libducc),
-         Cvoid, (Ptr{Cvoid}, Cint, Csize_t, Ptr{Cdouble}, Ptr{Cdouble}),
-         p.cplan, forward, Int64(verbose), pointer(fHat), pointer(f))
-
+  Ducc0.Nufft.nu2u_planned!(p.plan, fHat, f, forward=false, verbose=verbose)
   return f
 end
