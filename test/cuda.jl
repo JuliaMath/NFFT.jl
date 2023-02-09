@@ -4,10 +4,9 @@ import CuNFFT.CuArray
 m = 5
 σ = 2.0
 
-CuNFFT.CUDA.device!(0)
-
 # test CuNFFT
 if CuNFFT.CUDA.functional()
+  CuNFFT.CUDA.device!(0)
   @testset "CuNFFT in multiple dimensions" begin
     for (u,N) in enumerate([(256,), (32,32), (12,12,12)])
         eps = [1e-7, 1e-3, 1e-6, 1e-4]
