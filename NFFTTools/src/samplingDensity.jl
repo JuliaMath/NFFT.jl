@@ -27,16 +27,18 @@ function sdc(p::AbstractNFFTPlan{T,D,1}; iters=20) where {T,D}
     
     # conversion to Array is a workaround for CuNFFT. Without it we get strange
     # results that indicate some synchronization issue
-    f = Array( p * u ) 
-    b = f .* Array(weights) # apply weights from above
-    v = Array( adjoint(p) * convert(typeof(weights), b) )
-    c = vec(v) \ vec(Array(u))  # least squares diff
-    return abs.(convert(typeof(weights), c * Array(weights))) 
+    #f = Array( p * u ) 
+    #b = f .* Array(weights) # apply weights from above
+    #v = Array( adjoint(p) * convert(typeof(weights), b) )
+    #c = vec(v) \ vec(Array(u))  # least squares diff
+    #return abs.(convert(typeof(weights), c * Array(weights))) 
     
     # non converting version
-    #f = p * u  
-    #b = f .* weights # apply weights from above
-    #v = adjoint(p) * b
-    #c = vec(v) \ vec(u)  # least squares diff
-    #return abs.(c * weights) 
+    f = similar(p.tmpVec, Complex{T}, p.J)
+    mul!(f, p, u)
+    f .*= weights # apply weights from above
+    v = similar(p.tmpVec, Complex{T}, p.N)
+    mul!(v, adjoint(p), f)
+    c = vec(v) \ vec(u)  # least squares diff
+    return abs.(c * weights) 
 end
