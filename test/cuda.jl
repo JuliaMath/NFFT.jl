@@ -4,6 +4,8 @@ import CuNFFT.CuArray
 m = 5
 σ = 2.0
 
+CuNFFT.CUDA.device!(0)
+
 # test CuNFFT
 if CuNFFT.CUDA.functional()
   @testset "CuNFFT in multiple dimensions" begin
@@ -50,6 +52,8 @@ if CuNFFT.CUDA.functional()
     # approximate the density weights
     p = plan_nfft(CuArray, nodes, (N,N); m = 5, σ = 2.0)
     weights = Array( sdc(p, iters = 5) )
+    
+    @info extrema(vec(weights))
     
     @test all( (≈).(vec(weights), 1/(N*N), rtol=1e-7) )
 
