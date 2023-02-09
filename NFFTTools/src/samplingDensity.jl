@@ -12,7 +12,6 @@ function sdc(p::AbstractNFFTPlan{T,D,1}; iters=20) where {T,D}
         convolve_transpose!(p, weights, p.tmpVec)
         if i==1
          scaling_factor = maximum(abs.(p.tmpVec))
-         @info scaling_factor
         end
 
         p.tmpVec ./= scaling_factor
