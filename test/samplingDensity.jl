@@ -7,11 +7,12 @@ x = vec(ones(N) * g')
 y = vec(g * ones(N)')
 nodes = cat(x',y', dims=1)
 
-# approximate the density weights
-p = plan_nfft(nodes, (N,N), m = 5, σ = 2.0); 
-weights = sdc(p, iters = 10)
+for pre in [NFFT.LINEAR, NFFT.FULL, NFFT.TENSOR, NFFT.POLYNOMIAL]
+  # approximate the density weights
+  p = plan_nfft(nodes, (N,N), m = 5, σ = 2.0, precompute=pre); 
+  weights = sdc(p, iters = 10)
 
-# test if they approximate the true weights (1/(N*N))
-@test all( (≈).(vec(weights), 1/(N*N), rtol=1e-7) )
+  @test all( (≈).(vec(weights), 1/(N*N), rtol=1e-7) )
+end
 
 end

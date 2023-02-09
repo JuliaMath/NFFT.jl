@@ -37,5 +37,22 @@ if CuNFFT.CUDA.functional()
         end
     end
   end
+  
+  @testset "CuNFFT Sampling Density" begin
+
+    # create a 10x10 grid of unit spaced sampling points
+    N = 10
+    g = (0:(N-1)) ./ N .- 0.5  
+    x = vec(ones(N) * g')
+    y = vec(g * ones(N)')
+    nodes = cat(x',y', dims=1)
+
+    # approximate the density weights
+    p = plan_nfft(CuArray, nodes, (N,N); m = 5, σ = 2.0)
+    weights = Array( sdc(p, iters = 5) )
+    
+    @test all( (≈).(vec(weights), 1/(N*N), rtol=1e-7) )
+
+  end  
 end
 
