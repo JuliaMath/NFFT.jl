@@ -31,7 +31,7 @@ function sdc(p::AbstractNFFTPlan{T,D,1}; iters=20) where {T,D}
     b = f .* Array(weights) # apply weights from above
     v = Array( adjoint(p) * convert(typeof(weights), b) )
     c = vec(v) \ vec(Array(u))  # least squares diff
-    return convert(typeof(weights), abs.(c * Array(weights))) 
+    return abs.(convert(typeof(weights), c * Array(weights))) 
     
     # non converting version
     #f = p * u  
