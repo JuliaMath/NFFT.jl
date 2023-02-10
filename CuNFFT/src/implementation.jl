@@ -50,6 +50,7 @@ function CuNFFTPlan(k::Matrix{T}, N::NTuple{D,Int}; dims::Union{Integer,UnitRang
 
     U = params.storeDeconvolutionIdx ? N : ntuple(d->0,D)
     tmpVecHat = CuArray{Complex{T},D}(undef, U)
+    tmpVecHat .= zero(Complex{T})
 
     deconvIdx = CuArray(deconvolveIdx)
     winHatInvLUT = CuArray(Complex{T}.(windowHatInvLUT[1])) 
@@ -62,63 +63,68 @@ end
 AbstractNFFTs.size_in(p::CuNFFTPlan) = p.N
 AbstractNFFTs.size_out(p::CuNFFTPlan) = p.NOut
 
+
+function AbstractNFFTs.convolve!(p::CuNFFTPlan{T,D}, g::CuArray{Complex{T},D}, fHat::CuArray{U}) where {D,T,U}
+  mul!(fHat, transpose(p.B), vec(g)) 
+  return
+end
+
+function AbstractNFFTs.convolve_transpose!(p::CuNFFTPlan{T,D}, fHat::CuArray{U}, g::CuArray{Complex{T},D}) where {D,T,U}
+  mul!(vec(g), p.B, fHat)
+  return
+end
+
+function AbstractNFFTs.deconvolve!(p::CuNFFTPlan{T,D}, f::CuArray{U,D}, g::CuArray{Complex{T},D}) where {D,T,U}
+  p.tmpVecHat[:] .= vec(f) .* p.windowHatInvLUT
+  g[p.deconvolveIdx] = p.tmpVecHat
+  return
+end
+
+function AbstractNFFTs.deconvolve_transpose!(p::CuNFFTPlan{T,D}, g::CuArray{Complex{T},D}, f::CuArray{U,D}) where {D,T,U}
+  p.tmpVecHat[:] = g[p.deconvolveIdx]
+  f[:] .= vec(p.tmpVecHat) .* p.windowHatInvLUT
+  return
+end
+
 """  in-place NFFT on the GPU"""
 function LinearAlgebra.mul!(fHat::CuArray, p::CuNFFTPlan{T,D}, f::CuArray; 
                           verbose=false, timing::Union{Nothing,TimingStats} = nothing) where {T,D} 
-  NFFT.consistencyCheck(p, f, fHat)
+    NFFT.consistencyCheck(p, f, fHat)
 
-  # deconvolve
-  fill!(p.tmpVec, zero(Complex{T}))
-  t1 = @elapsed begin
-    p.tmpVecHat[:] .= vec(f).*p.windowHatInvLUT
-    p.tmpVec[p.deconvolveIdx] = p.tmpVecHat
-  end
+    fill!(p.tmpVec, zero(Complex{T}))
+    t1 = @elapsed @inbounds deconvolve!(p, f, p.tmpVec)
+    t2 = @elapsed p.forwardFFT * p.tmpVec
+    t3 = @elapsed @inbounds convolve!(p, p.tmpVec, fHat)
+    if verbose
+        @info "Timing: deconv=$t1 fft=$t2 conv=$t3"
+    end
+    if timing != nothing
+      timing.conv = t3
+      timing.fft = t2
+      timing.deconv = t1
+    end
 
-  # FFT
-  t2 = @elapsed p.forwardFFT * p.tmpVec 
-
-  # convolution
-  t3 = @elapsed mul!(fHat, transpose(p.B), vec(p.tmpVec)) 
-
-  if verbose
-    @info "Timing: deconv=$t1 fft=$t2 conv=$t3"
-  end
-  if timing != nothing
-    timing.conv = t3
-    timing.fft = t2
-    timing.deconv = t1
-  end
-
-  return fHat
+    return fHat
 end
 
 """  in-place adjoint NFFT on the GPU"""
 function LinearAlgebra.mul!(f::CuArray, pl::Adjoint{Complex{T},<:CuNFFTPlan{T,D}}, fHat::CuArray;
                        verbose=false, timing::Union{Nothing,TimingStats} = nothing) where {T,D}
-  p = pl.parent
-  
-  NFFT.consistencyCheck(p, f, fHat)
+    p = pl.parent
+    NFFT.consistencyCheck(p, f, fHat)
 
-  # adjoint convolution
-  t1 = @elapsed mul!(vec(p.tmpVec), p.B, fHat)
+    t1 = @elapsed @inbounds convolve_transpose!(p, fHat, p.tmpVec)
+    t2 = @elapsed p.backwardFFT * p.tmpVec
+    t3 = @elapsed @inbounds deconvolve_transpose!(p, p.tmpVec, f)
+    if verbose
+        @info "Timing: conv=$t1 fft=$t2 deconv=$t3"
+    end
+    if timing != nothing
+      timing.conv_adjoint = t1
+      timing.fft_adjoint = t2
+      timing.deconv_adjoint = t3
+    end
 
-  # FFT
-  t2 = @elapsed p.backwardFFT * p.tmpVec 
-
-  # adjoint deconvolve
-  t3 = @elapsed begin
-    p.tmpVecHat[:] = p.tmpVec[p.deconvolveIdx]
-    f[:] .= vec(p.tmpVecHat) .* p.windowHatInvLUT
-  end
-
-  if verbose
-    @info "Timing: conv=$t1 fft=$t2 deconv=$t3"
-  end
-  if timing != nothing
-    timing.conv_adjoint = t1
-    timing.fft_adjoint = t2
-    timing.deconv_adjoint = t3
-  end
-
-  return f
+    return f
 end
+

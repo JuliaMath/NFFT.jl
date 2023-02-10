@@ -29,7 +29,7 @@ SnoopPrecompile = "1"
 SpecialFunctions = "0.8, 0.10, 1, 2"
 julia = "1.6"
 #StaticArrays = "1.4"
-ducc0_jll = "0.27.0"
+ducc0_jll = "=0.27.0"
 
 [extras]
 BenchmarkTools = "6e4b80f9-dd63-53aa-95a3-0cdb28fa8baf"

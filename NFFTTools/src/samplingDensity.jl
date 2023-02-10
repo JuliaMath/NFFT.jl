@@ -2,7 +2,8 @@
 function sdc(p::AbstractNFFTPlan{T,D,1}; iters=20) where {T,D}
     # Weights for sample density compensation.
     # Uses method of Pipe & Menon, 1999. Mag Reson Med, 186, 179.
-    weights = ones(Complex{T}, p.J)
+    weights = similar(p.tmpVec, Complex{T}, p.J)
+    weights .= one(Complex{T})
     weights_tmp = similar(weights)
     scaling_factor = zero(T)
 
@@ -16,17 +17,28 @@ function sdc(p::AbstractNFFTPlan{T,D,1}; iters=20) where {T,D}
         p.tmpVec ./= scaling_factor
         convolve!(p, p.tmpVec, weights_tmp)
         weights_tmp ./= scaling_factor
-        for j in 1:length(weights)
-            weights[j] = weights[j] / (abs(weights_tmp[j]) + eps(T))
-        end
+        weights ./= (abs.(weights_tmp) .+ eps(T))
     end
     # Post weights to correct image scaling
     # This finds c, where ||u - c*v||_2^2 = 0 and then uses
     # c to scale all weights by a scalar factor.
-    u = ones(Complex{T}, p.N)
-    f = p * u
-    f = f .* weights # apply weights from above
-    v = adjoint(p) * f
+    u = similar(weights, Complex{T}, p.N) 
+    u .= one(Complex{T})
+    
+    # conversion to Array is a workaround for CuNFFT. Without it we get strange
+    # results that indicate some synchronization issue
+    #f = Array( p * u ) 
+    #b = f .* Array(weights) # apply weights from above
+    #v = Array( adjoint(p) * convert(typeof(weights), b) )
+    #c = vec(v) \ vec(Array(u))  # least squares diff
+    #return abs.(convert(typeof(weights), c * Array(weights))) 
+    
+    # non converting version
+    f = similar(p.tmpVec, Complex{T}, p.J)
+    mul!(f, p, u)
+    f .*= weights # apply weights from above
+    v = similar(p.tmpVec, Complex{T}, p.N)
+    mul!(v, adjoint(p), f)
     c = vec(v) \ vec(u)  # least squares diff
-    abs.(c * weights) 
+    return abs.(c * weights) 
 end
