@@ -53,8 +53,8 @@ function CuNFFTPlan(k::Matrix{T}, N::NTuple{D,Int}; dims::Union{Integer,UnitRang
     tmpVecHat .= zero(Complex{T})
 
     deconvIdx = CuArray(deconvolveIdx)
-    winHatInvLUT = CuArray(Complex{T}.(windowHatInvLUT[1])) 
-    B_ = CuSparseMatrixCSC(Complex{T}.(B))
+    winHatInvLUT = CuArray{Complex{T}}(windowHatInvLUT[1]) 
+    B_ = CuSparseMatrixCSC{Complex{T}}(B)
 
     CuNFFTPlan{T,D}(N, NOut, J, k, Ñ, dims_, params, FP, BP, tmpVec, tmpVecHat, 
                deconvIdx, windowLinInterp, winHatInvLUT, B_)
