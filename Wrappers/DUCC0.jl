@@ -1,6 +1,4 @@
-# FIXME: will be replaced once Ducc0.jl is officially released
-include("/home/martin/codes/Ducc0.jl/src/Ducc0.jl")
-
+using Ducc0
 using LinearAlgebra
 
 mutable struct DUCC0Plan{T,D} <: AbstractNFFTPlan{T,D,1}
