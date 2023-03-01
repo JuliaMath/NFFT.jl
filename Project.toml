@@ -43,4 +43,4 @@ Ducc0 = "47ec601d-2729-4ac9-bed9-2b3ab5fca9ff"
 
 [targets]
 test = ["Test", "BenchmarkTools", "FINUFFT", "NFFT3", "CuNFFT",
-        "NFFTTools", "DataFrames", "ducc0_jll"]  # "NFFTTools"  "CuNFFT"
+        "NFFTTools", "DataFrames", "Ducc0"]  # "NFFTTools"  "CuNFFT"
