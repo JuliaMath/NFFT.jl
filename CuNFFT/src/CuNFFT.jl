@@ -6,12 +6,8 @@ using NFFT
 using LinearAlgebra
 using AbstractFFTs
 using CUDA
+using CUDA.CUSPARSE
 
-if CUDA.functional()
-  using CUDA.CUSPARSE
-  include("implementation.jl")
-end
-
-
+include("implementation.jl")
 
 end
