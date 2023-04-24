@@ -1,7 +1,7 @@
-using SnoopPrecompile 
+using PrecompileTools 
 
-@precompile_setup begin
-    @precompile_all_calls begin
+@setup_workload begin
+    @compile_workload begin
 
       J, N = 8, 16
       k = range(-0.4, stop=0.4, length=J)  # nodes at which the NFFT is evaluated
