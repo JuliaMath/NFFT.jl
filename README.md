@@ -13,7 +13,7 @@ Documentation can be found under the following link:
 If you use this package please acknowledge it by citing:
 
 T. Knopp, M. Boberg and M. Grosser, NFFT.jl: Generic and Fast Julia Implementation of the Nonequidistant
- Fast Fourier Transform, 2022 [*arXiv:2208.00049*](http://arxiv.org/abs/2208.00049)
+ Fast Fourier Transform, SIAM Journal on Scientific Computing, 45(3), C179-C205, 2023 [url](https://epubs.siam.org/doi/abs/10.1137/22M1510935) [*arXiv:2208.00049*](http://arxiv.org/abs/2208.00049)
 
 A BibTeX file `NFFT.bib` can be found in the root folder of the Github repository.
 
