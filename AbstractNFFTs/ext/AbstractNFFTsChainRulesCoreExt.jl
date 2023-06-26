@@ -32,16 +32,16 @@ for (op,trans) in zip([:nfft, :nfct, :nfst], [:adjoint, :transpose, :transpose])
   @eval begin
   
     # direct trafo
-    function ChainRulesCore.frule((_, Δx, _), ::typeof($(op)), k::AbstractMatrix, x::AbstractArray)
+    function ChainRulesCore.frule((_, Δx, _), ::typeof($(op)), k::AbstractArray, x::AbstractArray)
       y = $(op)(k,x)
       Δy = $(op)(k,Δx)
       return y, Δy
     end
-    function ChainRulesCore.rrule(::typeof($(op)), k::AbstractMatrix, x::AbstractArray)
+    function ChainRulesCore.rrule(::typeof($(op)), k::AbstractArray, x::AbstractArray)
       y = $(op)(k,x)
       project_x = ChainRulesCore.ProjectTo(x)
       function $(pbfunc)(ȳ)
-        x̄ = project_x($(func_trans)(k, size(y), ChainRulesCore.unthunk(ȳ)))
+        x̄ = project_x($(func_trans)(k, size(x), ChainRulesCore.unthunk(ȳ)))
         return ChainRulesCore.NoTangent(), ChainRulesCore.NoTangent(), x̄
       end
       return y, nfft_pullback
@@ -53,7 +53,7 @@ for (op,trans) in zip([:nfft, :nfct, :nfst], [:adjoint, :transpose, :transpose])
       Δy = $(func_trans)(k,N,Δx)
       return y, Δy
     end
-    function ChainRulesCore.rrule(::typeof($(func_trans)), k::AbstractMatrix, N, x::AbstractArray)
+    function ChainRulesCore.rrule(::typeof($(func_trans)), k::AbstractArray, N, x::AbstractArray)
       y = $(func_trans)(k,N,x)
       project_x = ChainRulesCore.ProjectTo(x)
       function $(pbfunc_trans)(ȳ)
