@@ -13,12 +13,12 @@ planfunc = Symbol("plan_"*"$op")
 $(planfunc)(k::AbstractArray, N::Union{Integer,NTuple{D,Int}}, args...; kargs...) where {D} =
     $(planfunc)(Array, k, N, args...; kargs...)
 
-$(planfunc)(k::AbstractArray, y::AbstractArray, args...; kargs...) where {D} =
+$(planfunc)(k::AbstractArray, y::AbstractArray, args...; kargs...) =
     $(planfunc)(Array, k, y, args...; kargs...)
 
 # The follow convert 1D parameters into the format required by the plan
 
-$(planfunc)(Q::Type, k::AbstractVector, N::Integer, rest...; kwargs...) where {D}  =
+$(planfunc)(Q::Type, k::AbstractVector, N::Integer, rest...; kwargs...)  =
     $(planfunc)(Q, collect(reshape(k,1,length(k))), (N,), rest...; kwargs...)
 
 $(planfunc)(Q::Type, k::AbstractVector, N::NTuple{D,Int}, rest...; kwargs...) where {D} =
@@ -31,7 +31,7 @@ end
 end
 
 ## NNFFT constructor
-plan_nnfft(Q::Type, k::AbstractVector, y::AbstractVector, rest...; kwargs...) where {D}  =
+plan_nnfft(Q::Type, k::AbstractVector, y::AbstractVector, rest...; kwargs...)  =
     plan_nnfft(Q, collect(reshape(k,1,length(k))), collect(reshape(y,1,length(k))), rest...; kwargs...)
 
 
