@@ -1,7 +1,7 @@
 module AbstractNFFTsChainRulesCoreExt
 
 using AbstractNFFTs
-import ChainRulesCore
+isdefined(Base, :get_extension) ? (import ChainRulesCore) : (import ..ChainRulesCore)
 
 ###############
 # mul-interface
