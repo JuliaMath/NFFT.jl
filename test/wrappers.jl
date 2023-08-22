@@ -14,7 +14,7 @@ include("../Wrappers/DUCC0.jl")
 
     J = prod(N)
     k = rand(Float64,D,J) .- 0.5
-    p = DUCC0Plan(k, N) #; m, σ, precompute = pre, fftflags = FFTW.ESTIMATE)
+    p = Ducc0NufftPlan(k, N) #; m, σ, precompute = pre, fftflags = FFTW.ESTIMATE)
     pNDFT = NDFTPlan(k, N)
 
     fHat = rand(Float64,J) + rand(Float64,J)*im

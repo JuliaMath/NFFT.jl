@@ -29,7 +29,7 @@ PrecompileTools = "1"
 SpecialFunctions = "0.8, 0.10, 1, 2"
 julia = "1.6"
 #StaticArrays = "1.4"
-ducc0_jll = "=0.27.0"
+Ducc0 = "0.1"
 
 [extras]
 BenchmarkTools = "6e4b80f9-dd63-53aa-95a3-0cdb28fa8baf"
@@ -39,10 +39,10 @@ FINUFFT = "d8beea63-0952-562e-9c6a-8e8ef7364055"
 NFFT3 = "53104703-03e8-40a5-ab01-812303a44cae"
 NFFTTools = "7424e34d-94f7-41d6-98a0-85abaf1b6c91"
 Test = "8dfed614-e22c-5e08-85e1-65c5234f0b40"
-ducc0_jll = "744a402c-e62c-509f-85e0-10e6c18f2016"
+Ducc0 = "47ec601d-2729-4ac9-bed9-2b3ab5fca9ff"
 Zygote = "e88e6eb3-aa80-5325-afca-941959d7151f"
 
 
 [targets]
 test = ["Test", "BenchmarkTools", "FINUFFT", "NFFT3", "CuNFFT", "Zygote",
-        "NFFTTools", "DataFrames", "ducc0_jll"]  # "NFFTTools"  "CuNFFT"
+        "NFFTTools", "DataFrames", "Ducc0"]  # "NFFTTools"  "CuNFFT"
