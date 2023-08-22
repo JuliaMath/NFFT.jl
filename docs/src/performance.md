@@ -16,4 +16,4 @@ The results for ``D=1,\dots,3`` are shown in the following graphic illustrating 
 
 ![Performance vs Accurracy 1D](./assets/performanceVsAccuracy.svg)
 
-The results show that NFFT.jl one of the fastest NFFT libraries. One can chose between shorter precomputation time using `POLYNOMIAL` precomputation or faster transforms using `TENSOR` precomputation.
+The results show that NFFT.jl is one of the fastest NFFT libraries. One can chose between shorter precomputation time using `POLYNOMIAL` precomputation or faster transforms using `TENSOR` precomputation.

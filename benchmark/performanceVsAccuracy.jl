@@ -7,7 +7,7 @@ include("../Wrappers/NFFT3.jl")
 include("../Wrappers/FINUFFT.jl")
 include("../Wrappers/DUCC0.jl")
 
-const packagesCtor = [NFFTPlan, NFFTPlan, NFFT3Plan, FINUFFTPlan, DUCC0Plan]
+const packagesCtor = [NFFTPlan, NFFTPlan, NFFT3Plan, FINUFFTPlan, Ducc0NufftPlan]
 const packagesStr = [ "NFFT.jl/TENSOR", "NFFT.jl/POLY", "NFFT3/TENSOR", "FINUFFT", "DUCC0"]
 const precomp = [NFFT.TENSOR, NFFT.POLYNOMIAL, NFFT.TENSOR, NFFT.LINEAR, NFFT.LINEAR]
 const blocking = [true, true, true, true, true]
@@ -278,8 +278,8 @@ function plot_accuracy_small(df, packagesStr, packagesStrShort, filename)
 end
 
 
-#df = nfft_accuracy_comparison(Ds)
-#writedlm("data/performanceVsAccuracy.csv", Iterators.flatten(([names(df)], eachrow(df))), ',')
+df = nfft_accuracy_comparison(Ds)
+writedlm("data/performanceVsAccuracy.csv", Iterators.flatten(([names(df)], eachrow(df))), ',')
 
 data, header = readdlm("data/performanceVsAccuracy.csv", ',', header=true);
 df = DataFrame(data, vec(header))
