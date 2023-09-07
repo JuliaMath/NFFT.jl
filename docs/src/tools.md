@@ -1,4 +1,4 @@
-# Tools
+ # Tools
 
 The packages `AbstractNFFT.jl` and `NFFT.jl` are on purpose kept small and focussed. Additional tooling that relates to the NFFT is offloaded into a package `NFFTTools.jl`. 
 
@@ -45,18 +45,19 @@ The normal or Gram matrix ``\bm{A}^{\mathsf{H}} \bm{W} \bm{A}`` has a [Toeplitz]
 With `NFFTTools.jl` one can calculate the kernel required to exploit the Toeplitz structure with the function `calculateToeplitzKernel`. Multiplications with the Gram matrix can then be done using the function `convolveToeplitzKernel!`. The following outlines a complete example for the usage of both functions:
 
 ```julia
-using NFFT, NFFTTools
+using NFFT, NFFTTools, FFTW
 
 N = (32, 32)                            # signal size
-Ñ = (2*N[1], 2*N[2])                    # oversampled signal size
+Ñ = 2 .* N                              # oversampled signal size
 
 k = Float32.(rand(2, 1000) .- 0.5)      # 2D sampling nodes
 p = plan_nfft(k, Ñ)                     # 2D NFFT plan
+fftplan = plan_fft(zeros(ComplexF32, Ñ));
 
 λ = Array{ComplexF32}(undef, Ñ)         # pre-allocate Toeplitz kernel 
-
-calculateToeplitzKernel!(λ, p, k)       # calculate Toeplitz kernel 
+calculateToeplitzKernel!(λ, p, k,fftplan)       # calculate Toeplitz kernel 
 
 y = randn(ComplexF32, Ñ)
 convolveToeplitzKernel!(y, λ)           # multiply with Gram matrix
+
 ```
