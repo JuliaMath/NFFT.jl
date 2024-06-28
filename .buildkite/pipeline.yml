@@ -1,0 +1,37 @@
+steps:
+  - label: "Nvidia GPUs -- NFFT.jl"
+    plugins:
+      - JuliaCI/julia#v1:
+          version: "1.10"
+    agents:
+      queue: "juliagpu"
+      cuda: "*"
+    command: |
+      julia --color=yes --project -e '
+      using Pkg
+      Pkg.add("TestEnv")
+      using TestEnv
+      TestEnv.activate();
+      Pkg.add("CUDA")
+      Pkg.instantiate()
+      include("test/gpu/cuda.jl")'
+    timeout_in_minutes: 30
+
+  - label: "AMD GPUs -- NFFT.jl"
+    plugins:
+      - JuliaCI/julia#v1:
+          version: "1.10"
+    agents:
+      queue: "juliagpu"
+      rocm: "*"
+      rocmgpu: "*"
+    command: |
+      julia --color=yes --project -e '
+      using Pkg
+      Pkg.add("TestEnv")
+      using TestEnv
+      TestEnv.activate();
+      Pkg.add("AMDGPU")
+      Pkg.instantiate()
+      include("test/gpu/rocm.jl")'
+    timeout_in_minutes: 30
