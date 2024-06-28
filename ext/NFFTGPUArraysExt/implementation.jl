@@ -1,4 +1,4 @@
-mutable struct GPU_NFFTPlan{T,D, arrTc <: AbstractGPUArray{Complex{T}, D}, vecI <: AbstractGPUVector{Int32}, FP, BP, SM} <: AbstractNFFTPlan{T,D,1} 
+mutable struct GPU_NFFTPlan{T,D, arrTc <: AbstractGPUArray{Complex{T}, D}, vecI <: AbstractGPUVector{Int32}, FP, BP, INV, SM} <: AbstractNFFTPlan{T,D,1} 
   N::NTuple{D,Int64}
   NOut::NTuple{1,Int64}
   J::Int64
@@ -12,7 +12,7 @@ mutable struct GPU_NFFTPlan{T,D, arrTc <: AbstractGPUArray{Complex{T}, D}, vecI 
   tmpVecHat::arrTc
   deconvolveIdx::vecI
   windowLinInterp::Vector{T}
-  windowHatInvLUT::arrTc
+  windowHatInvLUT::INV
   B::SM
 end
 
@@ -48,11 +48,11 @@ function GPU_NFFTPlan(arr, k::Matrix{T}, N::NTuple{D,Int}; dims::Union{Integer,U
     U = params.storeDeconvolutionIdx ? N : ntuple(d->0,D)
     tmpVecHat = adapt(arr, zeros(Complex{T}, U))
 
-    deconvIdx = adapt(arr, Int32.(deconvolveIdx))
-    winHatInvLUT = adapt(arr, windowHatInvLUT[1]) 
-    B_ = adapt(arr, Complex{T}.(B)) # Bit hacky
+    deconvIdx = Int32.(adapt(arr, (deconvolveIdx)))
+    winHatInvLUT = Complex{T}.(adapt(arr, (windowHatInvLUT[1]))) 
+    B_ = Complex{T}.(adapt(arr, (B))) # Bit hacky
 
-    GPU_NFFTPlan{T,D, typeof(tmpVec), typeof(deconvIdx), typeof(FP), typeof(BP), typeof(B_)}(N, NOut, J, k, Ñ, dims_, params, FP, BP, tmpVec, tmpVecHat, 
+    GPU_NFFTPlan{T,D, typeof(tmpVec), typeof(deconvIdx), typeof(FP), typeof(BP), typeof(winHatInvLUT), typeof(B_)}(N, NOut, J, k, Ñ, dims_, params, FP, BP, tmpVec, tmpVecHat, 
                deconvIdx, windowLinInterp, winHatInvLUT, B_)
 end
 
@@ -60,31 +60,31 @@ AbstractNFFTs.size_in(p::GPU_NFFTPlan) = p.N
 AbstractNFFTs.size_out(p::GPU_NFFTPlan) = p.NOut
 
 
-function AbstractNFFTs.convolve!(p::GPU_NFFTPlan{T,D, arrTc}, g::arrTc, fHat::arr) where {D,T,arr<: AbstractGPUArray, arrTc <: arr}
+function AbstractNFFTs.convolve!(p::GPU_NFFTPlan{T,D, arrTc}, g::arrTc, fHat::arrH) where {D,T,arr<: AbstractGPUArray, arrTc <: arr, arrH <: arr}
   mul!(fHat, transpose(p.B), vec(g)) 
   return
 end
 
-function AbstractNFFTs.convolve_transpose!(p::GPU_NFFTPlan{T,D, arrTc}, fHat::arr, g::arrTc) where {D,T,arr<: AbstractGPUArray, arrTc <: arr}
+function AbstractNFFTs.convolve_transpose!(p::GPU_NFFTPlan{T,D, arrTc}, fHat::arrH, g::arrTc) where {D,T,arr<: AbstractGPUArray, arrTc <: arr, arrH <: arr}
   mul!(vec(g), p.B, fHat)
   return
 end
 
-function AbstractNFFTs.deconvolve!(p::GPU_NFFTPlan{T,D, arrTc}, f::arr, g::arrTc) where {D,T,arr<: AbstractGPUArray, arrTc <: arr}
+function AbstractNFFTs.deconvolve!(p::GPU_NFFTPlan{T,D, arrTc}, f::arrF, g::arrTc) where {D,T,arr<: AbstractGPUArray, arrTc <: arr, arrF <: arr}
   p.tmpVecHat[:] .= vec(f) .* p.windowHatInvLUT
   g[p.deconvolveIdx] = p.tmpVecHat
   return
 end
 
-function AbstractNFFTs.deconvolve_transpose!(p::GPU_NFFTPlan{T,D, arrTc}, g::arrTc, f::arr) where {D,T,arr<: AbstractGPUArray, arrTc <: arr}
+function AbstractNFFTs.deconvolve_transpose!(p::GPU_NFFTPlan{T,D, arrTc}, g::arrTc, f::arrF) where {D,T,arr<: AbstractGPUArray, arrTc <: arr, arrF <: arr}
   p.tmpVecHat[:] = g[p.deconvolveIdx]
   f[:] .= vec(p.tmpVecHat) .* p.windowHatInvLUT
   return
 end
 
 """  in-place NFFT on the GPU"""
-function LinearAlgebra.mul!(fHat::arr, p::GPU_NFFTPlan{T,D, arrT}, f::arr; 
-                          verbose=false, timing::Union{Nothing,TimingStats} = nothing) where {T,D,arr<: AbstractGPUArray, arrT <: arr} 
+function LinearAlgebra.mul!(fHat::arrH, p::GPU_NFFTPlan{T,D, arrT}, f::arrF; 
+                          verbose=false, timing::Union{Nothing,TimingStats} = nothing) where {T,D,arr<: AbstractGPUArray, arrT <: arr, arrH <: arr, arrF <: arr} 
     NFFT.consistencyCheck(p, f, fHat)
 
     fill!(p.tmpVec, zero(Complex{T}))
@@ -104,8 +104,8 @@ function LinearAlgebra.mul!(fHat::arr, p::GPU_NFFTPlan{T,D, arrT}, f::arr;
 end
 
 """  in-place adjoint NFFT on the GPU"""
-function LinearAlgebra.mul!(f::arr, pl::Adjoint{Complex{T},<:GPU_NFFTPlan{T,D, arrT}}, fHat::arr;
-                       verbose=false, timing::Union{Nothing,TimingStats} = nothing) where {T,D,arr<: AbstractGPUArray, arrT <: arr}
+function LinearAlgebra.mul!(f::arrF, pl::Adjoint{Complex{T},<:GPU_NFFTPlan{T,D, arrT}}, fHat::arrH;
+                       verbose=false, timing::Union{Nothing,TimingStats} = nothing) where {T,D,arr<: AbstractGPUArray, arrT <: arr, arrH <: arr, arrF <: arr}
     p = pl.parent
     NFFT.consistencyCheck(p, f, fHat)
 
