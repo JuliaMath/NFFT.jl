@@ -77,7 +77,9 @@ function AbstractNFFTs.deconvolve!(p::GPU_NFFTPlan{T,D, arrTc}, f::arrF, g::arrT
 end
 
 function AbstractNFFTs.deconvolve_transpose!(p::GPU_NFFTPlan{T,D, arrTc}, g::arrTc, f::arrF) where {D,T,arr<: AbstractGPUArray, arrTc <: arr, arrF <: arr}
-  p.tmpVecHat[:] = g[p.deconvolveIdx]
+  p.tmpVecHat[:] .= broadcast(p.deconvolveIdx) do idx
+    g[idx]
+  end
   f[:] .= vec(p.tmpVecHat) .* p.windowHatInvLUT
   return
 end
