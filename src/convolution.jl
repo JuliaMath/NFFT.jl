@@ -171,7 +171,7 @@ quote
   
   @nloops_ $(D-1)  (d->l_{d+1})  (d -> 1:size(block,d+1)) d->begin
     # preexpr
-    idx_{d+1} = ( rem(l_{d+1}  + off[d+1] + p.Ñ[d+1], p.Ñ[d+1]) + 1)
+    idx_{d+1} = ( mod(l_{d+1}  + off[d+1] + p.Ñ[d+1], p.Ñ[d+1]) + 1)
   end begin
     # bodyexpr
     @inbounds @simd for l_1 = 1:LA
@@ -305,7 +305,7 @@ end
     
     @nloops_ $(D-1)  (d->l_{d+1})  (d -> 1:size(block,d+1)) d->begin
       # preexpr
-      idx_{d+1} = ( rem(l_{d+1}  + off[d+1] + p.Ñ[d+1], p.Ñ[d+1]) + 1)
+      idx_{d+1} = ( mod(l_{d+1}  + off[d+1] + p.Ñ[d+1], p.Ñ[d+1]) + 1)
     end begin
       # bodyexpr
       @inbounds @simd for l_1 = 1:LA
