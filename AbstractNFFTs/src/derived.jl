@@ -23,6 +23,9 @@ $(planfunc)(k::arrT, N::Union{Integer,NTuple{D,Int}}, args...; kargs...) where {
 $(planfunc)(k::arrT, y::AbstractArray, args...; kargs...) where {arrT <: AbstractArray} =
     $(planfunc)(strip_type_parameters(arrT), k, y, args...; kargs...)
 
+$(planfunc)(k::arrL, args...; kargs...) where {T, arrT <: AbstractArray{T}, arrL <: Union{Adjoint{T, arrT}, Transpose{T, arrT}}} =
+    $(planfunc)(strip_type_parameters(arrT), k, y, args...; kargs...)
+
 # The follow convert 1D parameters into the format required by the plan
 
 $(planfunc)(Q::Type, k::AbstractVector, N::Integer, rest...; kwargs...)  =
