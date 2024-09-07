@@ -4,17 +4,24 @@
 ##########################
 
 
+# From: https://github.com/JuliaLang/julia/issues/35543
+# To dispatch between CPU/GPU plans we need to strip the type parameters of the array type.
+# For example Array{Float32,2} -> Array, Array{Complex{Float32},2} -> Array, CuArray{Float32,2, ...} -> CuArray
+# At the moment there is no stable API for this, so we need to use the following workaround:
+strip_type_parameters(T) = Base.typename(T).wrapper
+# This can change with future Julia versions, so we need to check if the workaround is still needed/working
+
 for op in [:nfft, :nfct, :nfst]
 planfunc = Symbol("plan_"*"$op")
 @eval begin 
 
 # The following automatically call the plan_* version for type Array
 
-$(planfunc)(k::AbstractArray, N::Union{Integer,NTuple{D,Int}}, args...; kargs...) where {D} =
-    $(planfunc)(Array, k, N, args...; kargs...)
+$(planfunc)(k::arrT, N::Union{Integer,NTuple{D,Int}}, args...; kargs...) where {D, arrT <: AbstractArray} =
+    $(planfunc)(strip_type_parameters(arrT), k, N, args...; kargs...)
 
-$(planfunc)(k::AbstractArray, y::AbstractArray, args...; kargs...) =
-    $(planfunc)(Array, k, y, args...; kargs...)
+$(planfunc)(k::arrT, y::AbstractArray, args...; kargs...) where {arrT <: AbstractArray} =
+    $(planfunc)(strip_type_parameters(arrT), k, y, args...; kargs...)
 
 # The follow convert 1D parameters into the format required by the plan
 
@@ -22,7 +29,7 @@ $(planfunc)(Q::Type, k::AbstractVector, N::Integer, rest...; kwargs...)  =
     $(planfunc)(Q, collect(reshape(k,1,length(k))), (N,), rest...; kwargs...)
 
 $(planfunc)(Q::Type, k::AbstractVector, N::NTuple{D,Int}, rest...; kwargs...) where {D} =
-    $(planfunc)(Q, collect(reshape(k,1,length(k))), N, rest...; kwargs...) 
+    $(planfunc)(Q, collect(reshape(k,1,length(k))), N, rest...; kwargs...)
 
 $(planfunc)(Q::Type, k::AbstractMatrix, N::NTuple{D,Int}, rest...; kwargs...) where {D}  =
     $(planfunc)(Q, collect(k), N, rest...; kwargs...)
