@@ -15,16 +15,15 @@ for op in [:nfft, :nfct, :nfst]
 planfunc = Symbol("plan_"*"$op")
 @eval begin 
 
-# The following automatically call the plan_* version for type Array
+# The following try to find a plan function with the correct array type parameters
 
-$(planfunc)(k::arrT, N::Union{Integer,NTuple{D,Int}}, args...; kargs...) where {D, arrT <: AbstractArray} =
-    $(planfunc)(strip_type_parameters(arrT), k, N, args...; kargs...)
-
-$(planfunc)(k::arrT, y::AbstractArray, args...; kargs...) where {arrT <: AbstractArray} =
-    $(planfunc)(strip_type_parameters(arrT), k, y, args...; kargs...)
+$(planfunc)(k::arrT, args...; kargs...) where {arrT <: AbstractArray} =
+    $(planfunc)(strip_type_parameters(arrT), k, args...; kargs...)
 
 $(planfunc)(k::arrL, args...; kargs...) where {T, arrT <: AbstractArray{T}, arrL <: Union{Adjoint{T, arrT}, Transpose{T, arrT}}} =
     $(planfunc)(strip_type_parameters(arrT), k, y, args...; kargs...)
+
+$(planfunc)(k::AbstractRange, args...; kargs...) = $(planfunc)(collect(k), args...; kargs...)
 
 # The follow convert 1D parameters into the format required by the plan
 
