@@ -1,7 +1,7 @@
 name = "NFFT"
 uuid = "efe261a4-0d2b-5849-be55-fc731d526b0d"
 authors = ["Tobias Knopp <tobias@knoppweb.de>"]
-version = "0.13.6"
+version = "0.13.7"
 
 [deps]
 AbstractNFFTs = "7f219486-4aa7-41d6-80a7-e08ef20ceed7"
@@ -30,7 +30,7 @@ JLArrays = "0.2"
 Reexport = "1.0"
 PrecompileTools = "1"
 SpecialFunctions = "0.8, 0.10, 1, 2"
-julia = "1.9"
+julia = "1.10"
 #StaticArrays = "1.4"
 Ducc0 = "0.1"
 
