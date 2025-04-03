@@ -16,3 +16,4 @@ AbstractNFFTsChainRulesCoreExt = "ChainRulesCore"
 
 [compat]
 julia = "1.6"
+ChainRulesCore = "1"
