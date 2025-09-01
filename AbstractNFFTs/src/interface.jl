@@ -1,4 +1,24 @@
 abstract type AbstractNFFTBackend end
+const ACTIVE_BACKEND = Ref{Union{Missing, AbstractNFFTBackend}}(missing)
+
+"""
+    set_active_backend!(back::Union{Missing, Module, AbstractNFFTBackend})
+
+Set the default NFFT plan backend. A module `back` must implement `back.backend()`.
+"""
+set_active_backend!(back::Module) = set_active_backend!(back.backend())
+function set_active_backend!(back::Union{Missing, AbstractNFFTBackend})
+  ACTIVE_BACKEND[] = back
+end
+active_backend() = ACTIVE_BACKEND[]
+function no_backend_error() 
+  error(
+    """
+    No default backend available!
+    Make sure to also "import/using" an NFFT backend such as NFFT or NonuniformFFTs.
+    """
+  )
+end
 
 """
   AbstractFTPlan{T,D,R}

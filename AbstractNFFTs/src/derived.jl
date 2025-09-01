@@ -16,6 +16,8 @@ $(planfunc)(b::AbstractNFFTBackend, k::AbstractArray, N::Union{Integer,NTuple{D,
 $(planfunc)(b::AbstractNFFTBackend, k::AbstractArray, y::AbstractArray, args...; kargs...) =
     $(planfunc)(b, Array, k, y, args...; kargs...)
 
+$(planfunc)(k::AbstractArray, args...; kargs...) = $(planfunc)(active_backend(), k, args...; kargs...)
+
 # The follow convert 1D parameters into the format required by the plan
 
 $(planfunc)(b::AbstractNFFTBackend, Q::Type, k::AbstractVector, N::Integer, rest...; kwargs...)  =
@@ -27,13 +29,17 @@ $(planfunc)(b::AbstractNFFTBackend, Q::Type, k::AbstractVector, N::NTuple{D,Int}
 $(planfunc)(b::AbstractNFFTBackend, Q::Type, k::AbstractMatrix, N::NTuple{D,Int}, rest...; kwargs...) where {D}  =
     $(planfunc)(b, Q, collect(k), N, rest...; kwargs...)
 
+$(planfunc)(Q::Type, args...; kwargs...) = $(planfunc)(active_backend(), Q, args...; kwargs...)
+
+$(planfunc)(::Missing, args...; kwargs...) = no_backend_error()
 end
 end
 
 ## NNFFT constructor
+plan_nnfft(Q::Type, args...; kwargs...) = plan_nnfft(active_backend(), Q, args...; kwargs...)
 plan_nnfft(b::AbstractNFFTBackend, Q::Type, k::AbstractVector, y::AbstractVector, rest...; kwargs...)  =
     plan_nnfft(b, Q, collect(reshape(k,1,length(k))), collect(reshape(y,1,length(k))), rest...; kwargs...)
-
+plan_nnfft(::Missing, args...; kwargs...) = no_backend_error()
 
 
 ###############################################
@@ -53,10 +59,13 @@ nfft(backend, k, f, rest...; kwargs...)
 calculates the nfft of the array `f` for the nodes contained in the matrix `k`
 The output is a vector of length M=`size(nodes,2)`
 """
+$(op)(k, f::AbstractArray; kargs...) = $(op)(active_backend(), k, f::AbstractArray; kargs...) 
 function $(op)(b::AbstractNFFTBackend, k, f::AbstractArray; kargs...) 
   p = $(planfunc)(k, size(f); kargs... )
   return p * f
 end
+$(op)(::Missing, k, f::AbstractArray; kargs...) = no_backend_error()
+
 
 """
 nfft_adjoint(backend, k, N, fHat, rest...; kwargs...)
@@ -64,10 +73,13 @@ nfft_adjoint(backend, k, N, fHat, rest...; kwargs...)
 calculates the adjoint nfft of the vector `fHat` for the nodes contained in the matrix `k`.
 The output is an array of size `N`
 """
+$(tfunc)(k, N, fHat;  kargs...) = $(tfunc)(active_backend(), k, N, fHat;  kargs...)
 function $(tfunc)(b::AbstractNFFTBackend, k, N, fHat;  kargs...) 
   p = $(planfunc)(k, N;  kargs...)
   return $(trans)(p) * fHat
 end
+$(tfunc)(::Missing, k, N, fHat;  kargs...) = no_backend_error()
+
 
 end
 end
