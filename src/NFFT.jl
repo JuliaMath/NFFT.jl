@@ -38,6 +38,8 @@ include("precomputation.jl")
 # factory methods
 #################
 struct NFFTBackend <: AbstractNFFTBackend end
+activate!() = AbstractNFFTs.set_active_backend!(NFFT)
+backend() = NFFTBackend()
 
 """
     NFFT.plan_nfft(k::Matrix{T}, N::NTuple{D,Int}, rest...;  kargs...)
@@ -61,6 +63,7 @@ include("convolution.jl")
 
 function __init__()
   NFFT._use_threads[] = (Threads.nthreads() > 1)
+  activate!()
 end
 
 include("precompile.jl")
