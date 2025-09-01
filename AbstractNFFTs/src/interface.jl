@@ -1,3 +1,5 @@
+abstract type AbstractNFFTBackend end
+
 """
   AbstractFTPlan{T,D,R}
 

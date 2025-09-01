@@ -4,6 +4,7 @@ using LinearAlgebra
 using Printf
 
 # interface
+export AbstractNFFTBackend
 export AbstractFTPlan, AbstractRealFTPlan, AbstractComplexFTPlan,
        AbstractNFFTPlan, AbstractNFCTPlan, AbstractNFSTPlan, AbstractNNFFTPlan, 
        plan_nfft, plan_nfct, plan_nfst, mul!, size_in, size_out, nodes!
