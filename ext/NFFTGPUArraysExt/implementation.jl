@@ -16,7 +16,7 @@ mutable struct GPU_NFFTPlan{T,D, arrTc <: AbstractGPUArray{Complex{T}, D}, vecI 
   B::SM
 end
 
-function AbstractNFFTs.plan_nfft(arr::Type{<:AbstractGPUArray}, k::Matrix{T}, N::NTuple{D,Int}, rest...;
+function AbstractNFFTs.plan_nfft(::NFFTBackend, arr::Type{<:AbstractGPUArray}, k::Matrix{T}, N::NTuple{D,Int}, rest...;
   timing::Union{Nothing,TimingStats} = nothing, kargs...) where {T,D}
   t = @elapsed begin
     p = GPU_NFFTPlan(arr, k, N, rest...; kargs...)

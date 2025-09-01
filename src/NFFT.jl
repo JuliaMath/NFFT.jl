@@ -16,7 +16,7 @@ using BasicInterpolators
 
 @reexport using AbstractNFFTs
 
-export NDFTPlan, NDCTPlan, NDSTPlan, NNDFTPlan, 
+export NFFTBackend, NDFTPlan, NDCTPlan, NDSTPlan, NNDFTPlan, 
        NFFTPlan, NFFTParams
 
 
@@ -37,13 +37,14 @@ include("precomputation.jl")
 #################
 # factory methods
 #################
+struct NFFTBackend <: AbstractNFFTBackend end
 
 """
-        plan_nfft(k::Matrix{T}, N::NTuple{D,Int}, rest...;  kargs...)
+    NFFT.plan_nfft(k::Matrix{T}, N::NTuple{D,Int}, rest...;  kargs...)
 
 compute a plan for the NFFT of a size-`N` array at the nodes contained in `k`.
 """
-function AbstractNFFTs.plan_nfft(::Type{<:Array}, k::Matrix{T}, N::NTuple{D,Int}, rest...;
+function AbstractNFFTs.plan_nfft(::NFFTBackend, ::Type{<:Array}, k::Matrix{T}, N::NTuple{D,Int}, rest...;
                    timing::Union{Nothing,TimingStats} = nothing, kargs...) where {T,D}
   t = @elapsed begin
     p = NFFTPlan(k, N, rest...; kargs...)
