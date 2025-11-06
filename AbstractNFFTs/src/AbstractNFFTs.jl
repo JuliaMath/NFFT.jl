@@ -3,8 +3,16 @@ module AbstractNFFTs
 using LinearAlgebra
 using Printf
 
+# Remove this difference once 1.11 or higher becomes lower bound
+if VERSION >= v"1.11"
+  using Base.ScopedValues
+else
+  using ScopedValues
+end
+
+
 # interface
-export AbstractNFFTBackend
+export AbstractNFFTBackend, nfft_backend, with
 export AbstractFTPlan, AbstractRealFTPlan, AbstractComplexFTPlan,
        AbstractNFFTPlan, AbstractNFCTPlan, AbstractNFSTPlan, AbstractNNFFTPlan, 
        plan_nfft, plan_nfct, plan_nfst, mul!, size_in, size_out, nodes!
@@ -25,6 +33,7 @@ export TimingStats, accuracyParams, reltolToParams, paramsToReltol,
 include("misc.jl")
 include("interface.jl")
 include("derived.jl")
+
 
 @static if !isdefined(Base, :get_extension)
   import Requires
