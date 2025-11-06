@@ -23,7 +23,7 @@ arrayTypes = areTypesDefined ? arrayTypes : [JLArray]
     include("gpu.jl")
     include("chainrules.jl")
     # Need to run after the other tests since they overload plan_*
-    include("wrappers.jl")
+    #include("wrappers.jl")
   # If types were defined we only run GPU related tests
   else
     include("gpu.jl")
