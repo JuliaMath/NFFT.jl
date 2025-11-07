@@ -13,14 +13,27 @@ An overview about the current packages and their dependencies is shown in the fo
 ## Implementations
 
 Currently, there are four implementations of the `AbstractNFFTs` interface:
-1. **NFFT.jl**: This is the reference implementation running und the CPU.
-2. **CuNFFT.jl**: An implementation running on graphics hardware of Nvidia exploiting CUDA.jl
-3. **NFFT3.jl**: In the `Wrapper` directory of `NFFT.jl` there is a wrapper around the `NFFT3.jl` package following the  `AbstractNFFTs` interface. `NFFT3.jl` is itself a wrapper around the high performance C library [NFFT3](http://www.nfft.org).
-4. **FINUFFT.jl**: In the `Wrapper` directory of `NFFT.jl` there is a wrapper around the `FINUFFT.jl` package. `FINUFFT.jl` is itself a wrapper around the high performance C++ library [FINUFFT](https://finufft.readthedocs.io).
+1. **NFFT.jl**: This is the reference implementation running on the CPU and with configurations on the GPU.
+2. **NFFT3.jl**: In the `Wrapper` directory of `NFFT.jl` there is a wrapper around the `NFFT3.jl` package following the  `AbstractNFFTs` interface. `NFFT3.jl` is itself a wrapper around the high performance C library [NFFT3](http://www.nfft.org).
+3. **FINUFFT.jl**: In the `Wrapper` directory of `NFFT.jl` there is a wrapper around the `FINUFFT.jl` package. `FINUFFT.jl` is itself a wrapper around the high performance C++ library [FINUFFT](https://finufft.readthedocs.io).
+4. **NonuniformFFTs.jl**: Pure Julia package written with generic and fast GPU kernels written with KernelAbstractions.jl.
 
 !!! note
     Right now one needs to install `NFFT.jl` and manually include the wrapper files. In the future we hope to integrate the wrappers in `NFFT3.jl` and `FINUFFT.jl` directly such that it is much more convenient to switch libraries.
 
+It's possible to change between different implementation backends. Each backend has to implement a backend type, which by convention can be accessed via for example `NFFT.backend()`. There are several ways to activate a backend:
+```julia
+# Actively setting a backend:
+AbstractNFFTs.set_active_backend!(NFFT.backend())
+# Activating a backend:
+NFFT.activate!()
+# and creating a new dynamic scope which uses a different backend:
+with(nfft_backend => NonuniformFFTs.backend()) do
+    # Uses NonuniformFFTs as implementation backend
+end
+# It's also possible to directly pass backends to functions:
+nfft(NonuniformFFTs.backend(), ...)
+```
 
 ## Interface
 
@@ -30,14 +43,24 @@ Here
 * `D` is the size of the input vector
 * `R` is the size of the output vector. Usually this will be `R=1` unless a directional NFFT is implemented.
 
-For instance the `CuNFFTPlan` is defined like this
+For instance the `NFFTPlan` is defined like this
 ```julia
-mutable struct CuNFFTPlan{T,D} <: AbstractNFFTPlan{T,D,1} 
+mutable struct NFFTPlan{T,D,R} <: AbstractNFFTPlan{T,D,R} 
   ...
 end
 ```
 
-In addition to the plan, the following functions need to be implemented: 
+Furthermore, a package needs to implement its own backend type to dispatch on
+```julia
+struct MyBackend <: AbstractNFFTBackend
+```
+and it should allow a user to activate the package, which by convention can be done with (unexported) functions:
+```julia
+activate!() = AbstractNFFTs.set_active_backend!(MyBackend())
+backend() = MyBackend()
+```
+
+In addition to the plan and backend, the following functions need to be implemented: 
 ```julia
 size_out(p)
 size_out(p)
@@ -99,19 +122,15 @@ All parameters are put into keyword arguments that have to match as well. We des
 
 Additionally, to the type-specific constructor one can provide the factory
 ```
-plan_nfft(Q::Type, k::Matrix{T}, N::NTuple{D,Int}; kargs...) where {D}
+plan_nfft(b::MyBackend, Q::Type, k::Matrix{T}, N::NTuple{D,Int}; kargs...) where {D}
 ```
 where `Q` is the Array type, e.g. `Array`. The reason to require the array type is, that this allows for GPU implementations, which would use for instance `CuArray` here.
 
 The package `AbstractNFFTs` provides a convenient constructor
 ```
-plan_nfft(k::Matrix{T}, N::NTuple{D,Int}; kargs...) where {D}
+plan_nfft(b::MyBackend, k::Matrix{T}, N::NTuple{D,Int}; kargs...) where {D}
 ```
 defaulting to the `Array` type.
-
-!!! note
-    Different packages implementing `plan_nfft` will conflict if the same `Q` is implemented. In case of `NFFT.jl` and `CuNFFT.jl` there is no conflict since the array type is different.
-
 
 ## Derived Interface
 
