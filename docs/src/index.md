@@ -5,7 +5,7 @@
 ## Introduction
 
 This package provides a Julia implementation of the Non-equidistant Fast Fourier Transform (NFFT).
-For a detailed introduction into the NFFT and its application please have a look at the [software paper](https://arxiv.org/pdf/2208.00049.pdf) on the `NFFT.jl`. Further resources are [nfft.org](http://www.nfft.org) and [finufft.readthedocs.io](https://finufft.readthedocs.io). You 
+For a detailed introduction into the NFFT and its application please have a look at the [software paper](https://arxiv.org/pdf/2208.00049.pdf) on the `NFFT.jl`. Further resources are [nfft.org](http://www.nfft.org) and [finufft.readthedocs.io](https://finufft.readthedocs.io).
 
 The NFFT is a fast implementation of the Non-equidistant Discrete Fourier Transform (NDFT) that is
 basically a Discrete Fourier Transform (DFT) with non-equidistant sampling nodes in either Fourier or time/space domain.
@@ -25,7 +25,7 @@ add NFFT
 ```
 This will install the packages `NFFT.jl` and all its dependencies. Most importantly it installs the abstract interface package `AbstractNFFTs.jl`, which `NFFT.jl` implements.
 
-Additional NFFT related tools can be obtained by adding the package `NFFTTools.jl`. If you need support for `CUDA` you also need to install the package `CuNFFT.jl`.
+Additional NFFT related tools can be obtained by adding the package `NFFTTools.jl`. If you need support for `CUDA` or other GPU backends, you only need to install the respective GPU backend and a GPU compatible plan will be available via a package extension.
 
 In case you want to use an alternative NFFT implementation such as [NFFT3.jl](https://github.com/NFFT/NFFT3.jl) or [FINUFFT.jl](https://github.com/ludvigak/FINUFFT.jl) we provide wrapper types allowing to use them as `AbstractNFFTs` implementations. They can be used like this:
 
@@ -34,7 +34,9 @@ julia> using AbstractNFFTs
 julia> include(joinpath(dirname(pathof(AbstractNFFTs)), "..", "..", "Wrappers", "FINUFFT.jl"))
 julia> include(joinpath(dirname(pathof(AbstractNFFTs)), "..", "..", "Wrappers", "NFFT3.jl"))
 ```
-This requires that you first `add` the package you want to use. 
+This requires that you first `add` the package you want to use.
+
+A related package is [NonuniformFFTs.jl](https://github.com/jipolanco/NonuniformFFTs.jl) which provides a pure Julia implementation using KernelAbstractions.jl. It also features an implementation of the `AbstractNFFTs.jl` interface.
 
 ## Guide
 

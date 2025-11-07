@@ -1,3 +1,33 @@
+abstract type AbstractNFFTBackend end
+struct BackendReference
+    ref::Ref{Union{Missing, AbstractNFFTBackend}}
+    BackendReference(val::Union{Missing, AbstractNFFTBackend}) = new(Ref{Union{Missing, AbstractNFFTBackend}}(val))
+end
+Base.setindex!(ref::BackendReference, val::Union{Missing, AbstractNFFTBackend}) = ref.ref[] = val
+Base.setindex!(ref::BackendReference, val::Module) = setindex!(ref, val.backend())
+Base.getindex(ref::BackendReference) = getindex(ref.ref)::Union{Missing, AbstractNFFTBackend}
+Base.convert(::Type{BackendReference}, val::AbstractNFFTBackend) = BackendReference(val)
+const nfft_backend = ScopedValue(BackendReference(missing))
+
+"""
+    set_active_backend!(back::Union{Missing, Module, AbstractNFFTBackend})
+
+Set the default NFFT plan backend. A module `back` must implement `back.backend()`.
+"""
+set_active_backend!(back::Module) = set_active_backend!(back.backend())
+function set_active_backend!(back::Union{Missing, AbstractNFFTBackend})
+  nfft_backend[][] = back
+end
+active_backend() = nfft_backend[][]
+function no_backend_error() 
+  error(
+    """
+    No default backend available!
+    Make sure to also "import/using" an NFFT backend such as NFFT or NonuniformFFTs.
+    """
+  )
+end
+
 """
   AbstractFTPlan{T,D,R}
 
