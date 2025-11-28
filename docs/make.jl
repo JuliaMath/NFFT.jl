@@ -32,6 +32,7 @@ makedocs(;
         "API" => "api.md",
     ],
     doctestfilters = [r"(\d*)\.(\d{1})\d*" => s"\1.\2***"]
+    doctest = false
 )
 
 deploydocs(repo   = "github.com/JuliaMath/NFFT.jl.git")
