@@ -1,5 +1,4 @@
 [deps]
-AbstractNFFTs = "7f219486-4aa7-41d6-80a7-e08ef20ceed7"
 Documenter = "e30172f5-a6a5-5a46-863b-614d45cd2de4"
 NFFTTools = "7424e34d-94f7-41d6-98a0-85abaf1b6c91"
 
