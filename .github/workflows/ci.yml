@@ -66,6 +66,7 @@ jobs:
       - run: |
           julia --project=docs -e '
             using Pkg
+            Pkg.add(PackageSpec(path=pwd())
             Pkg.add(PackageSpec(path=pwd(), subdir="AbstractNFFTs"))
             Pkg.add(PackageSpec(path=pwd(), subdir="NFFTTools"))
             Pkg.instantiate()'
