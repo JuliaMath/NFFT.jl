@@ -63,14 +63,13 @@ jobs:
       - uses: julia-actions/setup-julia@v2
         with:
           version: '1'
-      - name: Install subpackages
-        shell: julia --color=yes --project=. {0}
-        run: |
-          using Pkg
-          Pkg.add(PackageSpec(path=pwd(), subdir="AbstractNFFTs"))
-          Pkg.add(PackageSpec(path=pwd(), subdir="NFFTTools"))
-      - uses: julia-actions/julia-buildpkg@latest
-      - uses: julia-actions/julia-docdeploy@latest
+      - run: |
+          julia --project=docs -e '
+            using Pkg
+            Pkg.add(PackageSpec(path=pwd(), subdir="AbstractNFFTs"))
+            Pkg.add(PackageSpec(path=pwd(), subdir="NFFTTools"))
+            Pkg.instantiate()'
+      - run: julia --project=docs docs/make.jl
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           DOCUMENTER_KEY: ${{ secrets.DOCUMENTER_KEY }}
