@@ -31,7 +31,7 @@ makedocs(;
         "AbstractNFFTs" => "abstract.md",
         "API" => "api.md",
     ],
-    doctestfilters = [r"(\d*)\.(\d{1})\d*" => s"\1.\2***"]
+    doctestfilters = [r"(\d*)\.(\d{1})\d*" => s"\1.\2***"],
     doctest = false
 )
 
