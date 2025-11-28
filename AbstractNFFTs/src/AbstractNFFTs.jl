@@ -21,9 +21,9 @@ export AbstractFTPlan, AbstractRealFTPlan, AbstractComplexFTPlan,
 export deconvolve!, deconvolve_transpose!, convolve!, convolve_transpose!
 
 # derived
-export nfft, nfft_adjoint, ndft, ndft_adjoint, 
-       nfct, nfct_transpose, ndct, ndct_transpose,
-       nfst, nfst_transpose
+export nfft, nfft_transpose, nfft_adjoint, ndft, ndft_adjoint, 
+       nfct, nfct_transpose, nftct_adjoint, ndct, ndct_transpose,
+       nfst, nfst_transpose, nfst_adjoint
 
 # misc
 export TimingStats, accuracyParams, reltolToParams, paramsToReltol, 
