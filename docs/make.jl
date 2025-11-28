@@ -8,6 +8,7 @@ using Documenter, NFFT, NFFTTools
 
 DocMeta.setdocmeta!(NFFT, :DocTestSetup, :(using NFFT, NFFTTools); recursive=true)
 DocMeta.setdocmeta!(NFFTTools, :DocTestSetup, :(using NFFT, NFFTTools); recursive=true)
+doctest(NFFT, fix=true)
 
 makedocs(;
     doctest = true,
