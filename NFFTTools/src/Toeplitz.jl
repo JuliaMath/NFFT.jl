@@ -20,7 +20,7 @@ Calculate the kernel for an implementation of the Gram matrix that utilizes its 
 - `kwargs`: Passed on to [`plan_fft!`](https://juliamath.github.io/AbstractFFTs.jl/stable/api/#AbstractFFTs.plan_fft!) via `NFFTPlan`; can be used to modify the flags `flags=FFTW.ESTIMATE, timelimit=Inf`.
 
 # Examples
-```jldoctest; output = false, setup = :(using NFFT, NFFTTools, StableRNGs, Random; rng = StableRNG(1); Random.seed!(rng, 1); Random.seed!(rng, 1))
+```jldoctest; output = false, filter = r"(\d*)\.(\d{4})\d+" => s"\1.\2***, setup = :(using NFFT, NFFTTools, StableRNGs, Random; rng = StableRNG(1); Random.seed!(rng, 1); Random.seed!(rng, 1))
 julia> Nx = 32;
 
 julia> trj = Float32.(rand(rng, 2, 1000) .- 0.5);
@@ -96,7 +96,7 @@ Calculate the kernel for an implementation of the Gram matrix that utilizes its 
 - `fftplan`: plan for the final FFT of the kernel from image to k-space. Therefore, it has to have twice the size of the original image. Calculate, e.g., with `fftplan = plan_fft(zeros(Complex{T}, 2 .* shape); flags=FFTW.MEASURE)`, where `shape` is the size of the reconstructed image.
 
 # Examples
-```jldoctest; output = false, setup = :(using NFFT, NFFTTools, NFFTTools.FFTW, StableRNGs, Random; rng = StableRNG(1); Random.seed!(rng, 1); Random.seed!(rng, 1))
+```jldoctest; output = false, filter = r"(\d*)\.(\d{4})\d+" => s"\1.\2***, setup = :(using NFFT, NFFTTools, NFFTTools.FFTW, StableRNGs, Random; rng = StableRNG(1); Random.seed!(rng, 1); Random.seed!(rng, 1))
 julia> using NFFTTools.FFTW
 
 julia> Nx = 32;
@@ -175,7 +175,7 @@ Convolves the image `y` with the Toeplitz kernel `λ` and overwrites `y` with th
 - `xOS2`: pre-allocated array of the size of `λ`. Pre-allocate with `xOS2 = similar(λ)`.
 
 # Examples
-```jldoctest; output = false, setup = :(using NFFT, NFFTTools, NFFTTools.FFTW, StableRNGs, Random; rng = StableRNG(1); Random.seed!(rng, 1))
+```jldoctest; output = false, filter = r"(\d*)\.(\d{4})\d+" => s"\1.\2***, setup = :(using NFFT, NFFTTools, NFFTTools.FFTW, StableRNGs, Random; rng = StableRNG(1); Random.seed!(rng, 1))
 julia> using NFFTTools.FFTW
 
 julia> Nx = 32;
