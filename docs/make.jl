@@ -10,7 +10,6 @@ DocMeta.setdocmeta!(NFFT, :DocTestSetup, :(using NFFT, NFFTTools); recursive=tru
 DocMeta.setdocmeta!(NFFTTools, :DocTestSetup, :(using NFFT, NFFTTools); recursive=true)
 
 makedocs(;
-    doctest = true,
     #strict = :doctest,
     modules = [NFFT,NFFTTools],
     sitename = "NFFT",
