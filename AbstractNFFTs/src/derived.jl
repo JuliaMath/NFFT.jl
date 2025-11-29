@@ -88,27 +88,6 @@ julia> with(nfft_backend => NonuniformFFTs.backend()) do
 ```
 """
 nfft_adjoint
-"""
-    nfft_transpose(k, N, fHat, rest...; kwargs...)
-    nfft_transpose(backend, k, N, fHat, rest...; kwargs...)
-
-calculates the transpose nfft of the vector `fHat` for the nodes contained in the matrix `k`.
-The output is an array of size `N`.
-
-Uses the active AbstractNFFTs `backend` if no `backend` argument is provided. Backends can be activated with `BackendModule.activate!()`.
-Backends can also be set with a scoped value overriding the current active backend within a scope:
-
-```julia
-julia> NFFT.activate!()
-
-julia> nfft_transpose(k, N, fHat, rest...; kwargs...) # uses NFFT
-
-julia> with(nfft_backend => NonuniformFFTs.backend()) do
-          nfft_transpose(k, N, fHat, rest...; kwargs...) # uses NonuniformFFTs
-       end
-```
-"""
-nfft_transpose
 
 """
     nfct(k, f, rest...; kwargs...)
@@ -120,16 +99,6 @@ The output is a vector of length M=`size(nodes,2)`.
 Uses the active AbstractNFFTs `backend` if no `backend` argument is provided. Backends can be activated with `BackendModule.activate!()`.
 """
 nfct
-"""
-    nfct_adjoint(k, N, fHat, rest...; kwargs...)
-    nfct_adjoint(backend, k, N, fHat, rest...; kwargs...)
-
-calculates the adjoint nfct of the vector `fHat` for the nodes contained in the matrix `k`.
-The output is an array of size `N`.
-
-Uses the active AbstractNFFTs `backend` if no `backend` argument is provided. Backends can be activated with `BackendModule.activate!()`.
-"""
-nfct_adjoint
 """
     nfct_transpose(k, N, fHat, rest...; kwargs...)
     nfct_transpose(backend, k, N, fHat, rest...; kwargs...)
@@ -151,16 +120,6 @@ The output is a vector of length M=`size(nodes,2)`.
 Uses the active AbstractNFFTs `backend` if no `backend` argument is provided. Backends can be activated with `BackendModule.activate!()`.
 """
 nfst
-"""
-    nfst_adjoint(k, N, fHat, rest...; kwargs...)
-    nfst_adjoint(backend, k, N, fHat, rest...; kwargs...)
-
-calculates the adjoint nfst of the vector `fHat` for the nodes contained in the matrix `k`.
-The output is an array of size `N`.
-
-Uses the active AbstractNFFTs `backend` if no `backend` argument is provided. Backends can be activated with `BackendModule.activate!()`.
-"""
-nfst_adjoint
 """
     nfst_transpose(k, N, fHat, rest...; kwargs...)
     nfst_transpose(backend, k, N, fHat, rest...; kwargs...)
