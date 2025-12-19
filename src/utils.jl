@@ -30,25 +30,27 @@ end
 ### node related util functions
 
 function shiftNodes!(k::Matrix{T}) where T
-  @cthreads for index in CartesianIndices((1:size(k,2), 1:size(k,1)))
-    j, d = index[1], index[2]
-    if k[d,j] < zero(T)
-      k[d,j] += one(T)
+  @cthreads for j=1:size(k,2)
+    for d=1:size(k,1)
+      if k[d,j] < zero(T)
+        k[d,j] += one(T)
+      end
+      if k[d,j] == one(T) # We need to ensure that the nodes are within [0,1)
+        k[d,j] -= eps(T)
+      end
     end
-    if k[d,j] == one(T) # We need to ensure that the nodes are within [0,1)
-      k[d,j] -= eps(T)
-    end
-  end
+  end 
   return
 end
 
 function checkNodes(k::Matrix{T}) where T
-  @cthreads for index in CartesianIndices((1:size(k,2), 1:size(k,1)))
-    j, d = index[1], index[2]
-    if !(abs(k[d,j]) <= 0.5)
-      throw(ArgumentError("Nodes k need to be within the range [-1/2, 1/2) but k[$d,$k] = $(k[d,j])!"))
+  @cthreads for j=1:size(k,2)
+    for d=1:size(k,1)
+      if !(abs(k[d,j]) <= 0.5)
+        throw(ArgumentError("Nodes k need to be within the range [-1/2, 1/2) but k[$d,$k] = $(k[d,j])!"))
+      end
     end
-  end
+  end 
   return
 end
 
