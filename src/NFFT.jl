@@ -6,7 +6,7 @@ using FFTW
 using Distributed
 using SparseArrays
 using LinearAlgebra
-using FLoops
+using OhMyThreads
 import Base.size
 using Reexport
 using SpecialFunctions: besseli, besselj

@@ -1,41 +1,54 @@
 const _use_threads = Ref(false)
 
-macro cthreads(loop::Expr) 
-  return esc(quote
-      if NFFT._use_threads[]
-          @floop $loop
-          #Threads.@threads $loop 
-          #@batch per=thread $loop
-      else
-          @inbounds $loop
-      end
-  end)
+macro cthreads(loop...) 
+  return esc(cthreads(loop...))
+end
+
+function cthreads(forex)
+  if forex.head != :for
+    throw(ErrorException("Expected a for loop after `cthreads`."))
+  else
+    if forex.args[1].head != :(=)
+        # this'll catch cases like
+        # @cthreads for _ ∈ 1:10, _ ∈ 1:10
+        #     body
+        # end
+        throw(ErrorException("`@cthreads` currently only supports a single threaded loop, got $(forex.args[1])"))
+    end    
+    forbody = forex.args[2]
+  end
+
+  # Insert a scheduler selection into the forbody
+  # This is not evaluated in the hot-loop, @tasks moves this around
+  schedexpr = :(@set scheduler = NFFT._use_threads[] ? DynamicScheduler(chunking = false) : SerialScheduler())
+  pushfirst!(forbody.args, schedexpr)
+
+  # Wrap everything in a tasks loop
+  return :(@tasks $forex)
 end
 
 ### node related util functions
 
 function shiftNodes!(k::Matrix{T}) where T
-  @cthreads for j=1:size(k,2)
-    for d=1:size(k,1)
-      if k[d,j] < zero(T)
-        k[d,j] += one(T)
-      end
-      if k[d,j] == one(T) # We need to ensure that the nodes are within [0,1)
-        k[d,j] -= eps(T)
-      end
+  @cthreads for index in CartesianIndices((1:size(k,2), 1:size(k,1)))
+    j, d = index[1], index[2]
+    if k[d,j] < zero(T)
+      k[d,j] += one(T)
     end
-  end 
+    if k[d,j] == one(T) # We need to ensure that the nodes are within [0,1)
+      k[d,j] -= eps(T)
+    end
+  end
   return
 end
 
 function checkNodes(k::Matrix{T}) where T
-  @cthreads for j=1:size(k,2)
-    for d=1:size(k,1)
-      if !(abs(k[d,j]) <= 0.5)
-        throw(ArgumentError("Nodes k need to be within the range [-1/2, 1/2) but k[$d,$k] = $(k[d,j])!"))
-      end
+  @cthreads for index in CartesianIndices((1:size(k,2), 1:size(k,1)))
+    j, d = index[1], index[2]
+    if !(abs(k[d,j]) <= 0.5)
+      throw(ArgumentError("Nodes k need to be within the range [-1/2, 1/2) but k[$d,$k] = $(k[d,j])!"))
     end
-  end 
+  end
   return
 end
 
