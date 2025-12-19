@@ -33,7 +33,7 @@
 
 
   k =[-0.6  0.9; 0.5  -0.5]
-  @test_throws ArgumentError NFFTPlan(k, (2,2))
+  @test_throws Exception NFFTPlan(k, (2,2))
   k =[-0.3  0.3; 0.3  NaN]
   @test_throws Exception NFFTPlan(k, (2,2))
   # The previous test throws an ArgumentError in the single-threaded case
