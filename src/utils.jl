@@ -20,7 +20,7 @@ function cthreads(forex)
 
   # Insert a scheduler selection into the forbody
   # This is not evaluated in the hot-loop, @tasks moves this around
-  schedexpr = :(@set scheduler = NFFT._use_threads[] ? DynamicScheduler(chunking = false) : SerialScheduler())
+  schedexpr = :(@set scheduler = NFFT._use_threads[] ? DynamicScheduler() : SerialScheduler())
   pushfirst!(forbody.args, schedexpr)
 
   # Wrap everything in a tasks loop
