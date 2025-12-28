@@ -1,4 +1,6 @@
 
+using AbstractNFFTs: AbstractNFFTPlan, convolve!, convolve_transpose!, mul!
+
 function sdc(p::AbstractNFFTPlan{T,D,1}; iters=20) where {T,D}
     # Weights for sample density compensation.
     # Uses method of Pipe & Menon, 1999. Mag Reson Med, 186, 179.
