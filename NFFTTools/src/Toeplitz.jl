@@ -2,6 +2,14 @@
 # constructors
 ###################################################################
 
+#=
+using AbstractNFFTs: AbstractNFFTPlan, plan_nfft, nodes!
+using FFTW: fftshift, plan_fft, plan_ifft
+using LinearAlgebra: adjoint, mul!
+import FFTW # ESTIMATE (which is currently non-public)
+=#
+
+
 """
     calculateToeplitzKernel(shape, tr::Matrix{T}[; m = 4, σ = 2.0, window = :kaiser_bessel, fftplan = plan_fft(zeros(Complex{T}, 2 .* shape); flags=FFTW.ESTIMATE), kwargs...])
 
