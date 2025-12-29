@@ -2,10 +2,12 @@
 # constructors
 ###################################################################
 
+#=
 using AbstractNFFTs: AbstractNFFTPlan, plan_nfft, nodes!
 using FFTW: fftshift, plan_fft, plan_ifft
 using LinearAlgebra: adjoint, mul!
-import FFTW # ESTIMATE (which is not public!?)
+import FFTW # ESTIMATE (which is currently non-public)
+=#
 
 
 """

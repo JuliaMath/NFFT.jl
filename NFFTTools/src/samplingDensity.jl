@@ -1,5 +1,8 @@
 
-using AbstractNFFTs: AbstractNFFTPlan, convolve!, convolve_transpose!, mul!
+#=
+using AbstractNFFTs: AbstractNFFTPlan, convolve!, convolve_transpose!
+using LinearAlgebra: mul!
+=#
 
 function sdc(p::AbstractNFFTPlan{T,D,1}; iters=20) where {T,D}
     # Weights for sample density compensation.
