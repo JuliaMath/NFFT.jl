@@ -17,7 +17,7 @@ mutable struct GPU_NFFTPlan{T,D, arrTc <: AbstractGPUArray{Complex{T}, D}, vecI 
 end
 
 # Atm initParams is not supported for k != Array, so in the case of inferred arr from k::GPUArray we need to convert k to Array
-AbstractNFFTs.plan_nfft(::NFFTBackend, arr::Type{<:AbstractGPUArray}, k::AbstractMatrix, args...; kwargs...) = AbstractNFFTs.plan_nfft(arr, Array(k), args...; kwargs...)
+AbstractNFFTs.plan_nfft(b::NFFTBackend, arr::Type{<:AbstractGPUArray}, k::AbstractMatrix, N::NTuple{D,Int}, args...; kwargs...) where {D} = AbstractNFFTs.plan_nfft(b, arr, Array(k), N, args...; kwargs...)
 function AbstractNFFTs.plan_nfft(::NFFTBackend, arr::Type{<:AbstractGPUArray}, k::Matrix{T}, N::NTuple{D,Int}, rest...;
   timing::Union{Nothing,TimingStats} = nothing, kargs...) where {T,D}
   t = @elapsed begin
