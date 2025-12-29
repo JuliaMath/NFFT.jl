@@ -15,39 +15,130 @@ for op in [:nfft, :nfct, :nfst]
 planfunc = Symbol("plan_"*"$op")
 @eval begin 
 
+$(planfunc)(k::AbstractArray, args...; kargs...) = $(planfunc)(active_backend(), k, args...; kargs...)
+
 # The following try to find a plan function with the correct array type parameters
 
-$(planfunc)(k::arrT, args...; kargs...) where {arrT <: AbstractArray} =
-    $(planfunc)(strip_type_parameters(arrT), k, args...; kargs...)
+$(planfunc)(b::AbstractNFFTBackend, k::arrT, args...; kargs...) where {arrT <: AbstractArray} =
+    $(planfunc)(b, strip_type_parameters(arrT), k, args...; kargs...)
 
-$(planfunc)(k::arrL, args...; kargs...) where {T, arrT <: AbstractArray{T}, arrL <: Union{Adjoint{T, arrT}, Transpose{T, arrT}}} =
-    $(planfunc)(strip_type_parameters(arrT), k, y, args...; kargs...)
+$(planfunc)(b::AbstractNFFTBackend, k::arrL, args...; kargs...) where {T, arrT <: AbstractArray{T}, arrL <: Union{Adjoint{T, arrT}, Transpose{T, arrT}}} =
+    $(planfunc)(b, strip_type_parameters(arrT), k, y, args...; kargs...)
 
-$(planfunc)(k::AbstractRange, args...; kargs...) = $(planfunc)(collect(k), args...; kargs...)
+$(planfunc)(b::AbstractNFFTBackend, k::AbstractRange, args...; kargs...) = $(planfunc)(b, collect(k), args...; kargs...)
 
 # The follow convert 1D parameters into the format required by the plan
 
-$(planfunc)(Q::Type, k::AbstractVector, N::Integer, rest...; kwargs...)  =
-    $(planfunc)(Q, collect(reshape(k,1,length(k))), (N,), rest...; kwargs...)
+$(planfunc)(b::AbstractNFFTBackend, Q::Type, k::AbstractVector, N::Integer, rest...; kwargs...)  =
+    $(planfunc)(b, Q, collect(reshape(k,1,length(k))), (N,), rest...; kwargs...)
 
-$(planfunc)(Q::Type, k::AbstractVector, N::NTuple{D,Int}, rest...; kwargs...) where {D} =
-    $(planfunc)(Q, collect(reshape(k,1,length(k))), N, rest...; kwargs...)
+$(planfunc)(b::AbstractNFFTBackend, Q::Type, k::AbstractVector, N::NTuple{D,Int}, rest...; kwargs...) where {D} =
+    $(planfunc)(b, Q, collect(reshape(k,1,length(k))), N, rest...; kwargs...) 
 
-$(planfunc)(Q::Type, k::AbstractMatrix, N::NTuple{D,Int}, rest...; kwargs...) where {D}  =
-    $(planfunc)(Q, collect(k), N, rest...; kwargs...)
+$(planfunc)(b::AbstractNFFTBackend, Q::Type, k::AbstractMatrix, N::NTuple{D,Int}, rest...; kwargs...) where {D}  =
+    $(planfunc)(b, Q, collect(k), N, rest...; kwargs...)
 
+$(planfunc)(Q::Type, args...; kwargs...) = $(planfunc)(active_backend(), Q, args...; kwargs...)
+
+$(planfunc)(::Missing, args...; kwargs...) = no_backend_error()
 end
 end
 
 ## NNFFT constructor
-plan_nnfft(Q::Type, k::AbstractVector, y::AbstractVector, rest...; kwargs...)  =
-    plan_nnfft(Q, collect(reshape(k,1,length(k))), collect(reshape(y,1,length(k))), rest...; kwargs...)
-
+plan_nnfft(Q::Type, args...; kwargs...) = plan_nnfft(active_backend(), Q, args...; kwargs...)
+plan_nnfft(b::AbstractNFFTBackend, Q::Type, k::AbstractVector, y::AbstractVector, rest...; kwargs...)  =
+    plan_nnfft(b, Q, collect(reshape(k,1,length(k))), collect(reshape(y,1,length(k))), rest...; kwargs...)
+plan_nnfft(::Missing, args...; kwargs...) = no_backend_error()
 
 
 ###############################################
 # Allocating trafo functions with plan creation
 ###############################################
+
+"""
+    nfft(k, f, rest...; kwargs...)
+    nfft(backend, k, f, rest...; kwargs...)
+
+calculates the nfft of the array `f` for the nodes contained in the matrix `k`
+The output is a vector of length M=`size(nodes,2)`.
+
+Uses the active AbstractNFFTs `backend` if no `backend` argument is provided. Backends can be activated with `BackendModule.activate!()`.
+Backends can also be set with a scoped value overriding the current active backend within a scope:
+
+```julia
+julia> NFFT.activate!()
+
+julia> nfft(k, f, rest...; kwargs...) # uses NFFT
+
+julia> with(nfft_backend => NonuniformFFTs.backend()) do
+          nfft(k, f, rest...; kwargs...) # uses NonuniformFFTs
+       end
+```
+"""
+nfft
+"""
+    nfft_adjoint(k, N, fHat, rest...; kwargs...)
+    nfft_adjoint(backend, k, N, fHat, rest...; kwargs...)
+
+calculates the adjoint nfft of the vector `fHat` for the nodes contained in the matrix `k`.
+The output is an array of size `N`.
+
+Uses the active AbstractNFFTs `backend` if no `backend` argument is provided. Backends can be activated with `BackendModule.activate!()`.
+Backends can also be set with a scoped value overriding the current active backend within a scope:
+
+```julia
+julia> NFFT.activate!()
+
+julia> nfft_adjoint(k, N, fHat, rest...; kwargs...) # uses NFFT
+
+julia> with(nfft_backend => NonuniformFFTs.backend()) do
+          nfft_adjoint(k, N, fHat, rest...; kwargs...) # uses NonuniformFFTs
+       end
+```
+"""
+nfft_adjoint
+
+"""
+    nfct(k, f, rest...; kwargs...)
+    nfct(backend, k, f, rest...; kwargs...)
+
+calculates the nfct of the array `f` for the nodes contained in the matrix `k`
+The output is a vector of length M=`size(nodes,2)`.
+
+Uses the active AbstractNFFTs `backend` if no `backend` argument is provided. Backends can be activated with `BackendModule.activate!()`.
+"""
+nfct
+"""
+    nfct_transpose(k, N, fHat, rest...; kwargs...)
+    nfct_transpose(backend, k, N, fHat, rest...; kwargs...)
+
+calculates the transpose nfct of the vector `fHat` for the nodes contained in the matrix `k`.
+The output is an array of size `N`.
+
+Uses the active AbstractNFFTs `backend` if no `backend` argument is provided. Backends can be activated with `BackendModule.activate!()`.
+"""
+nfct_transpose
+
+"""
+    nfst(k, f, rest...; kwargs...)
+    nfst(backend, k, f, rest...; kwargs...)
+
+calculates the nfst of the array `f` for the nodes contained in the matrix `k`
+The output is a vector of length M=`size(nodes,2)`.
+
+Uses the active AbstractNFFTs `backend` if no `backend` argument is provided. Backends can be activated with `BackendModule.activate!()`.
+"""
+nfst
+"""
+    nfst_transpose(k, N, fHat, rest...; kwargs...)
+    nfst_transpose(backend, k, N, fHat, rest...; kwargs...)
+
+calculates the transpose nfst of the vector `fHat` for the nodes contained in the matrix `k`.
+The output is an array of size `N`.
+
+Uses the active AbstractNFFTs `backend` if no `backend` argument is provided. Backends can be activated with `BackendModule.activate!()`.
+"""
+nfst_transpose
 
 for (op,trans) in zip([:nfft, :nfct, :nfst],
                       [:adjoint, :transpose, :transpose])
@@ -55,28 +146,21 @@ planfunc = Symbol("plan_$(op)")
 tfunc = Symbol("$(op)_$(trans)")
 @eval begin 
 
-# TODO fix comments (how?)
-"""
-nfft(k, f, rest...; kwargs...)
-
-calculates the nfft of the array `f` for the nodes contained in the matrix `k`
-The output is a vector of length M=`size(nodes,2)`
-"""
-function $(op)(k, f::AbstractArray; kargs...) 
+$(op)(k, f::AbstractArray; kargs...) = $(op)(active_backend(), k, f::AbstractArray; kargs...) 
+function $(op)(b::AbstractNFFTBackend, k, f::AbstractArray; kargs...) 
   p = $(planfunc)(k, size(f); kargs... )
   return p * f
 end
+$(op)(::Missing, k, f::AbstractArray; kargs...) = no_backend_error()
 
-"""
-nfft_adjoint(k, N, fHat, rest...; kwargs...)
 
-calculates the adjoint nfft of the vector `fHat` for the nodes contained in the matrix `k`.
-The output is an array of size `N`
-"""
-function $(tfunc)(k, N, fHat;  kargs...) 
+$(tfunc)(k, N, fHat;  kargs...) = $(tfunc)(active_backend(), k, N, fHat;  kargs...)
+function $(tfunc)(b::AbstractNFFTBackend, k, N, fHat;  kargs...) 
   p = $(planfunc)(k, N;  kargs...)
   return $(trans)(p) * fHat
 end
+$(tfunc)(::Missing, k, N, fHat;  kargs...) = no_backend_error()
+
 
 end
 end

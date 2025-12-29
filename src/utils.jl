@@ -1,15 +1,30 @@
 const _use_threads = Ref(false)
 
-macro cthreads(loop::Expr) 
-  return esc(quote
-      if NFFT._use_threads[]
-          @floop $loop
-          #Threads.@threads $loop 
-          #@batch per=thread $loop
-      else
-          @inbounds $loop
-      end
-  end)
+macro cthreads(loop...) 
+  return esc(cthreads(loop...))
+end
+
+function cthreads(forex)
+  if forex.head != :for
+    throw(ErrorException("Expected a for loop after `cthreads`."))
+  else
+    if forex.args[1].head != :(=)
+        # this'll catch cases like
+        # @cthreads for _ ∈ 1:10, _ ∈ 1:10
+        #     body
+        # end
+        throw(ErrorException("`@cthreads` currently only supports a single threaded loop, got $(forex.args[1])"))
+    end    
+    forbody = forex.args[2]
+  end
+
+  # Insert a scheduler selection into the forbody
+  # This is not evaluated in the hot-loop, @tasks moves this around
+  schedexpr = :(@set scheduler = NFFT._use_threads[] ? DynamicScheduler() : SerialScheduler())
+  pushfirst!(forbody.args, schedexpr)
+
+  # Wrap everything in a tasks loop
+  return :(@tasks $forex)
 end
 
 ### node related util functions

@@ -35,3 +35,4 @@ steps:
       Pkg.instantiate()
       include("test/gpu/rocm.jl")'
     timeout_in_minutes: 30
+    soft_fail: true

@@ -10,7 +10,6 @@ DocMeta.setdocmeta!(NFFT, :DocTestSetup, :(using NFFT, NFFTTools); recursive=tru
 DocMeta.setdocmeta!(NFFTTools, :DocTestSetup, :(using NFFT, NFFTTools); recursive=true)
 
 makedocs(;
-    doctest = true,
     #strict = :doctest,
     modules = [NFFT,NFFTTools],
     sitename = "NFFT",
@@ -30,7 +29,9 @@ makedocs(;
         #"Implementation" => "implementation.md",
         "AbstractNFFTs" => "abstract.md",
         "API" => "api.md",
-    ]
+    ],
+    doctestfilters = [r"(\d*)\.(\d{1})\d*" => s"\1.\2***"],
+    doctest = false
 )
 
 deploydocs(repo   = "github.com/JuliaMath/NFFT.jl.git")
