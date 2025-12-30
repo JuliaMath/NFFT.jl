@@ -3,8 +3,8 @@ convolution.jl
 Convolution (aka interpolation) methods and their adjoints.
 These are core NFFT operations.
 
-The `convolve!` method allows both real and complex types
-because sampling density compensation works with real vectors.
+The methods allow both real and complex types
+because sampling density compensation vectors are real.
 =#
 
 #=
@@ -29,14 +29,16 @@ function AbstractNFFTs.convolve!(
   else
     convolve_sparse_matrix!(p, g, fHat)
   end
-  return
+  return fHat
 end
+
 
 function convolve_nonblocking!(p::NFFTPlan, g, fHat)
   L = Val(2*p.params.m)
   winPoly = makePolyArrayStatic(p)
   _convolve_nonblocking!(p, g, fHat, L, winPoly)
 end
+
 
 function _convolve_nonblocking!(p::NFFTPlan, g, fHat, L, winPoly)
   scale = Int(p.params.LUTSize/(p.params.m))
@@ -57,9 +59,9 @@ end
 ) where {D, Tp <: Real, Tg <: Real, Z}
 
   quote
-    @nexprs $(D) d -> ((tmpIdx_d, tmpWin_d) = precomputeOneNode(p.windowLinInterp, winPoly, p.k, p.Ñ, 
+    @nexprs $(D) d -> ((tmpIdx_d, tmpWin_d) = precomputeOneNode(p.windowLinInterp, winPoly, p.k, p.Ñ,
                                                  p.params.m, p.params.σ, scale, j, d, L, p.params.LUTSize)  )
-  
+
     T = promote_type(Tp, Tg)
     fHat = zero(Complex{T})
 
@@ -67,7 +69,7 @@ end
     @nloops_ $D l d -> 1:$Z d->begin
       # preexpr
       prodWin_{d-1} = prodWin_d * tmpWin_d[l_d]
-      gidx_d = tmpIdx_d[l_d] 
+      gidx_d = tmpIdx_d[l_d]
     end begin
       # bodyexpr
       fHat += prodWin_0 * @nref $D g gidx
@@ -75,6 +77,7 @@ end
     return fHat
   end
 end
+
 
 function convolve_sparse_matrix!(
   p::NFFTPlan{Tp,D,1},
@@ -89,7 +92,12 @@ end
 
 ########## convolve adjoint ##########
 
-function AbstractNFFTs.convolve_transpose!(p::NFFTPlan{T,D,1}, fHat::AbstractVector{U}, g::StridedArray{Complex{T},D}) where {D,T,U}
+function AbstractNFFTs.convolve_transpose!(
+  p::NFFTPlan{Tp,D,1},
+  fHat::AbstractVector{U},
+  g::StridedArray{<: Union{Tg, Complex{Tg}}, D},
+) where {D, Tp <: Real, Tg <: Real, U}
+
   if isempty(p.B)
     if p.params.blocking
       convolve_transpose_blocking!(p, fHat, g)
@@ -99,6 +107,7 @@ function AbstractNFFTs.convolve_transpose!(p::NFFTPlan{T,D,1}, fHat::AbstractVec
   else
     convolve_transpose_sparse_matrix!(p, fHat, g)
   end
+  return g
 end
 
 
@@ -109,7 +118,7 @@ function convolve_transpose_nonblocking!(p::NFFTPlan, fHat, g)
 end
 
 
-function _convolve_transpose_nonblocking!(p::NFFTPlan{T,D,1}, fHat, g, L, winPoly)  where {D,T} 
+function _convolve_transpose_nonblocking!(p::NFFTPlan{T,D,1}, fHat, g, L, winPoly) where {D,T}
   fill!(g, zero(T))
   scale = Int(p.params.LUTSize/(p.params.m))
 
@@ -119,25 +128,40 @@ function _convolve_transpose_nonblocking!(p::NFFTPlan{T,D,1}, fHat, g, L, winPol
 end
 
 
-@generated function __convolve_transpose_nonblocking!(p::NFFTPlan{T,D,1}, fHat::AbstractVector{U}, g::StridedArray{Complex{T},D}, L::Val{Z}, winPoly, scale, j) where {D,T,U,Z}
+@generated function __convolve_transpose_nonblocking!(
+  p::NFFTPlan{Tp,D,1},
+  fHat::AbstractVector{U},
+  g::StridedArray{<: Union{Tg, Complex{Tg}}, D},
+  L::Val{Z},
+  winPoly,
+  scale,
+  j,
+) where {D, Tp <: Real, Tg <: Real, U, Z}
+
   quote
-    @nexprs $(D) d -> ((tmpIdx_d, tmpWin_d) = precomputeOneNode(p.windowLinInterp, winPoly, p.k, p.Ñ, 
+    @nexprs $(D) d -> ((tmpIdx_d, tmpWin_d) = precomputeOneNode(p.windowLinInterp, winPoly, p.k, p.Ñ,
                                                  p.params.m, p.params.σ, scale, j, d, L, p.params.LUTSize)  )
 
-    @nexprs 1 d -> prodWin_{$D} = one(T)
+    T = promote_type(Tp, Tg)
+    @nexprs 1 d -> prodWin_{$D} = one(Tp)
     @nloops_ $D l d -> 1:$Z d->begin
       # preexpr
       prodWin_{d-1} = prodWin_d * tmpWin_d[l_d]
-      gidx_d = tmpIdx_d[l_d] 
+      gidx_d = tmpIdx_d[l_d]
     end begin
       # bodyexpr
-      (@nref $D g gidx) += prodWin_0 * fHat[j] 
+      (@nref $D g gidx) += prodWin_0 * fHat[j]
     end
   end
 end
 
-function convolve_transpose_sparse_matrix!(p::NFFTPlan{T,D,1},
-                        fHat::AbstractVector{U}, g::StridedArray{Complex{T},D}) where {D,T,U}
+
+function convolve_transpose_sparse_matrix!(
+  p::NFFTPlan{Tp,D,1},
+  fHat::AbstractVector{U},
+  g::StridedArray{<:Union{Tg, Complex{Tg}}, D},
+) where {D, Tp <: Real, Tg <: Real, U}
+
   #threaded_mul!(vec(g), p.B, fHat)
   mul!(vec(g), p.B, fHat)
 end
@@ -171,7 +195,7 @@ function _convolve_blocking!(p::NFFTPlan{T,D,1}, g, fHat, L, winPoly) where {D,T
     if !isempty(p.nodesInBlock[l])
       toBlock!(p, g, p.blocks[l], p.blockOffsets[l])
       winTensor = (p.params.precompute == TENSOR) ? p.windowTensor[l] : nothing
-      calcOneBlock!(p, fHat, p.nodesInBlock[l], p.blocks[l], p.blockOffsets[l], L, 
+      calcOneBlock!(p, fHat, p.nodesInBlock[l], p.blocks[l], p.blockOffsets[l], L,
                    scale, p.idxInBlock[l], winTensor, winPoly)
     end
   end
@@ -180,8 +204,8 @@ end
 @generated function toBlock!(p::NFFTPlan{T,D,1}, g, block, off) where {T,D}
 quote
   if off[1] + 2 < 1
-    LA = -(off[1] + 2) + 1 
-    offA = size(g,1) - LA 
+    LA = -(off[1] + 2) + 1
+    offA = size(g,1) - LA
     offB = -LA
   else
     LA = 0
@@ -189,7 +213,7 @@ quote
   end
 
   if offB + size(block,1) > size(g,1)
-    LB = size(g,1) - (offB )  
+    LB = size(g,1) - (offB )
     offC = -LB
   else
     LB = size(block,1)
@@ -197,31 +221,31 @@ quote
 
   if LB != size(block,1) && offC + size(block,1) > size(g,1)
     # out of bounds indices: second (or first) wrapping
-    LC = size(g,1) - (offC)  
+    LC = size(g,1) - (offC)
     offD = -LC
   else
     # no out of bounds indices
     LC = size(block,1)
   end
-  
+
   @nloops_ $(D-1)  (d->l_{d+1})  (d -> 1:size(block,d+1)) d->begin
     # preexpr
-    idx_{d+1} = ( mod(l_{d+1}  + off[d+1] + p.Ñ[d+1], p.Ñ[d+1]) + 1)
+    idx_{d+1} = ( mod(l_{d+1} + off[d+1] + p.Ñ[d+1], p.Ñ[d+1]) + 1)
   end begin
     # bodyexpr
-    @inbounds @simd for l_1 = 1:LA
+    @inbounds @simd for l_1 in 1:LA
       idx_1 = l_1 + offA
       (@nref $D block l) = (@nref $D g idx)
     end
-    @inbounds @simd for l_1 = (LA+1):LB 
+    @inbounds @simd for l_1 in (LA+1):LB
         idx_1 = l_1 + offB
       (@nref $D block l) = (@nref $D g idx)
     end
-    @inbounds @simd for l_1 = (LB+1):LC
+    @inbounds @simd for l_1 in (LB+1):LC
       idx_1 = l_1 + offC
       (@nref $D block l) = (@nref $D g idx)
     end
-    @inbounds @simd for l_1 = (LC+1):size(block,1) 
+    @inbounds @simd for l_1 in (LC+1):size(block,1)
       idx_1 = l_1 + offD
       (@nref $D block l) = (@nref $D g idx)
     end
@@ -233,40 +257,41 @@ end
 @noinline function calcOneBlock!(p::NFFTPlan{T,D,1}, fHat, nodesInBlock, block,
          off, L, scale, idxInBlock, winTensor, winPoly) where {D,T}
   for (jLocal,j) in enumerate(nodesInBlock)
-    fHat[j] = calcOneNode!(p, block, off, L, scale, j, jLocal, 
+    fHat[j] = calcOneNode!(p, block, off, L, scale, j, jLocal,
                                idxInBlock, winTensor, winPoly)
   end
   return
 end
 
 
-@generated function calcOneNode!(p::NFFTPlan{T,D,1}, block, off, L::Val{Z}, scale, 
+@generated function calcOneNode!(p::NFFTPlan{T,D,1}, block, off, L::Val{Z}, scale,
                    j, jLocal, idxInBlock, winTensor, winPoly) where {D,T,Z}
   quote
-    @nexprs $(D) d -> ((off_d, tmpWin_d) =  precomputeOneNodeBlocking(p.windowLinInterp, winTensor, winPoly, scale, 
+    @nexprs $(D) d -> ((off_d, tmpWin_d) = precomputeOneNodeBlocking(p.windowLinInterp, winTensor, winPoly, scale,
                       jLocal, d, L, idxInBlock) )
 
     @nexprs 1 d -> prodWin_{$D} = one(T)
     @nexprs 1 d -> fHat_{$D} = zero(Complex{T})
     @nloops_ $(D-1)  (d->l_{d+1})  (d -> 1:$Z) d->begin
       # preexpr
-      block_idx_{d+1} = off_{d+1} + l_{d+1} 
+      block_idx_{d+1} = off_{d+1} + l_{d+1}
       fHat_{d} = zero(Complex{T})
     end d->begin
       # postexpr
       fHat_{d+1} += tmpWin_{d+1}[l_{d+1}] * fHat_{d}
     end begin
       # bodyexpr
-      @inbounds @simd for l_1 = 1:$Z
+      @inbounds @simd for l_1 in 1:$Z
         block_idx_1 = off_1 + l_1
         fHat_1 += tmpWin_1[l_1] * (@nref $D block block_idx)
       end
     end
 
-    @nexprs 1 d -> fHat = fHat_{$D} 
+    @nexprs 1 d -> fHat = fHat_{$D}
     return fHat
   end
 end
+
 
 ##########################
 
@@ -276,11 +301,12 @@ function convolve_transpose_blocking!(p::NFFTPlan, fHat, g)
   _convolve_transpose_blocking!(p, fHat, g, L, winPoly)
 end
 
+
 function _convolve_transpose_blocking!(p::NFFTPlan{T,D,1}, fHat, g, L, winPoly) where {D,T}
   #g .= zero(T)
   ccall(:memset, Ptr{Cvoid}, (Ptr{Cvoid}, Cint, Csize_t), g, 0, sizeof(g))
   scale = Int(p.params.LUTSize/(p.params.m))
-  
+
   lk = ReentrantLock()
   @cthreads for l in CartesianIndices(size(p.blocks))
     if !isempty(p.nodesInBlock[l])
@@ -288,15 +314,16 @@ function _convolve_transpose_blocking!(p::NFFTPlan{T,D,1}, fHat, g, L, winPoly) 
       ccall(:memset, Ptr{Cvoid}, (Ptr{Cvoid}, Cint, Csize_t), p.blocks[l], 0, sizeof(p.blocks[l]))
 
       winTensor = (p.params.precompute == TENSOR) ? p.windowTensor[l] : nothing
-      fillBlock!(p, fHat, p.blocks[l], p.nodesInBlock[l], p.blockOffsets[l], L, scale, 
+      fillBlock!(p, fHat, p.blocks[l], p.nodesInBlock[l], p.blockOffsets[l], L, scale,
                  p.idxInBlock[l], winTensor, winPoly)
- 
+
       lock(lk) do
         addBlock!(p, g, p.blocks[l], p.blockOffsets[l])
       end
     end
   end
 end
+
 
 @generated function addBlock!(p::NFFTPlan{T,D,1}, g, block, off) where {T,D}
   quote
@@ -311,8 +338,8 @@ end
 
     if off[1] + 2 < 1
       # negative indices: first wrapping
-      LA = -(off[1] + 2) + 1 
-      offA = size(g,1) - LA 
+      LA = -(off[1] + 2) + 1
+      offA = size(g,1) - LA
       offB = -LA
     else
       # no negative indices: skip first sum
@@ -322,7 +349,7 @@ end
 
     if offB + size(block,1) > size(g,1)
       # out of bounds indices: second (or first) wrapping
-      LB = size(g,1) - (offB )  
+      LB = size(g,1) - (offB )
       offC = -LB
     else
       # no out of bounds indices
@@ -331,31 +358,31 @@ end
 
     if LB != size(block,1) && offC + size(block,1) > size(g,1)
       # out of bounds indices: second (or first) wrapping
-      LC = size(g,1) - (offC)  
+      LC = size(g,1) - (offC)
       offD = -LC
     else
       # no out of bounds indices
       LC = size(block,1)
     end
-    
+
     @nloops_ $(D-1)  (d->l_{d+1})  (d -> 1:size(block,d+1)) d->begin
       # preexpr
-      idx_{d+1} = ( mod(l_{d+1}  + off[d+1] + p.Ñ[d+1], p.Ñ[d+1]) + 1)
+      idx_{d+1} = ( mod(l_{d+1} + off[d+1] + p.Ñ[d+1], p.Ñ[d+1]) + 1)
     end begin
       # bodyexpr
-      @inbounds @simd for l_1 = 1:LA
+      @inbounds @simd for l_1 in 1:LA
         idx_1 = l_1 + offA
         (@nref $D g idx) += (@nref $D block l)
       end
-      @inbounds @simd for l_1 = (LA+1):LB 
+      @inbounds @simd for l_1 in (LA+1):LB
         idx_1 = l_1 + offB
         (@nref $D g idx) += (@nref $D block l)
       end
-      @inbounds @simd for l_1 = (LB+1):LC
+      @inbounds @simd for l_1 in (LB+1):LC
         idx_1 = l_1 + offC
         (@nref $D g idx) += (@nref $D block l)
       end
-      @inbounds @simd for l_1 = (LC+1):size(block,1) 
+      @inbounds @simd for l_1 in (LC+1):size(block,1)
         idx_1 = l_1 + offD
         (@nref $D g idx) += (@nref $D block l)
       end
@@ -364,10 +391,11 @@ end
   end
 end
 
-@noinline function fillBlock!(p::NFFTPlan{T,D,1}, fHat, block, nodesInBlock, off, L::Val{Z}, scale, 
+
+@noinline function fillBlock!(p::NFFTPlan{T,D,1}, fHat, block, nodesInBlock, off, L::Val{Z}, scale,
                               idxInBlock, winTensor, winPoly) where {T,D,Z}
   if (Threads.nthreads() == 1 || !NFFT._use_threads[]) &&
-      (D >= 3 && Z >= 16) || (D == 2 && Z >= 16) # magic 
+      (D >= 3 && Z >= 16) || (D == 2 && Z >= 16) # magic
     for (jLocal,j) in enumerate(nodesInBlock)
       fillOneNode2!(p, fHat, block, off, L, scale, j, jLocal, idxInBlock, winTensor, winPoly)
     end
@@ -380,7 +408,7 @@ end
 end
 
 
-@generated function fillOneNode!(p::NFFTPlan{T,D,1}, fHat, block, off, L::Val{Z}, scale, 
+@generated function fillOneNode!(p::NFFTPlan{T,D,1}, fHat, block, off, L::Val{Z}, scale,
               j, jLocal, idxInBlock, winTensor, winPoly) where {D,T,Z}
   quote
     fHat_ = fHat[j]
@@ -394,11 +422,11 @@ end
     @nloops_ $(D-1)  (d->l_{d+1})  (d -> 1:$Z) d->begin
       # preexpr
       prodWin_{d} = prodWin_{d+1} * tmpWin_{d+1}[l_{d+1}]
-      block_idx_{d+1} = off_{d+1} + l_{d+1} 
+      block_idx_{d+1} = off_{d+1} + l_{d+1}
     end begin
       # bodyexpr
-      @inbounds @simd for l_1 = 1:$(Z)
-        block_idx_1 = off_1 + l_1 
+      @inbounds @simd for l_1 in 1:$(Z)
+        block_idx_1 = off_1 + l_1
         (@nref $D block block_idx) += innerWin[l_1] * prodWin_1
       end
     end
@@ -406,7 +434,8 @@ end
   end
 end
 
-@generated function fillOneNode2!(p::NFFTPlan{T,D,1}, fHat, block, off, L::Val{Z}, scale, 
+
+@generated function fillOneNode2!(p::NFFTPlan{T,D,1}, fHat, block, off, L::Val{Z}, scale,
               j, jLocal, idxInBlock, winTensor, winPoly) where {D,T,Z}
   quote
     fHat_ = fHat[j]
@@ -418,11 +447,11 @@ end
     @nloops_ $(D-1)  (d->l_{d+1})  (d -> 1:$Z) d->begin
       # preexpr
       prodWin_{d} = prodWin_{d+1} * tmpWin_{d+1}[l_{d+1}]
-      block_idx_{d+1} = off_{d+1} + l_{d+1} 
+      block_idx_{d+1} = off_{d+1} + l_{d+1}
     end begin
       # bodyexpr
-      @inbounds @simd for l_1 = 1:$(Z)
-        block_idx_1 = off_1 + l_1 
+      @inbounds @simd for l_1 in 1:$(Z)
+        block_idx_1 = off_1 + l_1
         (@nref $D block block_idx) += (tmpWin_1[l_1] * prodWin_1) * fHat_
       end
     end
@@ -431,17 +460,16 @@ end
 end
 
 
-
-@generated function fillOneNodeReal!(p::NFFTPlan{T,D,1}, fHat, block, off, L::Val{Z}, scale, j, 
+@generated function fillOneNodeReal!(p::NFFTPlan{T,D,1}, fHat, block, off, L::Val{Z}, scale, j,
                 jLocal, idxInBlock, winTensor, winPoly) where {D,T,Z}
   quote
     fHat_ = fHat[j]
 
-    @nexprs $(D) d -> ((off_d, tmpWin_d) =  precomputeOneNodeBlocking(p.windowLinInterp, winTensor, winPoly, scale, jLocal, 
+    @nexprs $(D) d -> ((off_d, tmpWin_d) =  precomputeOneNodeBlocking(p.windowLinInterp, winTensor, winPoly, scale, jLocal,
                                               d, L, idxInBlock) )
 
     innerWin = Vector{Float64}(undef,$(2*Z)) # Probably cache me somewhere
-    for l=1:$Z
+    for l in 1:$Z
       innerWin[2*(l-1)+1] = tmpWin_1[l] * real(fHat_)
       innerWin[2*(l-1)+2] = tmpWin_1[l] * imag(fHat_)
     end
@@ -450,7 +478,7 @@ end
     # Convert to real
     # We use unsafe_wrap here because reinterpret(T, block) is much slower
     # and reinterpret(T, reshape, block) is slightly slower than unsafe_wrap
-    # In fact the conversion to real only pays off when using unsafe_wrap, 
+    # In fact the conversion to real only pays off when using unsafe_wrap,
     # otherwise sticking with complex is faster
     U = @ntuple $(D) d -> d==1 ? 2*size(block,1) : size(block,d)
     blockReal = unsafe_wrap(Array,reinterpret(Ptr{T},pointer(block)), U)
@@ -460,11 +488,11 @@ end
     @nloops_ $(D-1)  (d->l_{d+1})  (d -> 1:$Z) d->begin
       # preexpr
       prodWin_{d} = prodWin_{d+1} * tmpWin_{d+1}[l_{d+1}]
-      block_idx_{d+1} = off_{d+1} + l_{d+1} 
+      block_idx_{d+1} = off_{d+1} + l_{d+1}
     end begin
       # bodyexpr
-      @inbounds @simd for l_1 = 1:$(2*Z)
-        block_idx_1 = off_1 + l_1 
+      @inbounds @simd for l_1 in 1:$(2*Z)
+        block_idx_1 = off_1 + l_1
         (@nref $(D) blockReal block_idx) += innerWin[l_1] * prodWin_1
       end
     end
