@@ -216,8 +216,31 @@ Change nodes `k` in the plan `p` operation and return the plan.
 
 @mustimplement deconvolve!(p::AbstractNFFTPlan, f::AbstractArray, g::AbstractArray)
 @mustimplement deconvolve_transpose!(p::AbstractNFFTPlan, g::AbstractArray, f::AbstractArray)
+
+
+"""
+   convolve!(p::AbstractNFFTPlan, g::AbstractArray, fHat::AbstractArray)
+
+Overwrite vector `fHat`
+(of length `p.J`)
+with the result of "convolution" (i.e., interpolation)
+between equispaced input array `g`
+(of size `p.N`)
+and the interpolation kernel in NFFT plan `p`.
+"""
 @mustimplement convolve!(p::AbstractNFFTPlan, g::AbstractArray, fHat::AbstractArray)
+
+
+"""
+    convolve_transpose!(p::AbstractNFFTPlan, fHat::AbstractArray, g::AbstractArray)
+
+Adjoint of `convolve!` operation,
+where equispaced array `g`
+(of size `p.N`)
+is overwritten
+based on the values of input vector `fHat`
+(of length `p.J`)
+and the interpolation kernel in NFFT plan `p`.
+"""
 @mustimplement convolve_transpose!(p::AbstractNFFTPlan, fHat::AbstractArray, g::AbstractArray)
-
-
 
