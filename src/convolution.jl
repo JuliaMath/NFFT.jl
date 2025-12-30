@@ -1,5 +1,25 @@
+#=
+convolution.jl
+Convolution (aka interpolation) methods and their adjoints.
+These are core NFFT operations.
 
-function AbstractNFFTs.convolve!(p::NFFTPlan{T,D,1}, g::AbstractArray{Complex{T},D}, fHat::StridedVector{U}) where {D,T,U}
+The `convolve!` method allows both real and complex types
+because sampling density compensation works with real vectors.
+=#
+
+#=
+using NFFT: NFFTPlan, @cthreads, @nloops_
+using LinearAlgebra: mul!
+import AbstractNFFTs
+=#
+
+
+function AbstractNFFTs.convolve!(
+  p::NFFTPlan{Tp,D,1},
+  g::AbstractArray{<: Union{Tg, Complex{Tg}}, D},
+  fHat::StridedVector{U},
+) where {D, Tp <: Real, Tg <: Real, U}
+
   if isempty(p.B)
     if p.params.blocking
       convolve_blocking!(p, g, fHat)
@@ -27,11 +47,20 @@ function _convolve_nonblocking!(p::NFFTPlan, g, fHat, L, winPoly)
 end
 
 
-@generated function _convolve_nonblocking(p::NFFTPlan{T,D,1}, g::AbstractArray{Complex{T},D}, L::Val{Z}, winPoly, scale, j) where {D,T,Z}
+@generated function _convolve_nonblocking(
+  p::NFFTPlan{Tp,D,1},
+  g::AbstractArray{<: Union{Tg, Complex{Tg}}, D},
+  L::Val{Z},
+  winPoly,
+  scale,
+  j,
+) where {D, Tp <: Real, Tg <: Real, Z}
+
   quote
     @nexprs $(D) d -> ((tmpIdx_d, tmpWin_d) = precomputeOneNode(p.windowLinInterp, winPoly, p.k, p.Ñ, 
                                                  p.params.m, p.params.σ, scale, j, d, L, p.params.LUTSize)  )
   
+    T = promote_type(Tp, Tg)
     fHat = zero(Complex{T})
 
     @nexprs 1 d -> prodWin_{$D} = one(T)
@@ -47,10 +76,16 @@ end
   end
 end
 
-function convolve_sparse_matrix!(p::NFFTPlan{T,D,1}, g::AbstractArray{Complex{T},D}, fHat::StridedVector{U}) where {D,T,U}
+function convolve_sparse_matrix!(
+  p::NFFTPlan{Tp,D,1},
+  g::AbstractArray{<: Union{Tg, Complex{Tg}}, D},
+  fHat::StridedVector{U},
+) where {D, Tp <: Real, Tg <: Real, U}
+
   threaded_mul!(fHat, transpose(p.B), vec(g))
   #mul!(fHat, transpose(p.B), vec(g))
 end
+
 
 ########## convolve adjoint ##########
 
