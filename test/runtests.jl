@@ -17,6 +17,7 @@ arrayTypes = areTypesDefined ? arrayTypes : [JLArray]
     include("issues.jl")
     include("accuracy.jl")
     include("constructors.jl")
+    include("convolve.jl")
     include("performance.jl")
     include("testToeplitz.jl")
     include("samplingDensity.jl")
