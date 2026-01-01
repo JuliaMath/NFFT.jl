@@ -22,6 +22,10 @@ function AbstractNFFTs.convolve!(
   fHat::StridedVector{<:RealOrComplex}, # mutated
 ) where {D}
 
+  size(g) == p.Ñ ||
+    throw(DimensionMismatch("size(g)=$(size(g)) ≠ Ñ = $(p.Ñ)"))
+  size(fHat) == (p.J,) ||
+   throw(DimensionMismatch("size(fHat)=$(size(fHat)) ≠ J = $(p.J)"))
   (eltype(g) <: Complex) && (eltype(fHat) <: Real) &&
     throw(ArgumentError("Complex input g requires Complex output fHat"))
 
@@ -103,6 +107,10 @@ function AbstractNFFTs.convolve_transpose!(
   g::StridedArray{<:RealOrComplex, D}, # mutated
 ) where {D}
 
+  size(g) == p.Ñ ||
+    throw(DimensionMismatch("size(g)=$(size(g)) ≠ Ñ = $(p.Ñ)"))
+  size(fHat) == (p.J,) ||
+    throw(DimensionMismatch("size(fHat)=$(size(fHat)) ≠ J = $(p.J)"))
   (eltype(fHat) <: Complex) && (eltype(g) <: Real) &&
     throw(ArgumentError("Complex input fHat requires Complex output g"))
 
