@@ -142,8 +142,8 @@ end
 
 function AbstractNFFTs.convolve_transpose!(
   ::NFFTPlan{<:Real,D,1},
-  ::StridedVector{<:Real},
-  ::AbstractArray{<:Complex, D},
+  ::AbstractVector{<:Complex},
+  ::StridedArray{<:Real, D},
 ) where {D}
   throw(ArgumentError("Complex input fHat requires Complex output g"))
 end
