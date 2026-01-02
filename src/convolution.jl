@@ -5,6 +5,7 @@ These are core NFFT operations.
 
 The methods allow both real and complex types
 because sampling density compensation vectors are real.
+However, a Complex input with a Real output is verboten.
 =#
 
 #=
@@ -26,8 +27,10 @@ function AbstractNFFTs.convolve!(
     throw(DimensionMismatch("size(g)=$(size(g)) ≠ Ñ = $(p.Ñ)"))
   size(fHat) == (p.J,) ||
    throw(DimensionMismatch("size(fHat)=$(size(fHat)) ≠ J = $(p.J)"))
-  (eltype(g) <: Complex) && (eltype(fHat) <: Real) &&
-    throw(ArgumentError("Complex input g requires Complex output fHat"))
+
+# multiple dispatch (next function) obviates need for this test
+# (eltype(g) <: Complex) && (eltype(fHat) <: Real) &&
+#   throw(ArgumentError("Complex input g requires Complex output fHat"))
 
   if isempty(p.B)
     if p.params.blocking
@@ -39,6 +42,14 @@ function AbstractNFFTs.convolve!(
     convolve_sparse_matrix!(p, g, fHat)
   end
   return fHat
+end
+
+function AbstractNFFTs.convolve!(
+  ::NFFTPlan{<:Real,D,1},
+  ::AbstractArray{<:Complex, D},
+  ::StridedVector{<:Real},
+) where {D}
+  throw(ArgumentError("Complex input g requires Complex output fHat"))
 end
 
 
@@ -111,8 +122,10 @@ function AbstractNFFTs.convolve_transpose!(
     throw(DimensionMismatch("size(g)=$(size(g)) ≠ Ñ = $(p.Ñ)"))
   size(fHat) == (p.J,) ||
     throw(DimensionMismatch("size(fHat)=$(size(fHat)) ≠ J = $(p.J)"))
-  (eltype(fHat) <: Complex) && (eltype(g) <: Real) &&
-    throw(ArgumentError("Complex input fHat requires Complex output g"))
+
+# multiple dispatch (next function) obviates need for this test
+# (eltype(fHat) <: Complex) && (eltype(g) <: Real) &&
+#   throw(ArgumentError("Complex input fHat requires Complex output g"))
 
   if isempty(p.B)
     if p.params.blocking
@@ -124,6 +137,15 @@ function AbstractNFFTs.convolve_transpose!(
     convolve_transpose_sparse_matrix!(p, fHat, g)
   end
   return g
+end
+
+
+function AbstractNFFTs.convolve_transpose!(
+  ::NFFTPlan{<:Real,D,1},
+  ::StridedVector{<:Real},
+  ::AbstractArray{<:Complex, D},
+) where {D}
+  throw(ArgumentError("Complex input fHat requires Complex output g"))
 end
 
 
