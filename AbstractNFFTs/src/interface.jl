@@ -225,7 +225,7 @@ Overwrite `R`-dimensional array `fHat`
 (often R=1, and `fHat` has length `p.J`)
 with the result of "convolution" (i.e., interpolation)
 between `D`-dimensional equispaced input array `g`
-(often of size `p.N`)
+(often of size `p.Ñ`)
 and the interpolation kernel in NFFT plan `p`.
 """
 @mustimplement convolve!(p::AbstractNFFTPlan, g::AbstractArray, fHat::AbstractArray)
