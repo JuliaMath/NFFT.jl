@@ -55,7 +55,7 @@ function sdc(
     weights::AbstractVector{T} = _fill_similar(p.tmpVec, one(T), p.J),
     weights_tmp::AbstractVector = similar(weights),
 #   workg::AbstractArray = _reinterpret_real(p.tmpVec), # todo
-    workg::AbstractArray = Array{real(eltype(p.tmpVec))}(undef, p.Ñ),
+    workg::AbstractArray = similar(p.tmpVec, T, p.Ñ),
     workf::AbstractVector = similar(p.tmpVec, Complex{T}, p.J),
     workv::AbstractArray = similar(p.tmpVec, Complex{T}, p.N),
 ) where {T <: Real, D}
@@ -97,7 +97,7 @@ function sdc!(
         convolve!(p, workg, weights_tmp)
         weights_tmp ./= scaling_factor
         any(≤(0), weights_tmp) && throw("non-positive weights")
-        weights_tmp .+= eps(T) # todo: might not be necessary?
+#       weights_tmp .+= eps(T) # todo: unnecessary?
         weights ./= weights_tmp
     end
 
