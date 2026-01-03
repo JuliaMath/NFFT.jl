@@ -1,3 +1,16 @@
+#=
+# uncomment this block for stand-alone testing
+using JLArrays: JLArray
+arrayTypes = [JLArray]
+=#
+
+import FFTW # ESTIMATE
+using LinearAlgebra: norm
+using NFFT: plan_nfft, NDFTPlan
+import NFFT # LINEAR, FULL, TENSOR, POLYNOMIAL
+using NFFTTools: sdc
+using Test: @test, @testset, @test_throws
+
 m = 5
 σ = 2.0
 
@@ -38,21 +51,17 @@ m = 5
 
     @testset "GPU_NFFT Sampling Density" begin
 
+      N = (9, 8) # 9×8 grid of equally spaced sampling points
       # create a 10x10 grid of unit spaced sampling points
-      N = 10
-      g = (0:(N-1)) ./ N .- 0.5
-      x = vec(ones(N) * g')
-      y = vec(g * ones(N)')
-      nodes = cat(x', y', dims=1)
+      T = Float32
+      fun = N -> @. T((0:(N-1)) / N - 0.5) # 1D grid
+      nodes = hcat([[x; y] for x in fun(N[1]), y in fun(N[2])]...)
 
       # approximate the density weights
-      p = plan_nfft(arrayType, nodes, (N, N); m=5, σ=2.0)
-      weights = Array(sdc(p, iters=5))
-
-      @info extrema(vec(weights))
-
-      @test all((≈).(vec(weights), 1 / (N * N), rtol=1e-7))
-
+      p = plan_nfft(arrayType, nodes, N; m=5, σ=2.0)
+      weights = sdc(p, iters=5)
+      weights = Vector(weights)
+      @test all(≈(1/prod(N)), weights)
     end
   end
 end
