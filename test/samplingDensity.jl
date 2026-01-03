@@ -55,6 +55,6 @@ for pre in [NFFT.LINEAR, NFFT.FULL, NFFT.TENSOR, NFFT.POLYNOMIAL]
   )
   @test w2 == weights
 
-end
+end # pre
 
 end # @testset
