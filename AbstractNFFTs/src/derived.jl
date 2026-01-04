@@ -4,19 +4,28 @@
 ##########################
 
 
+# From: https://github.com/JuliaLang/julia/issues/35543
+# To dispatch between CPU/GPU plans we need to strip the type parameters of the array type.
+# For example Array{Float32,2} -> Array, Array{Complex{Float32},2} -> Array, CuArray{Float32,2, ...} -> CuArray
+# At the moment there is no stable API for this, so we need to use the following workaround:
+strip_type_parameters(T) = Base.typename(T).wrapper
+# This can change with future Julia versions, so we need to check if the workaround is still needed/working
+
 for op in [:nfft, :nfct, :nfst]
 planfunc = Symbol("plan_"*"$op")
 @eval begin 
 
-# The following automatically call the plan_* version for type Array
-
-$(planfunc)(b::AbstractNFFTBackend, k::AbstractArray, N::Union{Integer,NTuple{D,Int}}, args...; kargs...) where {D} =
-    $(planfunc)(b, Array, k, N, args...; kargs...)
-
-$(planfunc)(b::AbstractNFFTBackend, k::AbstractArray, y::AbstractArray, args...; kargs...) =
-    $(planfunc)(b, Array, k, y, args...; kargs...)
-
 $(planfunc)(k::AbstractArray, args...; kargs...) = $(planfunc)(active_backend(), k, args...; kargs...)
+
+# The following try to find a plan function with the correct array type parameters
+
+$(planfunc)(b::AbstractNFFTBackend, k::arrT, args...; kargs...) where {arrT <: AbstractArray} =
+    $(planfunc)(b, strip_type_parameters(arrT), k, args...; kargs...)
+
+$(planfunc)(b::AbstractNFFTBackend, k::arrL, args...; kargs...) where {T, arrT <: AbstractArray{T}, arrL <: Union{Adjoint{T, arrT}, Transpose{T, arrT}}} =
+    $(planfunc)(b, strip_type_parameters(arrT), k, y, args...; kargs...)
+
+$(planfunc)(b::AbstractNFFTBackend, k::AbstractRange, args...; kargs...) = $(planfunc)(b, collect(k), args...; kargs...)
 
 # The follow convert 1D parameters into the format required by the plan
 
