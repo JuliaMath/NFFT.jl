@@ -1,6 +1,6 @@
 ### Init some initial parameters necessary to create the plan ###
 
-function initParams(k::Matrix{T}, N::NTuple{D,Int}, dims::Union{Integer,UnitRange{Int64}}=1:D; 
+function initParams(k::AbstractMatrix{T}, N::NTuple{D,Int}, dims::Union{Integer,UnitRange{Int64}}=1:D; 
                     kargs...) where {D,T}
   # convert dims to a unit range
   dims_ = (typeof(dims) <: Integer) ? (dims:dims) : dims
@@ -357,7 +357,7 @@ function precomputeWindowHatInvLUT(windowHatInvLUT, win_hat, N, Ñ, m, σ, T)
   end
 end
 
-function precomputation(k::Union{Matrix{T},Vector{T}}, N::NTuple{D,Int}, Ñ, params) where {T,D}
+function precomputation(k::Union{AbstractMatrix{T},AbstractVector{T}}, N::NTuple{D,Int}, Ñ, params) where {T,D}
 
   m = params.m; σ = params.σ; window=params.window
   LUTSize = params.LUTSize; precompute = params.precompute
