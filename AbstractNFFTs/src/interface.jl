@@ -222,10 +222,10 @@ Change nodes `k` in the plan `p` operation and return the plan.
    convolve!(p::AbstractNFFTPlan{T,D,R}, g::AbstractArray, fHat::AbstractArray)
 
 Overwrite `R`-dimensional array `fHat`
-(often R=1, and `fHat` has length `p.J`)
+(often R=1, and `fHat` has length `only(p.size_in)`)
 with the result of "convolution" (i.e., interpolation)
 between `D`-dimensional equispaced input array `g`
-(often of size `p.Ñ`)
+(often of size `p.Ñ` which is not part of abstract interface)
 and the interpolation kernel in NFFT plan `p`.
 """
 @mustimplement convolve!(p::AbstractNFFTPlan, g::AbstractArray, fHat::AbstractArray)
