@@ -189,7 +189,7 @@ The transformation is applied along `D-R+1` dimensions specified in the plan `p`
     size_in(p)
 
 Size of the input array for the plan p (NFFT/NFCT/NFST/NNFFT). 
-The returned tuple has `R` entries. 
+The returned tuple has `D` entries.
 Note that this will be the output size for the transposed / adjoint operator.
 """
 @mustimplement size_in(p::AbstractFTPlan{T,D,R}) where {T,D,R}
