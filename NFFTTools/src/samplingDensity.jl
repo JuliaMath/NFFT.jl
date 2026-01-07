@@ -1,5 +1,6 @@
 #=
-using AbstractNFFTs: AbstractNFFTPlan, convolve!, convolve_transpose!
+using AbstractNFFTs: AbstractNFFTPlan, convolve!, convolve_transpose! # someday
+using NFFT: NFFTPlan, convolve!, convolve_transpose! # currently
 using LinearAlgebra: mul!
 =#
 
@@ -26,9 +27,13 @@ function _reinterpret_real(g::StridedArray{Complex{T}}) where {T <: Real}
     return r2
 end
 
+#=
+This method _almost_ conforms to the AbstractNFFT interface
+except that it uses p.Ñ and p.tmpVec that are not part of that interface.
+=#
 
 """
-   weights = sdc(plan::AbstractNFFTPlan; iters=20, ...)
+   weights = sdc(plan::NFFTPlan; iters=20, ...)
 
 Compute weights for sample density compensation for given NFFT `plan`
 Uses method of Pipe & Menon, Mag Reson Med, 44(1):179-186, Jan. 1999.
@@ -48,15 +53,15 @@ If the caller provides all of those,
 then this function should make only small allocations.
 """
 function sdc(
-    p::AbstractNFFTPlan{T,D,1};
+    p::NFFTPlan{T,D,1};
     iters::Int = 20,
     # the following are working buffers that are all mutated:
-    weights::AbstractVector{T} = _fill_similar(p.tmpVec, one(T), only(p.size_in)),
+    weights::AbstractVector{T} = _fill_similar(p.tmpVec, one(T), only(size_in(p))),
     weights_tmp::AbstractVector = similar(weights),
 #   workg::AbstractArray = _reinterpret_real(p.tmpVec), # todo
     workg::AbstractArray = similar(p.tmpVec, T, p.Ñ),
-    workf::AbstractVector = similar(p.tmpVec, Complex{T}, only(p.size_in)),
-    workv::AbstractArray = similar(p.tmpVec, Complex{T}, p.size_out),
+    workf::AbstractVector = similar(p.tmpVec, Complex{T}, only(size_in(p))),
+    workv::AbstractArray = similar(p.tmpVec, Complex{T}, size_out(p)),
 ) where {T <: Real, D}
 
   return sdc!(
@@ -73,7 +78,7 @@ end
 
 # ideally this function should be non-allocating
 function sdc!(
-    p::AbstractNFFTPlan{T,D,1},
+    p::NFFTPlan{T,D,1},
     iters::Int,
     # the following are working buffers that are all mutated:
     weights::AbstractVector{T},
