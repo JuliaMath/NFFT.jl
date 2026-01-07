@@ -52,12 +52,12 @@ function sdc(
     p::AbstractNFFTPlan{T,D,1};
     iters::Int = 20,
     # the following are working buffers that are all mutated:
-    weights::AbstractVector{T} = _fill_similar(p.tmpVec, one(T), p.J),
+    weights::AbstractVector{T} = _fill_similar(p.tmpVec, one(T), only(p.size_in)),
     weights_tmp::AbstractVector = similar(weights),
 #   workg::AbstractArray = _reinterpret_real(p.tmpVec), # todo
     workg::AbstractArray = similar(p.tmpVec, T, p.Ñ),
-    workf::AbstractVector = similar(p.tmpVec, Complex{T}, p.J),
-    workv::AbstractArray = similar(p.tmpVec, Complex{T}, p.N),
+    workf::AbstractVector = similar(p.tmpVec, Complex{T}, only(p.size_in)),
+    workv::AbstractArray = similar(p.tmpVec, Complex{T}, p.size_out),
 ) where {T <: Real, D}
 
   return sdc!(
