@@ -45,8 +45,7 @@ The returned vector is real, positive values of length `plan.J`.
 There are several named keyword arguments that are work buffers
 that are all mutated: `weights, workg weights_tmp workf workv`.
 If the caller provides all of those,
-then this function ideally should be non-allocating.
-todo: tests show that it still allocates in practice; unsure why
+then this function should make only small allocations.
 """
 function sdc(
     p::AbstractNFFTPlan{T,D,1};
