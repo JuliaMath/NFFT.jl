@@ -18,7 +18,8 @@ nodes = hcat([[x; y] for x in fun(N[1]), y in fun(N[2])]...)
 for pre in [NFFT.LINEAR, NFFT.FULL, NFFT.TENSOR, NFFT.POLYNOMIAL]
   # approximate the density weights
   p = plan_nfft(nodes, N, m = 5, σ = 2.0, precompute=pre)
-  @show @allocated weights = sdc(p; iters = 10)
+# @show @allocated weights = sdc(p; iters = 10)
+  weights = sdc(p; iters = 10)
 
   @test T == eltype(weights)
   @test isreal(weights)
@@ -44,8 +45,7 @@ for pre in [NFFT.LINEAR, NFFT.FULL, NFFT.TENSOR, NFFT.POLYNOMIAL]
   workv = similar(p.tmpVec, Complex{T}, p.N)
   fill!(w2, one(T))
 
-# ideally the following test should be non-allocating!?
-# @test 0 == @allocated
+  # the following test should have pretty small allocations
   @show @allocated NFFTTools.sdc!(p, 10,
       w2,
       weights_tmp,
