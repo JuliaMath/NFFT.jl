@@ -1,5 +1,6 @@
 #=
 using AbstractNFFTs: AbstractNFFTPlan, convolve!, convolve_transpose! # someday
+using AbstractNFFTs: size_in, size_out
 using NFFT: NFFTPlan, convolve!, convolve_transpose! # currently
 using LinearAlgebra: mul!
 =#
@@ -55,13 +56,16 @@ then this function should make only small allocations.
 function sdc(
     p::NFFTPlan{T,D,1};
     iters::Int = 20,
+    # the type of p.tmpVec (if present) is needed for GPU arrays (JLArray):
+    _array::AbstractArray = hasfield(typeof(p), :tmpVec) ?
+        p.tmpVec : Array{T,D}(undef, zeros(Int, D)...),
     # the following are working buffers that are all mutated:
-    weights::AbstractVector{T} = _fill_similar(p.tmpVec, one(T), only(size_in(p))),
+    weights::AbstractVector{T} = _fill_similar(_array, one(T), only(size_out(p))),
     weights_tmp::AbstractVector = similar(weights),
 #   workg::AbstractArray = _reinterpret_real(p.tmpVec), # todo
-    workg::AbstractArray = similar(p.tmpVec, T, p.Ñ),
-    workf::AbstractVector = similar(p.tmpVec, Complex{T}, only(size_in(p))),
-    workv::AbstractArray = similar(p.tmpVec, Complex{T}, size_out(p)),
+    workg::AbstractArray = similar(_array, T, p.Ñ),
+    workf::AbstractVector = similar(_array, Complex{T}, only(size_out(p))),
+    workv::AbstractArray = similar(_array, Complex{T}, size_in(p)),
 ) where {T <: Real, D}
 
   return sdc!(
