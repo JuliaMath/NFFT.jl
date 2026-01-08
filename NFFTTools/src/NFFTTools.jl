@@ -3,7 +3,7 @@ module NFFTTools
 export sdc
 export calculateToeplitzKernel, calculateToeplitzKernel!, convolveToeplitzKernel!
 
-using AbstractNFFTs: AbstractNFFTPlan, plan_nfft, nodes!
+using AbstractNFFTs: AbstractNFFTPlan, plan_nfft, nodes!, size_in, size_out
 #using AbstractNFFTs: convolve!, convolve_transpose! # someday
 using NFFT: NFFTPlan
 using NFFT: convolve!, convolve_transpose!
