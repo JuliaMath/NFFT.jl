@@ -83,7 +83,13 @@ function sdc(
 end
 
 
-# ideally this function should be (nearly) non-allocating
+"""
+   weights = sdc!( p::AbstractNFFTPlan, iters, weights, weights_tmp, workg)
+Compute sampling density compensation `weights`
+without performing any final scaling step.
+
+Ideally this function should be (nearly) non-allocating.
+"""
 function sdc!(
     p::AbstractNFFTPlan{T,D,1},
     iters::Int,
@@ -91,8 +97,6 @@ function sdc!(
     weights::AbstractVector{T},
     weights_tmp::AbstractVector,
     workg::AbstractArray,
-    workf::AbstractVector,
-    workv::AbstractArray,
 ) where {T <: Real, D}
 
     scaling_factor = missing # will be set below
@@ -111,13 +115,32 @@ function sdc!(
 #       weights_tmp .+= eps(T) # todo: unnecessary?
         weights ./= weights_tmp
     end
+    return weights
+end
 
-    #=
-    We want to scale the weights such that A' D(w) A 1_N ≈ 1_N.
-    We find c ∈ ℝ that minimizes ‖u - c * v‖₂ where u ≜ 1_N
-    and v ≜ A' D(w) A 1_N, and then scale w by that c.
-    The analytical solution is c = real(u'v) / ‖v‖² = real(sum(v)) / ‖v‖².
-    =#
+
+"""
+    sdc!( ... )
+
+This version scales the weights such that A' D(w) A 1_N ≈ 1_N.
+Find c ∈ ℝ that minimizes ‖u - c * v‖₂ where u ≜ 1_N
+and v ≜ A' D(w) A 1_N, and then scale w by that c.
+The analytical solution is c = real(u'v) / ‖v‖² = real(sum(v)) / ‖v‖².
+
+Ideally this function should be (nearly) non-allocating.
+"""
+function sdc!(
+    p::AbstractNFFTPlan{T,D,1},
+    iters::Int,
+    # the following are working buffers that are all mutated:
+    weights::AbstractVector{T},
+    weights_tmp::AbstractVector,
+    workg::AbstractArray,
+    workf::AbstractVector,
+    workv::AbstractArray,
+) where {T <: Real, D}
+
+    sdc!(p, iters, weights, weights_tmp, workg)
 
 #=
 todo: can we cut this?
