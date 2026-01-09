@@ -1,16 +1,18 @@
 #=
-using AbstractNFFTs: AbstractNFFTPlan, convolve!, convolve_transpose! # someday
+using AbstractNFFTs: AbstractNFFTPlan, convolve!, convolve_transpose!
 using AbstractNFFTs: size_in, size_out
-using NFFT: NFFTPlan, convolve!, convolve_transpose! # currently
 using LinearAlgebra: mul!
 =#
 
-#=
-The following 2-step initialization helper function
+"""
+    out = _fill_similar(array, v::T, dims) where T
+Return an allocated array similar to `array` filled with value `v`.
+
+This 2-step initialization helper function
 is needed to accommodate GPU array types.
 The more obvious statement `weights = fill(v, dims)`
 can lead to the wrong array type and cause GPU tests to fail.
-=#
+"""
 function _fill_similar(array::AbstractArray, v::T, dims::Union{Integer,Dims}) where T
     weights = similar(array, T, dims)
     fill!(weights, v)
@@ -21,20 +23,18 @@ end
 It would be desirable to use the memory pointed to by p.tmpVec
 as working buffer for sdc iterations,
 but this attempt led to intermittent corrupted outputs and errors.
+So it is left commented out for now.
 =#
+#=
 function _reinterpret_real(g::StridedArray{Complex{T}}) where {T <: Real}
     r1 = reinterpret(T, g)
     r2 = @view r1[1:2:end,:]
     return r2
 end
-
-#=
-This method _almost_ conforms to the AbstractNFFT interface
-except that it uses p.Ñ and p.tmpVec that are not part of that interface.
 =#
 
 """
-   weights = sdc(plan::NFFTPlan; iters=20, ...)
+   weights = sdc(plan::{Abstract}NFFTPlan; iters=20, ...)
 
 Compute weights for sample density compensation for given NFFT `plan`
 Uses method of Pipe & Menon, Mag Reson Med, 44(1):179-186, Jan. 1999.
@@ -48,13 +48,16 @@ The weights are scaled such that ``A' diag(w) A 1_N ≈ 1_N``.
 
 The returned vector is real, positive values of length `plan.J`.
 
+This method _almost_ conforms to the `AbstractNFFT` interface
+except that it uses `p.Ñ` and `p.tmpVec` that are not part of that interface.
+
 There are several named keyword arguments that are work buffers
-that are all mutated: `weights, workg weights_tmp workf workv`.
+that are all mutated: `weights weights_tmp workg workf workv`.
 If the caller provides all of those,
 then this function should make only small allocations.
 """
 function sdc(
-    p::NFFTPlan{T,D,1};
+    p::AbstractNFFTPlan{T,D,1};
     iters::Int = 20,
     # the type of p.tmpVec (if present) is needed for GPU arrays (JLArray):
     _array::AbstractArray = hasfield(typeof(p), :tmpVec) ?
@@ -80,9 +83,9 @@ function sdc(
 end
 
 
-# ideally this function should be non-allocating
+# ideally this function should be (nearly) non-allocating
 function sdc!(
-    p::NFFTPlan{T,D,1},
+    p::AbstractNFFTPlan{T,D,1},
     iters::Int,
     # the following are working buffers that are all mutated:
     weights::AbstractVector{T},
