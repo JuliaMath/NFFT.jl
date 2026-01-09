@@ -1,3 +1,5 @@
+const RealOrComplex = Union{T, Complex{T}} where {T <: Real}
+
 mutable struct GPU_NFFTPlan{T,D, arrTc <: AbstractGPUArray{Complex{T}, D}, vecI <: AbstractGPUVector{Int32}, FP, BP, INV, SM} <: AbstractNFFTPlan{T,D,1} 
   N::NTuple{D,Int64}
   NOut::NTuple{1,Int64}
@@ -60,14 +62,21 @@ AbstractNFFTs.size_in(p::GPU_NFFTPlan) = p.N
 AbstractNFFTs.size_out(p::GPU_NFFTPlan) = p.NOut
 
 
-function AbstractNFFTs.convolve!(p::GPU_NFFTPlan{T,D, arrTc}, g::arrTc, fHat::arrH) where {D,T,arr<: AbstractGPUArray, arrTc <: arr, arrH <: arr}
+function AbstractNFFTs.convolve!(
+  p::GPU_NFFTPlan{<:Real, D, <:AbstractGPUArray},
+  g::AbstractGPUArray{<:RealOrComplex, D},
+  fHat::AbstractGPUVector{<:RealOrComplex},
+) where {D}
   mul!(fHat, transpose(p.B), vec(g)) 
-  return
 end
 
-function AbstractNFFTs.convolve_transpose!(p::GPU_NFFTPlan{T,D, arrTc}, fHat::arrH, g::arrTc) where {D,T,arr<: AbstractGPUArray, arrTc <: arr, arrH <: arr}
+function AbstractNFFTs.convolve_transpose!(
+  p::GPU_NFFTPlan{<:Real, D, <:AbstractGPUArray},
+  fHat::AbstractGPUVector{<:RealOrComplex},
+  g::AbstractGPUArray{<:RealOrComplex, D},
+) where {D}
   mul!(vec(g), p.B, fHat)
-  return
+  return g
 end
 
 function AbstractNFFTs.deconvolve!(p::GPU_NFFTPlan{T,D, arrTc}, f::arrF, g::arrTc) where {D,T,arr<: AbstractGPUArray, arrTc <: arr, arrF <: arr}
@@ -125,4 +134,3 @@ function LinearAlgebra.mul!(f::arrF, pl::Adjoint{Complex{T},<:GPU_NFFTPlan{T,D, 
 
     return f
 end
-
