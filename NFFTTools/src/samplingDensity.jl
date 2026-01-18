@@ -112,7 +112,6 @@ function sdc!(
         convolve!(p, workg, weights_tmp)
         weights_tmp ./= scaling_factor
         any(≤(0), weights_tmp) && throw("non-positive weights")
-#       weights_tmp .+= eps(T) # todo: unnecessary?
         weights ./= weights_tmp
     end
     return weights
@@ -122,10 +121,13 @@ end
 """
     sdc!( ... )
 
-This version scales the weights such that A' D(w) A 1_N ≈ 1_N.
-Find c ∈ ℝ that minimizes ‖u - c * v‖₂ where u ≜ 1_N
-and v ≜ A' D(w) A 1_N, and then scale w by that c.
-The analytical solution is c = real(u'v) / ‖v‖² = real(sum(v)) / ‖v‖².
+This version scales the weights such that
+``A' D(w) A 1_N ≈ 1_N``.
+Find ``c ∈ ℝ`` that minimizes ``‖u - c * v‖₂``
+where ``u ≜ 1_N`` (vector of ones)
+and ``v ≜ A' D(w) A 1_N``, and then scale `w` by that `c`.
+The analytical solution is
+``c = real(u'v) / ‖v‖² = real(sum(v)) / ‖v‖².``
 
 Ideally this function should be (nearly) non-allocating.
 """
@@ -142,25 +144,12 @@ function sdc!(
 
     sdc!(p, iters, weights, weights_tmp, workg)
 
-#=
-todo: can we cut this?
-    # conversion to Array is a workaround for CuNFFT. Without it we get strange
-    # results that indicate some synchronization issue
-    f = Array( p * u )
-    b = f .* Array(weights) # apply weights from above
-    v = Array( adjoint(p) * convert(typeof(weights), b) )
-    c = vec(v) \ vec(Array(u))  # least squares diff
-    return abs.(convert(typeof(weights), c * Array(weights)))
-=#
-
-    # non converting version
     u = workv # trick to save memory
     fill!(u, one(T))
     mul!(workf, p, u)
     workf .*= weights # apply weights from above
     mul!(workv, adjoint(p), workf)
     c = real(sum(workv)) / sum(abs2, workv)
-
     weights .*= c
     return weights
 end
