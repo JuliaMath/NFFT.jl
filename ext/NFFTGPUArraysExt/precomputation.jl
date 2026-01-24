@@ -13,7 +13,7 @@ function NFFT.precomputeB(win, k::AbstractGPUArray, N::NTuple{D,Int}, Ñ::NTupl
   nProd = ntuple(d-> (d==1) ? 1 : prod(Ñ[1:(d-1)]), D)
   L = Val(2*m)
 
-  @kernel cpu = false inbounds = true function precomputeB_kernel(I, V, win, k, Ñ::NTuple{D,Int}, m, σ, nProd, ::Val{Z}) where {D, Z}
+  @kernel inbounds = true function precomputeB_kernel(I, V, win, k, Ñ::NTuple{D,Int}, m, σ, nProd, ::Val{Z}) where {D, Z}
     idx = @index(Global, Cartesian)
     j = idx[2]
     linear = idx[1]
