@@ -18,7 +18,8 @@ mutable struct GPU_NFFTPlan{T,D, arrTc <: AbstractGPUArray{Complex{T}, D}, vecI 
   B::SM
 end
 
-function AbstractNFFTs.plan_nfft(::NFFTBackend, arr::Type{<:AbstractGPUArray}, k::Matrix{T}, N::NTuple{D,Int}, rest...;
+AbstractNFFTs.plan_nfft(b::NFFTBackend, arr::Type{<:AbstractGPUArray}, k::Matrix{T}, N::NTuple{D,Int}, rest...; kargs...) where {T,D} = plan_nfft(b, arr, arr(k), N, rest...; kargs...)
+function AbstractNFFTs.plan_nfft(::NFFTBackend, arr::Type{<:AbstractGPUArray}, k::AbstractGPUArray{T}, N::NTuple{D,Int}, rest...;
   timing::Union{Nothing,TimingStats} = nothing, kargs...) where {T,D}
   t = @elapsed begin
     p = GPU_NFFTPlan(arr, k, N, rest...; kargs...)
@@ -29,7 +30,7 @@ function AbstractNFFTs.plan_nfft(::NFFTBackend, arr::Type{<:AbstractGPUArray}, k
   return p
 end
 
-function GPU_NFFTPlan(arr, k::Matrix{T}, N::NTuple{D,Int}; dims::Union{Integer,UnitRange{Int64}}=1:D,
+function GPU_NFFTPlan(arr, k::AbstractGPUMatrix{T}, N::NTuple{D,Int}; dims::Union{Integer,UnitRange{Int64}}=1:D,
                  fftflags=nothing, kwargs...) where {T,D}
 
     if dims != 1:D
@@ -52,10 +53,9 @@ function GPU_NFFTPlan(arr, k::Matrix{T}, N::NTuple{D,Int}; dims::Union{Integer,U
 
     deconvIdx = Int32.(adapt(arr, (deconvolveIdx)))
     winHatInvLUT = Complex{T}.(adapt(arr, (windowHatInvLUT[1]))) 
-    B_ = Complex{T}.(adapt(arr, (B))) # Bit hacky
 
-    GPU_NFFTPlan{T,D, typeof(tmpVec), typeof(deconvIdx), typeof(FP), typeof(BP), typeof(winHatInvLUT), typeof(B_)}(N, NOut, J, k, Ñ, dims_, params, FP, BP, tmpVec, tmpVecHat, 
-               deconvIdx, windowLinInterp, winHatInvLUT, B_)
+    GPU_NFFTPlan{T,D, typeof(tmpVec), typeof(deconvIdx), typeof(FP), typeof(BP), typeof(winHatInvLUT), typeof(B)}(N, NOut, J, k, Ñ, dims_, params, FP, BP, tmpVec, tmpVecHat, 
+               deconvIdx, windowLinInterp, winHatInvLUT, B)
 end
 
 AbstractNFFTs.size_in(p::GPU_NFFTPlan) = p.N
