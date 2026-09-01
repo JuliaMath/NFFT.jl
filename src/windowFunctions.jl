@@ -28,7 +28,7 @@ function window_kaiser_bessel(k,Ñ,m,σ)
   elseif abs(k) > m_by_Ñ
       y = zero(k)
   else
-      y = b/pi
+      y = typeof(k)(b)/pi
   end
   return y
 end
