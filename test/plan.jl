@@ -1,0 +1,84 @@
+# NFFT.jl-specific behaviour of plans: backends, options, errors, copies.
+
+@testset "Plan" begin
+
+  @testset "backend" begin
+    @test NFFT.backend() isa NFFTBackend
+    AbstractNFFTs.set_active_backend!(missing)
+    @test ismissing(AbstractNFFTs.active_backend())
+    with(nfft_backend => NFFT.backend()) do
+      @test AbstractNFFTs.active_backend() isa NFFTBackend
+    end
+    @test ismissing(AbstractNFFTs.active_backend())
+    NFFT.activate!()
+    @test AbstractNFFTs.active_backend() isa NFFTBackend
+  end
+
+  rng = Xoshiro(7)
+  N = (24, 20); J = 300
+  k = rand(rng, 2, J) .- 0.5
+  f = randn(rng, ComplexF64, N); fHat = randn(rng, ComplexF64, J)
+
+  @testset "argument errors" begin
+    @test_throws ArgumentError plan_nfft(zeros(1, 4), (2, 2))               # node dimension
+    @test_throws ArgumentError plan_nfft([-0.6 0.3; 0.2 -0.1], (4, 4))      # node out of range
+    @test_throws ArgumentError plan_nfft([-0.3 0.3; 0.3 NaN], (4, 4))       # NaN node
+    @test_throws ArgumentError plan_nfft(k, N; m=4)                          # unknown option
+    @test_throws ArgumentError plan_nfft(k, N; reltol=-1)
+    @test_throws ArgumentError plan_nfft(k, N; dims=2:3)
+    @test_throws ArgumentError plan_nfft(k, N; window=CustomWindow((z, W) -> exp(-z^2)))  # needs W, σ
+    p = plan_nfft(k, N)
+    @test_throws ArgumentError nodes!(p, [0.7 0.1; 0.1 0.1])
+    @test_throws DimensionMismatch nodes!(p, rand(3, 10) .- 0.5)
+    @test_throws DimensionMismatch mul!(zeros(ComplexF64, J + 1), p, f)
+    @test_throws DimensionMismatch mul!(zeros(ComplexF64, N .+ 1), adjoint(p), fHat)
+  end
+
+  @testset "nodes at ±1/2 and given as ranges" begin
+    p = plan_nfft(range(-0.5, 0.5; length=50), 30)
+    q = plan_nfft(collect(range(-0.5, 0.5; length=50)), 30)
+    g = randn(rng, ComplexF64, 30)
+    @test p * g ≈ q * g
+    @test nodes(p) == range(-0.5, 0.5; length=50)'
+  end
+
+  @testset "options are respected" begin
+    p = plan_nfft(k, N; window=KaiserBessel(), W=9, σ=1.75)
+    @test p.kernel.window == KaiserBessel() && p.kernel.W == 9 && p.kernel.σ == 1.75
+    p = plan_nfft(k, N; window=ExpSemicircle())
+    @test p.kernel.window == ExpSemicircle()
+    for tol in (1e-4, 1e-8, 1e-12)
+      @test accuracy(plan_nfft(k, N; reltol=tol)) <= tol || tol < 1e-11
+    end
+    @test eltype(plan_nfft(k, N; eltype=Float32)) == ComplexF32
+    # a custom window with explicit width and oversampling
+    gauss = CustomWindow((z, W) -> abs(z) < W / 2 ? exp(-(2z / W)^2 * 9) : 0.0)
+    p = plan_nfft(k, N; window=gauss, W=8, σ=2.0)
+    @test isnan(accuracy(p))
+    @test norm(p * f - plan_nfft(k, N; reltol=1e-10) * f) / norm(p * f) < 1e-2
+  end
+
+  @testset "threads and copies give the same result" begin
+    p = plan_nfft(k, N; reltol=1e-9)
+    q = plan_nfft(k, N; reltol=1e-9, nthreads=1)
+    @test p * f ≈ q * f
+    @test adjoint(p) * fHat ≈ adjoint(q) * fHat
+    c = copy(p)
+    @test c.core.gp !== p.core.gp
+    @test c * f == p * f
+    @test adjoint(c) * fHat ≈ adjoint(p) * fHat
+    # copies used concurrently
+    plans = [copy(p) for _ in 1:4]
+    out = Vector{Any}(undef, 4)
+    Threads.@threads for i in 1:4
+      out[i] = plans[i] * f
+    end
+    @test all(o -> o == p * f, out)
+  end
+
+  @testset "show" begin
+    p = plan_nfft(k, N)
+    @test occursin("NFFTPlan", sprint(show, p))
+    @test occursin("Adjoint", sprint(show, adjoint(p)))
+  end
+end

@@ -107,11 +107,35 @@ function NFFTPlan(k::AbstractMatrix, N::NTuple{D,Int}, g::GenericOptions{T}; win
   NFFTPlan{T,D,length(NOut)}(N, NOut, dims, k, kernel, acc, g, fft, tilesize, core)
 end
 
+# Nodes must be finite and in [−1/2, 1/2] (1/2 is the same node as −1/2); anything else would be
+# binned outside the grid.
+function check_nodes(k)
+  for x in k
+    (isfinite(x) && -0.5 <= x <= 0.5) ||
+      throw(ArgumentError("nodes must be finite and in [-1/2, 1/2], found $x"))
+  end
+end
+
 function make_core(k, Nd, kernel::KernelEntry, ::Type{T}, fft, tilesize, nthreads) where {T}
+  check_nodes(k)
   Ñ = grid_size(kernel.σ, Nd)
   φ = window_function(kernel.window, kernel.W, kernel.β, kernel.e0)
   NFFTCore(k, Nd, Ñ, kernel.W, φ, T, fft, tilesize, nthreads)
 end
+
+# A copy shares the read-only parts (kernel, correction factors, binned nodes) and gets its own
+# grid, FFT plans and locks, so that copies can run concurrently.
+function Base.copy(c::NFFTCore{D}) where {D}
+  gp = similar(c.gp)
+  g = interior(gp, halo(c.W))
+  fft = FFTWBackend()
+  NFFTCore(c.N, c.Ñ, c.W, c.B, c.kernel, c.invphi, c.binned, gp,
+           PassFFT(fft, g, c.N; dir=:fwd, nthreads=c.nthreads), PassFFT(fft, g, c.N; dir=:bwd, nthreads=c.nthreads),
+           TileLocks(size(gp), c.B), c.nthreads)
+end
+
+Base.copy(p::NFFTPlan{T,D,R}) where {T,D,R} =
+  NFFTPlan{T,D,R}(p.N, p.NOut, p.dims, p.k, p.kernel, p.accuracy, p.options, p.fft, p.tilesize, copy(p.core))
 
 AbstractNFFTs.size_in(p::NFFTPlan) = p.N
 AbstractNFFTs.size_out(p::NFFTPlan) = p.NOut
@@ -181,19 +205,31 @@ function full_core(p::NFFTPlan{T,D}) where {T,D}
   p.core
 end
 
+check_size(a, sz, what) = size(a) == sz ||
+  throw(DimensionMismatch("$what has size $(size(a)), the plan expects $sz"))
+
+# the stage functions take (p, input, output) or (p, array)
+function check_stage(p, f, g, fHat)
+  c = full_core(p)
+  f === nothing || check_size(f, p.N, "the equidistant array")
+  g === nothing || check_size(g, c.Ñ, "the oversampled array")
+  fHat === nothing || check_size(fHat, p.NOut, "the array at the nodes")
+  c
+end
+
 AbstractNFFTs.oversampled_size(p::NFFTPlan) = full_core(p).Ñ
 
 function AbstractNFFTs.resampling_correction!(p::NFFTPlan, f::AbstractArray, g::AbstractArray)
-  c = full_core(p)
+  c = check_stage(p, f, g, nothing)
   fill!(g, 0)
   resampling_correction_core!(g, f, c.invphi, c.N, c.Ñ, c.nthreads)
 end
 
-AbstractNFFTs.oversampled_fft!(p::NFFTPlan, g::AbstractArray) = (full_core(p); FFTW.fft!(g); g)
-AbstractNFFTs.oversampled_bfft!(p::NFFTPlan, g::AbstractArray) = (full_core(p); FFTW.bfft!(g); g)
+AbstractNFFTs.oversampled_fft!(p::NFFTPlan, g::AbstractArray) = (check_stage(p, nothing, g, nothing); FFTW.fft!(g); g)
+AbstractNFFTs.oversampled_bfft!(p::NFFTPlan, g::AbstractArray) = (check_stage(p, nothing, g, nothing); FFTW.bfft!(g); g)
 
 function AbstractNFFTs.resampling!(p::NFFTPlan, g::AbstractArray, fHat::AbstractArray)
-  c = full_core(p); h = halo(c.W)
+  c = check_stage(p, nothing, g, fHat); h = halo(c.W)
   copyto!(interior(c.gp, h), g)
   fill_halo!(c.gp, h, c.nthreads)
   resample!(vec(fHat), c.gp, c.kernel, c.binned, c.Ñ, c.B, c.nthreads)
@@ -201,7 +237,7 @@ function AbstractNFFTs.resampling!(p::NFFTPlan, g::AbstractArray, fHat::Abstract
 end
 
 function AbstractNFFTs.resampling_adjoint!(p::NFFTPlan, fHat::AbstractArray, g::AbstractArray)
-  c = full_core(p); h = halo(c.W)
+  c = check_stage(p, nothing, g, fHat); h = halo(c.W)
   threaded_fill!(c.gp, 0, c.nthreads)
   resample_adjoint!(c.gp, c.kernel, c.binned, vec(fHat), c.Ñ, c.locks, c.B, c.nthreads)
   fold_halo!(c.gp, h, c.nthreads)
@@ -209,6 +245,6 @@ function AbstractNFFTs.resampling_adjoint!(p::NFFTPlan, fHat::AbstractArray, g::
 end
 
 function AbstractNFFTs.resampling_correction_adjoint!(p::NFFTPlan, g::AbstractArray, f::AbstractArray)
-  c = full_core(p)
+  c = check_stage(p, f, g, nothing)
   resampling_correction_adjoint_core!(f, g, c.invphi, c.N, c.Ñ, c.nthreads)
 end

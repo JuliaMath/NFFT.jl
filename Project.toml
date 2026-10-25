@@ -18,20 +18,12 @@ StaticArrays = "1.4"
 julia = "1.10"
 
 [extras]
-BenchmarkTools = "6e4b80f9-dd63-53aa-95a3-0cdb28fa8baf"
-DataFrames = "a93c6f00-e57d-5684-b7b6-d8193f3e46c0"
-FINUFFT = "d8beea63-0952-562e-9c6a-8e8ef7364055"
-NFFT3 = "53104703-03e8-40a5-ab01-812303a44cae"
-NFFTTools = "7424e34d-94f7-41d6-98a0-85abaf1b6c91"
+Random = "9a3f8284-a2c9-5f02-9a11-845980a1fd5c"
 Test = "8dfed614-e22c-5e08-85e1-65c5234f0b40"
-Ducc0 = "47ec601d-2729-4ac9-bed9-2b3ab5fca9ff"
 Zygote = "e88e6eb3-aa80-5325-afca-941959d7151f"
-JLArrays = "27aeb0d3-9eb9-45fb-866b-73c2ecf80fcb"
 
 [targets]
-test = ["Test", "JLArrays", "BenchmarkTools", "FINUFFT", "NFFT3", "Zygote",
-        "NFFTTools", "DataFrames", "Ducc0"]  # "NFFTTools"
-
+test = ["Random", "Test", "Zygote"]
 
 [sources]
 AbstractNFFTs = {path = "AbstractNFFTs"}
