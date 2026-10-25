@@ -9,73 +9,67 @@ macro mustimplement(sig)
                         " must implement ", $(Expr(:quote,fname))))
 end
 
-# Precompute flags for the B matrix
-@enum PrecomputeFlags begin
-  FULL = 1
-  TENSOR = 2
-  LINEAR = 3
-  POLYNOMIAL = 4
-end
+"""
+    DEFAULT_RELTOL
 
-# Timing functions that allow for timing parts of an NFFT
-
-mutable struct TimingStats
-  pre::Float64
-  conv::Float64
-  fft::Float64
-  deconv::Float64
-  conv_adjoint::Float64
-  fft_adjoint::Float64
-  deconv_adjoint::Float64
-end
-
-TimingStats() = TimingStats(0.0,0.0,0.0,0.0,0.0,0.0,0.0)
-
-function Base.println(t::TimingStats)
-  print("Timing: ")
-  @printf "pre = %.4f s deconv = %.4f / %.4f s fft = %.4f / %.4f s conv = %.4f / %.4f s\n" t.pre t.deconv t.deconv_adjoint t.fft t.fft_adjoint t.conv t.conv_adjoint
-
-  total = t.deconv + t.fft + t.conv 
-  totalAdj = t.deconv_adjoint + t.fft_adjoint + t.conv_adjoint
-  @printf "                       deconv = %.4f / %.4f %% fft = %.4f / %.4f %% conv = %.4f / %.4f %%\n" 100*t.deconv/total 100*t.deconv_adjoint/totalAdj 100*t.fft/total 100*t.fft_adjoint/totalAdj 100*t.conv/total 100*t.conv_adjoint/totalAdj
-  
-end
-
-function reltolToParams(reltol) 
-  w = ceil(Int, log(10,1/reltol)) + 1 
-  m = (w)÷2
-  return m, 2.0
-end
-
-function paramsToReltol(m::Int, σ)
-  w = 2*m 
-  return 10.0^(-(w-1))
-end
-
+Relative error requested from a plan when `reltol` is not given.
+"""
+const DEFAULT_RELTOL = 1e-8
 
 """
-  accuracyParams(; [m, σ, reltol]) -> m, σ, reltol
+    GenericOptions
 
-Calculate accuracy parameters m, σ, reltol based on either
-* reltol
-or
-* m, σ
+The options every implementation of the interface accepts, resolved from the keyword arguments
+of `plan_nfft` and friends by [`generic_options`](@ref):
 
-TODO: Right now, the oversampling parameter is not taken into account, i.e. σ=2.0 is assumed
+* `reltol`: requested relative error (ℓ² norm over random data)
+* `dims`: dimensions of the transform (a contiguous range); all other dimensions are batch
+  dimensions that pass through unchanged
+* `eltype`: real element type of the data (`Float32`, `Float64`, …)
+* `storage`: array type of the data and the workspace (`Array`, a GPU array type, …)
+* `nthreads`: number of CPU threads
 """
-function accuracyParams(; kargs...)
+struct GenericOptions{T}
+  reltol::Float64
+  dims::UnitRange{Int}
+  eltype::Type{T}
+  storage::Type
+  nthreads::Int
+end
 
-  if haskey(kargs, :reltol)
-    reltol = kargs[:reltol]
-    m, σ = reltolToParams(reltol)
-  elseif haskey(kargs, :m) && haskey(kargs, :σ)
-    m = kargs[:m]
-    σ = kargs[:σ]
-    reltol = paramsToReltol(m, σ)
-  else
-    reltol = 1e-9
-    m, σ = reltolToParams(reltol)
-  end
+"""
+    generic_options(k, N; reltol, dims, eltype, storage, nthreads) -> (GenericOptions, rest)
 
-  return m, σ, reltol
+Resolve the generic keyword arguments of a plan constructor for nodes `k` and array size `N`,
+and return the remaining (implementation-specific) keyword arguments untouched.
+"""
+function generic_options(k::AbstractMatrix, N::Dims{D}; reltol::Real=DEFAULT_RELTOL,
+                         dims::Union{Colon,Integer,AbstractUnitRange}=Colon(),
+                         eltype::Union{Nothing,Type{<:Real}}=nothing, storage::Union{Nothing,Type}=nothing,
+                         nthreads::Integer=Threads.nthreads(), kwargs...) where {D}
+  d = dims isa Colon ? (1:D) : dims isa Integer ? (dims:dims) : UnitRange{Int}(dims)
+  (first(d) >= 1 && last(d) <= D && !isempty(d)) ||
+    throw(ArgumentError("dims = $dims is not a contiguous range within 1:$D"))
+  size(k, 1) == length(d) ||
+    throw(ArgumentError("nodes have $(size(k, 1)) dimensions, the transform has $(length(d))"))
+  reltol > 0 || throw(ArgumentError("reltol must be positive"))
+  nthreads >= 1 || throw(ArgumentError("nthreads must be at least 1"))
+  T = eltype === nothing ? float(Base.eltype(k)) : eltype
+  S = storage === nothing ? Base.typename(typeof(k)).wrapper : storage
+  GenericOptions{T}(Float64(reltol), d, T, S, Int(nthreads)), kwargs
+end
+
+"""
+    check_options(backend, kwargs, supported)
+
+Throw an `ArgumentError` if `kwargs` contains a keyword that is not in `supported`. Every
+implementation must reject options it does not understand instead of ignoring them.
+"""
+function check_options(backend, kwargs, supported)
+  unknown = setdiff(keys(kwargs), supported)
+  isempty(unknown) || throw(ArgumentError(
+    "$(nameof(typeof(backend))) does not support the option(s) $(join(unknown, ", ")). " *
+    "Generic options: reltol, dims, eltype, storage, nthreads. " *
+    "Options of this implementation: $(join(supported, ", "))."))
+  nothing
 end

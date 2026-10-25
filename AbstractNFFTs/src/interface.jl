@@ -208,37 +208,80 @@ Note that this will be the input size for the transposed / adjoint operator.
 
 Change nodes `k` in the plan `p` operation and return the plan.
 """
-@mustimplement nodes!(p::AbstractFTPlan{T}, k::Matrix{T}) where {T}
-
-
-## Optional Interface ##
-# The following methods can but don't need to be implemented 
-
-@mustimplement deconvolve!(p::AbstractNFFTPlan, f::AbstractArray, g::AbstractArray)
-@mustimplement deconvolve_transpose!(p::AbstractNFFTPlan, g::AbstractArray, f::AbstractArray)
+@mustimplement nodes!(p::AbstractFTPlan, k::AbstractMatrix)
 
 
 """
-   convolve!(p::AbstractNFFTPlan{T,D,R}, g::AbstractArray, fHat::AbstractArray)
+    nodes(p) -> k
 
-Overwrite `R`-dimensional array `fHat`
-(often R=1, and `fHat` has length `only(p.size_in)`)
-with the result of "convolution" (i.e., interpolation)
-between `D`-dimensional equispaced input array `g`
-(often of size `p.Ñ` which is not part of abstract interface)
-and the interpolation kernel in NFFT plan `p`.
+Nodes of the plan `p` (a d × J matrix).
 """
-@mustimplement convolve!(p::AbstractNFFTPlan, g::AbstractArray, fHat::AbstractArray)
+@mustimplement nodes(p::AbstractFTPlan)
 
+## Optional interface ##
+# The following methods can but don't need to be implemented.
 
 """
-    convolve_transpose!(p::AbstractNFFTPlan{T,D,R}, fHat::AbstractArray, g::AbstractArray)
+    accuracy(p) -> Float64
 
-Adjoint of `convolve!` operation,
-where `D`-dimensional equispaced array `g`
-is overwritten
-based on the values of `R`-dimensional input array `fHat`
-and the interpolation kernel in NFFT plan `p`.
+Relative error (ℓ² norm over random data) the plan `p` is expected to achieve; what the
+requested `reltol` turned into.
 """
-@mustimplement convolve_transpose!(p::AbstractNFFTPlan, fHat::AbstractArray, g::AbstractArray)
+@mustimplement accuracy(p::AbstractFTPlan)
 
+# Stage interface for implementations built from the three steps of Knopp et al. 2023:
+# resampling correction → FFT → resampling (direct), and the adjoint steps in reverse order.
+# The equidistant oversampled array `g` has size `oversampled_size(p)`.
+
+"""
+    oversampled_size(p) -> NTuple
+
+Size of the oversampled equidistant array the FFT of plan `p` acts on (batch dimensions of a
+plan with `dims` included).
+"""
+@mustimplement oversampled_size(p::AbstractNFFTPlan)
+
+"""
+    resampling_correction!(p, f, g) -> g
+
+First step of the direct NFFT: divide `f` by the Fourier transform of the window function and
+place it into the zero-padded oversampled array `g`.
+"""
+@mustimplement resampling_correction!(p::AbstractNFFTPlan, f::AbstractArray, g::AbstractArray)
+
+"""
+    oversampled_fft!(p, g) -> g
+
+Second step of the direct NFFT: the FFT on the oversampled array `g`, in place.
+"""
+@mustimplement oversampled_fft!(p::AbstractNFFTPlan, g::AbstractArray)
+
+"""
+    resampling!(p, g, fHat) -> fHat
+
+Third step of the direct NFFT: resample the oversampled equidistant array `g` at the nodes.
+"""
+@mustimplement resampling!(p::AbstractNFFTPlan, g::AbstractArray, fHat::AbstractArray)
+
+"""
+    resampling_adjoint!(p, fHat, g) -> g
+
+First step of the adjoint NFFT: the adjoint resampling of the values `fHat` at the nodes onto
+the oversampled equidistant array `g` (overwritten).
+"""
+@mustimplement resampling_adjoint!(p::AbstractNFFTPlan, fHat::AbstractArray, g::AbstractArray)
+
+"""
+    oversampled_bfft!(p, g) -> g
+
+Second step of the adjoint NFFT: the adjoint (unnormalised backward) FFT on `g`, in place.
+"""
+@mustimplement oversampled_bfft!(p::AbstractNFFTPlan, g::AbstractArray)
+
+"""
+    resampling_correction_adjoint!(p, g, f) -> f
+
+Third step of the adjoint NFFT: crop the oversampled array `g` and divide by the Fourier
+transform of the window function.
+"""
+@mustimplement resampling_correction_adjoint!(p::AbstractNFFTPlan, g::AbstractArray, f::AbstractArray)

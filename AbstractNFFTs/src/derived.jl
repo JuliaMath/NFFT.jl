@@ -3,42 +3,32 @@
 # plan_* constructors
 ##########################
 
+# Implementations define one method per family, e.g.
+#   AbstractNFFTs.plan_nfft(b::MyBackend, k::AbstractMatrix, N::Dims; kwargs...)
+# and resolve the generic keywords with `generic_options(k, N; kwargs...)`. The methods below
+# select the active backend and bring nodes and sizes into that form.
 
 for op in [:nfft, :nfct, :nfst]
 planfunc = Symbol("plan_"*"$op")
-@eval begin 
+@eval begin
 
-# The following automatically call the plan_* version for type Array
+$(planfunc)(k::AbstractVecOrMat, N::Union{Integer,Dims}; kwargs...) =
+    $(planfunc)(active_backend(), k, N; kwargs...)
 
-$(planfunc)(b::AbstractNFFTBackend, k::AbstractArray, N::Union{Integer,NTuple{D,Int}}, args...; kargs...) where {D} =
-    $(planfunc)(b, Array, k, N, args...; kargs...)
+$(planfunc)(b::AbstractNFFTBackend, k::AbstractVector, N::Union{Integer,Dims}; kwargs...) =
+    $(planfunc)(b, reshape(k, 1, :), N; kwargs...)
 
-$(planfunc)(b::AbstractNFFTBackend, k::AbstractArray, y::AbstractArray, args...; kargs...) =
-    $(planfunc)(b, Array, k, y, args...; kargs...)
-
-$(planfunc)(k::AbstractArray, args...; kargs...) = $(planfunc)(active_backend(), k, args...; kargs...)
-
-# The follow convert 1D parameters into the format required by the plan
-
-$(planfunc)(b::AbstractNFFTBackend, Q::Type, k::AbstractVector, N::Integer, rest...; kwargs...)  =
-    $(planfunc)(b, Q, collect(reshape(k,1,length(k))), (N,), rest...; kwargs...)
-
-$(planfunc)(b::AbstractNFFTBackend, Q::Type, k::AbstractVector, N::NTuple{D,Int}, rest...; kwargs...) where {D} =
-    $(planfunc)(b, Q, collect(reshape(k,1,length(k))), N, rest...; kwargs...) 
-
-$(planfunc)(b::AbstractNFFTBackend, Q::Type, k::AbstractMatrix, N::NTuple{D,Int}, rest...; kwargs...) where {D}  =
-    $(planfunc)(b, Q, collect(k), N, rest...; kwargs...)
-
-$(planfunc)(Q::Type, args...; kwargs...) = $(planfunc)(active_backend(), Q, args...; kwargs...)
+$(planfunc)(b::AbstractNFFTBackend, k::AbstractMatrix, N::Integer; kwargs...) =
+    $(planfunc)(b, k, (Int(N),); kwargs...)
 
 $(planfunc)(::Missing, args...; kwargs...) = no_backend_error()
 end
 end
 
 ## NNFFT constructor
-plan_nnfft(Q::Type, args...; kwargs...) = plan_nnfft(active_backend(), Q, args...; kwargs...)
-plan_nnfft(b::AbstractNFFTBackend, Q::Type, k::AbstractVector, y::AbstractVector, rest...; kwargs...)  =
-    plan_nnfft(b, Q, collect(reshape(k,1,length(k))), collect(reshape(y,1,length(k))), rest...; kwargs...)
+plan_nnfft(k::AbstractVecOrMat, y::AbstractVecOrMat; kwargs...) = plan_nnfft(active_backend(), k, y; kwargs...)
+plan_nnfft(b::AbstractNFFTBackend, k::AbstractVector, y::AbstractVector; kwargs...) =
+    plan_nnfft(b, reshape(k, 1, :), reshape(y, 1, :); kwargs...)
 plan_nnfft(::Missing, args...; kwargs...) = no_backend_error()
 
 
@@ -139,7 +129,7 @@ tfunc = Symbol("$(op)_$(trans)")
 
 $(op)(k, f::AbstractArray; kargs...) = $(op)(active_backend(), k, f::AbstractArray; kargs...) 
 function $(op)(b::AbstractNFFTBackend, k, f::AbstractArray; kargs...) 
-  p = $(planfunc)(k, size(f); kargs... )
+  p = $(planfunc)(b, k, size(f); kargs...)
   return p * f
 end
 $(op)(::Missing, k, f::AbstractArray; kargs...) = no_backend_error()
@@ -147,7 +137,7 @@ $(op)(::Missing, k, f::AbstractArray; kargs...) = no_backend_error()
 
 $(tfunc)(k, N, fHat;  kargs...) = $(tfunc)(active_backend(), k, N, fHat;  kargs...)
 function $(tfunc)(b::AbstractNFFTBackend, k, N, fHat;  kargs...) 
-  p = $(planfunc)(k, N;  kargs...)
+  p = $(planfunc)(b, k, N; kargs...)
   return $(trans)(p) * fHat
 end
 $(tfunc)(::Missing, k, N, fHat;  kargs...) = no_backend_error()
@@ -171,9 +161,9 @@ For a **directional** `D` dimensional plan `p` both `f` and `fHat` are `D`
 dimensional arrays, and the dimension specified in the plan creation is
 affected.
 """
-function Base.:*(p::AbstractComplexFTPlan{T}, f::AbstractArray{Complex{U},D}; kargs...) where {T,U,D}
+function Base.:*(p::AbstractComplexFTPlan{T}, f::AbstractArray{Complex{U},D}) where {T,U,D}
   fHat = similar(f, Complex{T}, size_out(p))
-  mul!(fHat, p, f; kargs...)
+  mul!(fHat, p, f)
   return fHat
 end
 
@@ -189,21 +179,21 @@ dimensional arrays, and the dimension specified in the plan creation is
 affected.
 """
 
-function Base.:*(p::Adjoint{Complex{T},<:AbstractComplexFTPlan{T}}, fHat::AbstractArray{Complex{U},D}; kargs...) where {T,U,D}
+function Base.:*(p::Adjoint{Complex{T},<:AbstractComplexFTPlan{T}}, fHat::AbstractArray{Complex{U},D}) where {T,U,D}
   f = similar(fHat, Complex{T}, size_out(p))
-  mul!(f, p, fHat; kargs...)
+  mul!(f, p, fHat)
   return f
 end
 
 # The following two methods are redundant but need to be defined because of a method ambiguity with Julia Base
-function Base.:*(p::Adjoint{Complex{T},<:AbstractComplexFTPlan{T}}, fHat::AbstractVector{Complex{U}}; kargs...) where {T,U}
+function Base.:*(p::Adjoint{Complex{T},<:AbstractComplexFTPlan{T}}, fHat::AbstractVector{Complex{U}}) where {T,U}
   f = similar(fHat, Complex{T}, size_out(p))
-  mul!(f, p, fHat; kargs...)
+  mul!(f, p, fHat)
   return f
 end
-function Base.:*(p::Adjoint{Complex{T},<:AbstractComplexFTPlan{T}}, fHat::AbstractArray{Complex{U},2}; kargs...) where {T,U}
+function Base.:*(p::Adjoint{Complex{T},<:AbstractComplexFTPlan{T}}, fHat::AbstractArray{Complex{U},2}) where {T,U}
   f = similar(fHat, Complex{T}, size_out(p))
-  mul!(f, p, fHat; kargs...)
+  mul!(f, p, fHat)
   return f
 end
 
@@ -220,9 +210,9 @@ For a **directional** `D` dimensional plan `p` both `f` and `fHat` are `D`
 dimensional arrays, and the dimension specified in the plan creation is
 affected.
 """
-function Base.:*(p::AbstractRealFTPlan{T}, f::AbstractArray{U,D}; kargs...) where {T,U,D}
+function Base.:*(p::AbstractRealFTPlan{T}, f::AbstractArray{U,D}) where {T,U,D}
   fHat = similar(f, T, size_out(p))
-  mul!(fHat, p, f; kargs...)
+  mul!(fHat, p, f)
   return fHat
 end
 
@@ -238,20 +228,20 @@ dimensional arrays, and the dimension specified in the plan creation is
 affected.
 """
 
-function Base.:*(p::Transpose{T,<:AbstractRealFTPlan{T}}, fHat::AbstractArray{U,D}; kargs...) where {T,U,D}
+function Base.:*(p::Transpose{T,<:AbstractRealFTPlan{T}}, fHat::AbstractArray{U,D}) where {T,U,D}
   f = similar(fHat, T, size_out(p))
-  mul!(f, p, fHat; kargs...)
+  mul!(f, p, fHat)
   return f
 end
 
 # The following two methods are redundant but need to be defined because of a method ambiguity with Julia Base
-function Base.:*(p::Transpose{T,<:AbstractRealFTPlan{T}}, fHat::AbstractVector{U}; kargs...) where {T,U}
+function Base.:*(p::Transpose{T,<:AbstractRealFTPlan{T}}, fHat::AbstractVector{U}) where {T,U}
   f = similar(fHat, T, size_out(p))
-  mul!(f, p, fHat; kargs...)
+  mul!(f, p, fHat)
   return f
 end
-function Base.:*(p::Transpose{T,<:AbstractRealFTPlan{T}}, fHat::AbstractArray{U,2}; kargs...) where {T,U}
+function Base.:*(p::Transpose{T,<:AbstractRealFTPlan{T}}, fHat::AbstractArray{U,2}) where {T,U}
   f = similar(fHat, T, size_out(p))
-  mul!(f, p, fHat; kargs...)
+  mul!(f, p, fHat)
   return f
 end

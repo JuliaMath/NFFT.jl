@@ -14,21 +14,21 @@ end
 # interface
 export AbstractNFFTBackend, nfft_backend, with
 export AbstractFTPlan, AbstractRealFTPlan, AbstractComplexFTPlan,
-       AbstractNFFTPlan, AbstractNFCTPlan, AbstractNFSTPlan, AbstractNNFFTPlan, 
-       plan_nfft, plan_nfct, plan_nfst, mul!, size_in, size_out, nodes!
+       AbstractNFFTPlan, AbstractNFCTPlan, AbstractNFSTPlan, AbstractNNFFTPlan,
+       plan_nfft, plan_nfct, plan_nfst, plan_nnfft, mul!, size_in, size_out, nodes!, nodes,
+       accuracy
 
-# optional
-export deconvolve!, deconvolve_transpose!, convolve!, convolve_transpose!
+# optional stage interface (terms of Knopp et al. 2023)
+export oversampled_size, resampling_correction!, oversampled_fft!, resampling!,
+       resampling_adjoint!, oversampled_bfft!, resampling_correction_adjoint!
 
 # derived
-export nfft, nfft_adjoint, ndft, ndft_adjoint, 
+export nfft, nfft_adjoint, ndft, ndft_adjoint,
        nfct, nfct_transpose, ndct, ndct_transpose,
        nfst, nfst_transpose
 
-# misc
-export TimingStats, accuracyParams, reltolToParams, paramsToReltol, 
-       PrecomputeFlags, LINEAR, FULL, TENSOR, POLYNOMIAL
-   
+# options shared by all implementations
+export DEFAULT_RELTOL, GenericOptions, generic_options, check_options
 
 include("misc.jl")
 include("interface.jl")
