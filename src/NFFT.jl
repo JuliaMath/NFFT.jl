@@ -30,6 +30,7 @@ include("fft.jl")
 include("resampling.jl")
 include("correction.jl")
 include("parameters.jl")
+include("batch.jl")
 include("plan.jl")
 include("direct.jl")
 

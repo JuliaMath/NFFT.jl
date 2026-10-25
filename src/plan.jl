@@ -74,7 +74,13 @@ mutable struct NFFTPlan{T,D,R} <: AbstractNFFTPlan{T,D,R}
   options::GenericOptions{T}
   fft::AbstractFFTBackend
   tilesize::Union{Nothing,Int}
+  # how batch dimensions are handled: :single (none), :lead (batch dims before dims: batch-first
+  # kernels), :trail (after dims: transposes into batch-first kernels), :loop (one transform per
+  # slice; 3D, or batch dims on both sides)
+  strategy::Symbol
   core::Any
+  fbuf::Any                         # :trail: batch-first copies of input and output
+  gbuf::Any
 end
 
 const NFFT_OPTIONS = (:window, :W, :σ, :fft, :tilesize)
@@ -102,9 +108,29 @@ function NFFTPlan(k::AbstractMatrix, N::NTuple{D,Int}, g::GenericOptions{T}; win
   else
     throw(ArgumentError("window must be :auto or an AbstractWindow, got $window"))
   end
-  core = make_core(k, Nd, kernel, T, fft, tilesize, g.nthreads)
   NOut = (N[1:first(dims)-1]..., J, N[last(dims)+1:end]...)
-  NFFTPlan{T,D,length(NOut)}(N, NOut, dims, k, kernel, acc, g, fft, tilesize, core)
+  strategy, core, fbuf, gbuf = make_engine(k, N, dims, kernel, T, fft, tilesize, g.nthreads)
+  NFFTPlan{T,D,length(NOut)}(N, NOut, dims, k, kernel, acc, g, fft, tilesize, strategy, core, fbuf, gbuf)
+end
+
+batch_sizes(N, dims) = (prod(N[1:first(dims)-1]; init=1), prod(N[last(dims)+1:end]; init=1))
+
+function make_engine(k, N, dims, kernel::KernelEntry, ::Type{T}, fft, tilesize, nthreads) where {T}
+  Nd = N[dims]; Dd = length(dims); J = size(k, 2)
+  L1, L3 = batch_sizes(N, dims)
+  check_nodes(k)
+  Ñ = grid_size(kernel.σ, Nd)
+  φ = window_function(kernel.window, kernel.W, kernel.β, kernel.e0)
+  if L1 == 1 && L3 == 1
+    :single, NFFTCore(k, Nd, Ñ, kernel.W, φ, T, fft, tilesize, nthreads), nothing, nothing
+  elseif Dd <= 2 && L1 > 1 && L3 == 1
+    :lead, BatchCore(k, Nd, Ñ, kernel.W, φ, T, fft, L1, tilesize, nthreads), nothing, nothing
+  elseif Dd <= 2 && L1 == 1
+    :trail, BatchCore(k, Nd, Ñ, kernel.W, φ, T, fft, L3, tilesize, nthreads),
+      Array{Complex{T}}(undef, L3, Nd...), Array{Complex{T}}(undef, L3, J)
+  else
+    :loop, NFFTCore(k, Nd, Ñ, kernel.W, φ, T, fft, tilesize, nthreads), nothing, nothing
+  end
 end
 
 # Nodes must be finite and in [−1/2, 1/2] (1/2 is the same node as −1/2); anything else would be
@@ -114,13 +140,6 @@ function check_nodes(k)
     (isfinite(x) && -0.5 <= x <= 0.5) ||
       throw(ArgumentError("nodes must be finite and in [-1/2, 1/2], found $x"))
   end
-end
-
-function make_core(k, Nd, kernel::KernelEntry, ::Type{T}, fft, tilesize, nthreads) where {T}
-  check_nodes(k)
-  Ñ = grid_size(kernel.σ, Nd)
-  φ = window_function(kernel.window, kernel.W, kernel.β, kernel.e0)
-  NFFTCore(k, Nd, Ñ, kernel.W, φ, T, fft, tilesize, nthreads)
 end
 
 # A copy shares the read-only parts (kernel, correction factors, binned nodes) and gets its own
@@ -134,8 +153,12 @@ function Base.copy(c::NFFTCore{D}) where {D}
            TileLocks(size(gp), c.B), c.nthreads)
 end
 
-Base.copy(p::NFFTPlan{T,D,R}) where {T,D,R} =
-  NFFTPlan{T,D,R}(p.N, p.NOut, p.dims, p.k, p.kernel, p.accuracy, p.options, p.fft, p.tilesize, copy(p.core))
+function Base.copy(p::NFFTPlan{T,D,R}) where {T,D,R}
+  strategy, core, fbuf, gbuf = p.strategy in (:single, :loop) ? (p.strategy, copy(p.core), nothing, nothing) :
+    make_engine(p.k, p.N, p.dims, p.kernel, T, p.fft, p.tilesize, p.options.nthreads)
+  NFFTPlan{T,D,R}(p.N, p.NOut, p.dims, p.k, p.kernel, p.accuracy, p.options, p.fft, p.tilesize,
+                  strategy, core, fbuf, gbuf)
+end
 
 AbstractNFFTs.size_in(p::NFFTPlan) = p.N
 AbstractNFFTs.size_out(p::NFFTPlan) = p.NOut
@@ -145,8 +168,8 @@ AbstractNFFTs.accuracy(p::NFFTPlan) = p.accuracy
 function AbstractNFFTs.nodes!(p::NFFTPlan{T}, k::AbstractMatrix) where {T}
   size(k, 1) == length(p.dims) || throw(DimensionMismatch("nodes must have $(length(p.dims)) rows"))
   J = size(k, 2)
+  p.strategy, p.core, p.fbuf, p.gbuf = make_engine(k, p.N, p.dims, p.kernel, T, p.fft, p.tilesize, p.options.nthreads)
   p.k = k
-  p.core = make_core(k, p.N[p.dims], p.kernel, T, p.fft, p.tilesize, p.options.nthreads)
   p.NOut = (p.N[1:first(p.dims)-1]..., J, p.N[last(p.dims)+1:end]...)
   p
 end
@@ -163,38 +186,62 @@ function check_sizes(p::NFFTPlan, f, fHat)
 end
 
 # Batch dimensions before and after `dims`: the arrays are viewed as (L1, N[dims]..., L3) and
-# (L1, J, L3), and every (a, c) slice is one transform.
-function batch_views(p::NFFTPlan{T,D}, f, fHat) where {T,D}
-  Nd = p.N[p.dims]; J = size(p.k, 2)
-  L1 = prod(p.N[1:first(p.dims)-1]; init=1); L3 = prod(p.N[last(p.dims)+1:end]; init=1)
-  reshape(f, L1, Nd..., L3), reshape(fHat, L1, J, L3), L1, L3, length(Nd)
+# (L1, J, L3).
+function batch_views(p::NFFTPlan, f, fHat)
+  L1, L3 = batch_sizes(p.N, p.dims)
+  reshape(f, L1, p.N[p.dims]..., L3), reshape(fHat, L1, size(p.k, 2), L3), L1, L3, length(p.dims)
 end
 
 function LinearAlgebra.mul!(fHat::AbstractArray, p::NFFTPlan{T,D}, f::AbstractArray) where {T,D}
   check_sizes(p, f, fHat)
-  if p.dims == 1:D
-    trafo_core!(vec(fHat), p.core, f)
-  else
-    fr, gr, L1, L3, Dd = batch_views(p, f, fHat)
-    for c in 1:L3, a in 1:L1
-      trafo_core!(view(gr, a, :, c), p.core, view(fr, a, ntuple(_ -> Colon(), Dd)..., c))
-    end
-  end
+  transform!(Val(p.strategy), p, p.core, fHat, f)
   fHat
 end
 
 function LinearAlgebra.mul!(f::AbstractArray, pl::Adjoint{Complex{T},<:NFFTPlan{T,D}}, fHat::AbstractArray) where {T,D}
   p = pl.parent
   check_sizes(p, f, fHat)
-  if p.dims == 1:D
-    adjoint_core!(f, p.core, vec(fHat))
-  else
-    fr, gr, L1, L3, Dd = batch_views(p, f, fHat)
-    for c in 1:L3, a in 1:L1
-      adjoint_core!(view(fr, a, ntuple(_ -> Colon(), Dd)..., c), p.core, view(gr, a, :, c))
-    end
-  end
+  transform_adjoint!(Val(p.strategy), p, p.core, f, fHat)
   f
+end
+
+# The core argument makes these the function barrier into code specialised on the kernel.
+transform!(::Val{:single}, p, c, fHat, f) = trafo_core!(vec(fHat), c, f)
+transform_adjoint!(::Val{:single}, p, c, f, fHat) = adjoint_core!(f, c, vec(fHat))
+
+function transform!(::Val{:loop}, p, c, fHat, f)
+  fr, gr, L1, L3, Dd = batch_views(p, f, fHat)
+  for b in 1:L3, a in 1:L1
+    trafo_core!(view(gr, a, :, b), c, view(fr, a, ntuple(_ -> Colon(), Dd)..., b))
+  end
+end
+function transform_adjoint!(::Val{:loop}, p, c, f, fHat)
+  fr, gr, L1, L3, Dd = batch_views(p, f, fHat)
+  for b in 1:L3, a in 1:L1
+    adjoint_core!(view(fr, a, ntuple(_ -> Colon(), Dd)..., b), c, view(gr, a, :, b))
+  end
+end
+
+function transform!(::Val{:lead}, p, c, fHat, f)
+  fr, gr, L1, L3, Dd = batch_views(p, f, fHat)
+  trafo_batch!(view(gr, :, :, 1), c, view(fr, :, ntuple(_ -> Colon(), Dd)..., 1))
+end
+function transform_adjoint!(::Val{:lead}, p, c, f, fHat)
+  fr, gr, L1, L3, Dd = batch_views(p, f, fHat)
+  adjoint_batch!(view(fr, :, ntuple(_ -> Colon(), Dd)..., 1), c, view(gr, :, :, 1))
+end
+
+function transform!(::Val{:trail}, p, c, fHat, f)
+  L3 = c.L
+  transpose_ml!(reshape(p.fbuf, L3, :), reshape(f, :, L3), c.nthreads)
+  trafo_batch!(p.gbuf, c, p.fbuf)
+  transpose_lm!(reshape(fHat, :, L3), p.gbuf, c.nthreads)
+end
+function transform_adjoint!(::Val{:trail}, p, c, f, fHat)
+  L3 = c.L
+  transpose_ml!(p.gbuf, reshape(fHat, :, L3), c.nthreads)
+  adjoint_batch!(p.fbuf, c, p.gbuf)
+  transpose_lm!(reshape(f, :, L3), reshape(p.fbuf, L3, :), c.nthreads)
 end
 
 # Stage interface (Knopp et al. 2023), for plans without batch dimensions. `g` is an unpadded

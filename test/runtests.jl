@@ -15,6 +15,7 @@ nfft_plan(k, N; kwargs...) = plan_nfft(NFFT.backend(), k, N; kwargs...)
   @testset "contract Float64" begin contract_tests(nfft_plan; T=Float64) end
   @testset "contract Float32" begin contract_tests(nfft_plan; T=Float32) end
   include("plan.jl")
+  include("batch.jl")
   include("stages.jl")
   include("issues.jl")
   include("chainrules.jl")
