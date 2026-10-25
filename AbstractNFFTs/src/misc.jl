@@ -55,9 +55,12 @@ function generic_options(k::AbstractMatrix, N::Dims{D}; reltol::Real=DEFAULT_REL
   reltol > 0 || throw(ArgumentError("reltol must be positive"))
   nthreads >= 1 || throw(ArgumentError("nthreads must be at least 1"))
   T = eltype === nothing ? float(Base.eltype(k)) : eltype
-  S = storage === nothing ? Base.typename(typeof(k)).wrapper : storage
+  S = storage === nothing ? storage_type(k) : storage
   GenericOptions{T}(Float64(reltol), d, T, S, Int(nthreads)), kwargs
 end
+
+# Array type at the root of views and wrappers (SubArray, Adjoint, ReshapedArray, …).
+storage_type(x::AbstractArray) = parent(x) === x ? Base.typename(typeof(x)).wrapper : storage_type(parent(x))
 
 """
     check_options(backend, kwargs, supported)
