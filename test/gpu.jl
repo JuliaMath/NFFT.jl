@@ -33,6 +33,12 @@ relerr(a, b) = norm(a - b) / norm(b)
     @test relerr(x, adjoint(pndft) * fHat) < 10 * accuracy(p)
     @test relerr(x, adjoint(pcpu) * fHat) < 100 * eps(T)
 
+    # the adjoint resampling by tiles (2D, 3D, if its buffers fit into local memory) has no
+    # atomics: repeated calls agree exactly
+    if p.core.tiles !== nothing
+      @test Array(adjoint(p) * arrayType(fHat)) == x
+    end
+
     # storage defaults to the array type of the nodes
     q = plan_nfft(arrayType(k), N; reltol)
     @test relerr(Array(q * arrayType(f)), y) < 100 * eps(T)
