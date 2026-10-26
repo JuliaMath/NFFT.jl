@@ -4,6 +4,14 @@ This page defines the transforms that NFFT.jl computes and the three stages of t
 derivation and the error analysis are in the [NFFT.jl paper](https://arxiv.org/abs/2208.00049),
 whose notation we follow.
 
+![The transforms of NFFT.jl](./assets/nfft_transforms.svg)
+
+The NFFT maps an array on an equidistant grid to values at non-equidistant nodes, its adjoint maps
+back. The other transforms are built on it: the RNFFT restricts it to real values at the nodes, the
+NFCT and NFST apply it to the even or odd extension of real data, and the NNFFT wraps it into a
+spreading and a division to reach non-equidistant points on both sides
+(see [Other transforms](@ref)).
+
 !!! note
     The NFFT is also called NUFFT, and in MRI gridding. FINUFFT and others classify the transforms
     into types: type 2 is the NFFT, type 1 its adjoint, type 3 the NNFFT with non-equidistant
@@ -67,6 +75,8 @@ one stage of the algorithm:
    interpolates the oversampled grid at each node with the window function ``\varphi``, i.e. it
    combines the ``W^D`` grid points around the node.
 
+![The three stages of the NFFT](./assets/nfft_stages.svg)
+
 The adjoint NFFT applies the adjoint stages in reverse order,
 ```math
 \bm{A}^{\mathsf{H}} \approx \bm{D}^{\mathsf{H}} \bm{F}^{\mathsf{H}} \bm{B}^{\mathsf{H}}.
@@ -89,10 +99,15 @@ widths.
 
 NFFT.jl chooses all three from the requested relative error, see [Accuracy and Parameters](@ref).
 
-## Real-valued variants
+## Other transforms
 
-The non-equidistant fast cosine and sine transforms (NFCT, NFST) of NFFT3 use real data and nodes
-in ``[0, 1/2]^D``:
+**Real values at the nodes (RNFFT).** If the values at the nodes are real, the coefficients are
+Hermitian, ``f_{-\bm{n}} = \overline{f_{\bm{n}}}``, and the half with ``n_1 \ge 0`` determines
+them. The RNFFT takes this half and computes on a real oversampled grid, which saves half of the FFT
+and of the adjoint resampling; see [Real Data](@ref).
+
+**Cosine and sine transforms (NFCT, NFST).** The non-equidistant fast cosine and sine transforms
+of NFFT3 use real data and nodes in ``[0, 1/2]^D``:
 ```math
 \hat{f}_j = \sum_{\bm{n}} f_{\bm{n}} \prod_{d=1}^D \cos(2\pi n_d k_{d,j}),
 \qquad
@@ -101,3 +116,12 @@ in ``[0, 1/2]^D``:
 with ``n_d = 0,\dots,N_d-1`` (cosine) and ``n_d = 1,\dots,N_d`` (sine) for an array of size ``\bm{N}``. Their transposes take
 the role of the adjoint. NFFT.jl computes them as NFFTs of the even and odd extension of the data,
 see [Cosine and Sine Transforms](@ref).
+
+**Non-equidistant on both sides (NNFFT).** For arbitrary real sources ``\bm{y}_l`` and targets
+``\bm{k}_j``,
+```math
+\hat{f}_j = \sum_{l} f_l \, \mathrm{e}^{-2\pi\mathrm{i}\,\bm{k}_j\cdot\bm{y}_l}.
+```
+The sources are spread with a window onto an equidistant grid, an NFFT evaluates that grid at the
+scaled targets, and a division by the Fourier transform of the window undoes the spreading; see
+[Non-equidistant in Both Domains](@ref).

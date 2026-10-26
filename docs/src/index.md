@@ -58,21 +58,29 @@ Toeplitz kernels are in `NFFTTools.jl` (`Pkg.add("NFFTTools")`).
 
 ## Guide
 
-- [Mathematical Background](@ref) defines the NDFT, the NFFT and its three stages.
-- [Getting Started](@ref) shows plans, transforms, precision, threads and changing nodes.
-- [Transforms along Dimensions](@ref) covers `dims` and batched transforms.
-- [Accuracy and Parameters](@ref) explains how `reltol` becomes window, width and oversampling, and
-  how to set these yourself.
-- [Stages of the NFFT](@ref) shows the stage interface.
-- [Real Data](@ref) covers `plan_rnfft` for real values at the nodes (e.g. OCT).
-- [Cosine and Sine Transforms](@ref) covers the NFCT and NFST.
-- [Non-equidistant in Both Domains](@ref) covers the NNFFT.
-- [Density Compensation and Toeplitz Kernels](@ref) shows `NFFTTools.jl`.
-- [GPU](@ref) shows how to run the transforms on GPUs.
-- [Performance](@ref) compares NFFT.jl with other libraries.
-- [Abstract Interface](@ref) describes `AbstractNFFTs.jl` and how to write an implementation.
-- [Migrating from NFFT.jl 0.x](@ref) lists what changed in version 1.0.
-- [API](@ref) lists all exported functions and types.
+The documentation follows the [Diátaxis](https://diataxis.fr) structure:
+
+**Tutorial**, to learn NFFT.jl step by step:
+- [Getting Started](@ref): plans, transforms, precision, threads and changing nodes.
+
+**How-to guides**, for a task at hand:
+- [Transforms along Dimensions](@ref): `dims` and many transforms with the same nodes.
+- [Real Data](@ref): real values at the nodes with `plan_rnfft` (e.g. OCT).
+- [Cosine and Sine Transforms](@ref): the NFCT and NFST.
+- [Non-equidistant in Both Domains](@ref): the NNFFT.
+- [GPU](@ref): all transforms on GPUs.
+- [Density Compensation and Toeplitz Kernels](@ref): `NFFTTools.jl`.
+- [Stages of the NFFT](@ref): calling the stages one by one.
+- [Migrating from NFFT.jl 0.x](@ref): what changed in version 1.0.
+
+**Explanation**, for understanding:
+- [Mathematical Background](@ref): the transforms and the three stages of the algorithm.
+- [Accuracy and Parameters](@ref): how `reltol` becomes window, width and oversampling.
+- [Performance](@ref): NFFT.jl against FINUFFT, ducc and NonuniformFFTs.jl.
+
+**Reference**, to look things up:
+- [API](@ref): all exported functions and types.
+- [Abstract Interface](@ref): `AbstractNFFTs.jl` and how to write an implementation.
 
 ## Citing
 
