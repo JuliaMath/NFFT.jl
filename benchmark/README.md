@@ -1,44 +1,69 @@
-# NFFT Benchmarks
+# Benchmarks of NFFT.jl
 
-This folder contains the accuracy and performance scripts for the NFFT. 
-To run the scripts additional Julia packages, e.g. for plotting are required.
-This folder contains a `Project.toml` can be used by running Julia from within
-the folder with
-```
-julia --project=.
-```
-When you do this the first time you need to to the package mode run `instantiate`.
-
-## Accuracy
-
-The accuracy script is run by
-```
-julia> include("accuracy.jl")
-```
-It creates an error plot for various ``m`` and ``\sigma`` that is stored in `../docs/src/assets`. The results can be also read from the CSV being generated.
-
-## Performance
-
-The performance script is run by
-```
-julia> include("performance.jl")
-```
-It will spawn new julia processes with different numbers of threads. Again the results are stored in a CSV file and plotted into a pdf that is stored in `../docs/src/assets`.
-
-## Other
-
-The benchmark suite takes a long time and is not useful for profiling. Therefore the script `performance_simple.jl` contains a subset of the suite, which allows to invoke the profiler:
+Compares NFFT.jl with FINUFFT, ducc, NonuniformFFTs.jl and NFFT.jl 0.14, and NFFT.jl with any of
+its own git revisions. The results in `results/` are the data of the
+[performance page](https://JuliaMath.github.io/NFFT.jl/dev/performance/) of the documentation.
 
 ```
-using ProfileView
-include("performance_simple.jl")
-
-# run once
-nfft_performance_simple(N=1024, J=1024^2, m=4, threading=false, pre=NFFT.LINEAR, ctor=NFFTPlan)
-
-# call the profiler
-@profview nfft_performance_simple(N=1024, J=1024^2, m=4, threading=false, pre=NFFT.LINEAR, ctor=NFFTPlan)
-
-# instead run with FINUFFT
-nfft_performance_simple(N=1024, J=1024^2, m=4, threading=false, pre=NFFT.LINEAR, ctor=FINUFFTPlan)
+julia benchmark/bench.jl list                       # suites and libraries
+julia benchmark/bench.jl run quick                  # NFFT vs FINUFFT vs ducc, ≈ 1 min
+julia benchmark/bench.jl run quick --libs NFFT --dims 2 --tols 1e-8
+julia benchmark/bench.jl ab HEAD~1                  # working tree against a revision, ≈ 1.5 min
+julia benchmark/bench.jl compare out/a.csv out/b.csv
+julia benchmark/bench.jl run all --save             # all suites of the documentation, ≈ 30 min
+julia benchmark/bench.jl report                     # figures and explorer data for the docs
 ```
+
+Run from the repository root with any Julia (the orchestrator uses the standard library only).
+Options: `--libs`, `--dims`, `--tols`, `--T Float32`, `--threads 1,8`, `--budget` (seconds of
+repeated calls per measurement, default 0.1), `--rounds` (`ab`), `--save`.
+
+## How it works
+
+Each library runs in a worker process with its own environment (`envs/<lib>/Project.toml`,
+instantiated on first use): competitors never become dependencies of NFFT.jl, libraries with
+conflicting dependencies (NonuniformFFTs.jl needs AbstractNFFTs 0.9, NFFT.jl 0.14) can be compared,
+and each library gets exactly the requested number of threads. `NFFT@<rev>` is NFFT.jl at a git
+revision, checked out as a worktree in `.cache/`.
+
+- `src/suites.jl`: the suites, each a list of tasks (library, transform, size, nodes, batch,
+  precision, threads, tolerance).
+- `worker/problems.jl`: nodes, data and an exact reference (NDFT on 64 sampled outputs), generated
+  deterministically from the task, so every process sees the same problem.
+- `worker/worker.jl`: plan (3 times, minimum), direct and adjoint transform (minimum and median of
+  repeated calls within the budget), relative error against the reference, allocations, the
+  parameters the library chose.
+- `worker/adapters/<lib>.jl`: maps the convention of NFFT.jl (nodes in [-1/2, 1/2), modes in
+  increasing order, e^{-2πi l·k} for the direct transform) onto each library. A wrong mapping shows
+  up as an error of order one.
+- `src/Benchmarks.jl`: orchestration, CSV files, `compare` and `ab`.
+- `src/report.jl`: figures (`docs/src/assets/benchmarks/*.svg`) and `data.js` for the explorer on
+  the performance page.
+
+Results go to `out/<time>-<suite>.csv` (not versioned); `--save` also writes
+`results/<machine>/<suite>.csv`, the data of the documentation. The CSV header records machine,
+Julia version, NFFT.jl commit and command; each row the version and library file of the library.
+
+Every library uses its defaults apart from the tolerance and the number of threads; FFTW plans use
+`ESTIMATE`. The libraries interpret the tolerance differently, so compare time against the
+measured error (`pareto`), not against the tolerance. NonuniformFFTs.jl has no tolerance
+parameter; its half support comes from the tolerance as in NFFT.jl 0.14. ducc has no batched
+transform; batches loop over the slices.
+
+## Native builds of the competitors
+
+By default FINUFFT and ducc come from their release binaries (JLL packages). To benchmark builds
+with native CPU flags, point the JLL packages to them in `envs/finufft/LocalPreferences.toml` and
+`envs/ducc/LocalPreferences.toml` (not versioned):
+
+```toml
+[finufft_jll]
+libfinufft_path = "/path/to/finufft/build/src/libfinufft.dylib"
+```
+
+```toml
+[ducc0_jll]
+libducc_julia_path = "/path/to/libducc_julia.dylib"
+```
+
+The library that was loaded is recorded in each row (`lib_library`).

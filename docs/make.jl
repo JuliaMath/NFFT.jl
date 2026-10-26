@@ -18,7 +18,7 @@ makedocs(;
   format=Documenter.HTML(;
     prettyurls=get(ENV, "CI", "false") == "true",
     canonical="https://JuliaMath.github.io/NFFT.jl",
-    assets=String[],
+    assets=["assets/benchmarks/explorer.js", "assets/benchmarks/explorer.css"],
     size_threshold=500_000,
   ),
   pages=[
