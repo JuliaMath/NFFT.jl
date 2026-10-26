@@ -18,6 +18,10 @@ function issmooth(n)
   n == 1
 end
 
+# Private tile buffers of the resampling tasks, one per task (at most 4·nthreads tasks), allocated
+# with the plan so that transforms do not allocate them.
+task_buffers(::Type{C}, sz, nthreads) where {C} = [zeros(C, sz) for _ in 1:4nthreads]
+
 function threaded_fill!(a, v, nthreads)
   Threads.@threads for s in chunks(eachindex(a), 4nthreads)
     @inbounds for i in s

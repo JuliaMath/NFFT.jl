@@ -14,6 +14,8 @@ struct NFFTCore{D,K<:SymKernel,T,Tk}
   fwd::PassFFT{D}
   bwd::PassFFT{D}
   locks::TileLocks{D}
+  # one extra point: tile assignment and support may round differently at tile edges
+  bufs::Vector{Array{Complex{T},D}} # tile buffers of edge B+W+1
   nthreads::Int
 end
 
@@ -26,7 +28,7 @@ function NFFTCore(k::AbstractMatrix, N::NTuple{D,Int}, Ñ::NTuple{D,Int}, W, φ,
   g = interior(gp, h)
   NFFTCore(N, Ñ, W, B, K, invphi, Binned(k, Ñ, B, nthreads), gp,
            PassFFT(fft, g, N; dir=:fwd, nthreads), PassFFT(fft, g, N; dir=:bwd, nthreads),
-           TileLocks(size(gp), B), nthreads)
+           TileLocks(size(gp), B), task_buffers(Complex{T}, ntuple(_ -> B + W + 1, D), nthreads), nthreads)
 end
 
 function trafo_core!(out, c::NFFTCore, f)
@@ -35,14 +37,14 @@ function trafo_core!(out, c::NFFTCore, f)
   resampling_correction_core!(g, f, c.invphi, c.N, c.Ñ, c.nthreads)
   apply!(c.fwd, g)
   fill_halo!(c.gp, h, c.nthreads)
-  resample!(out, c.gp, c.kernel, c.binned, c.Ñ, c.B, c.nthreads)
+  resample!(out, c.gp, c.kernel, c.binned, c.Ñ, c.bufs)
   out
 end
 
 function adjoint_core!(f, c::NFFTCore, vals)
   h = halo(c.W); g = interior(c.gp, h)
   threaded_fill!(c.gp, 0, c.nthreads)
-  resample_adjoint!(c.gp, c.kernel, c.binned, vals, c.Ñ, c.locks, c.B, c.nthreads)
+  resample_adjoint!(c.gp, c.kernel, c.binned, vals, c.Ñ, c.locks, c.bufs)
   fold_halo!(c.gp, h, c.nthreads)
   apply!(c.bwd, g)
   resampling_correction_adjoint_core!(f, g, c.invphi, c.N, c.Ñ, c.nthreads)
@@ -150,7 +152,7 @@ function Base.copy(c::NFFTCore{D}) where {D}
   fft = FFTWBackend()
   NFFTCore(c.N, c.Ñ, c.W, c.B, c.kernel, c.invphi, c.binned, gp,
            PassFFT(fft, g, c.N; dir=:fwd, nthreads=c.nthreads), PassFFT(fft, g, c.N; dir=:bwd, nthreads=c.nthreads),
-           TileLocks(size(gp), c.B), c.nthreads)
+           TileLocks(size(gp), c.B), [zero(b) for b in c.bufs], c.nthreads)
 end
 
 function Base.copy(p::NFFTPlan{T,D,R}) where {T,D,R}
@@ -286,14 +288,14 @@ function AbstractNFFTs.resampling!(p::NFFTPlan, g::AbstractArray, fHat::Abstract
   c = check_stage(p, nothing, g, fHat); h = halo(c.W)
   copyto!(interior(c.gp, h), g)
   fill_halo!(c.gp, h, c.nthreads)
-  resample!(vec(fHat), c.gp, c.kernel, c.binned, c.Ñ, c.B, c.nthreads)
+  resample!(vec(fHat), c.gp, c.kernel, c.binned, c.Ñ, c.bufs)
   fHat
 end
 
 function AbstractNFFTs.resampling_adjoint!(p::NFFTPlan, fHat::AbstractArray, g::AbstractArray)
   c = check_stage(p, nothing, g, fHat); h = halo(c.W)
   threaded_fill!(c.gp, 0, c.nthreads)
-  resample_adjoint!(c.gp, c.kernel, c.binned, vec(fHat), c.Ñ, c.locks, c.B, c.nthreads)
+  resample_adjoint!(c.gp, c.kernel, c.binned, vec(fHat), c.Ñ, c.locks, c.bufs)
   fold_halo!(c.gp, h, c.nthreads)
   copyto!(g, interior(c.gp, h))
 end

@@ -34,12 +34,13 @@ end
 # Resampling from a private copy of each tile with its halo: reading the global grid directly
 # made the time depend on the grid strides through cache set conflicts (3D, W = 10: 8.3–13.7 ms
 # for Ñ = 96…128); the compact buffer removes that dependence.
-function resample!(out, gp, K::SymKernel{W}, b::Binned{D}, Ñ, B, nthreads) where {W,D}
+function resample!(out, gp, K::SymKernel{W}, b::Binned{D}, Ñ, bufs) where {W,D}
   ntile = length(b.tileptr) - 1
   next = Threads.Atomic{Int}(1)
-  @sync for _ in 1:min(4nthreads, ntile)
+  @sync for it in 1:min(length(bufs), ntile)
     Threads.@spawn begin
-      buf = zeros(eltype(gp), ntuple(_ -> B + W + 1, D))
+      buf = bufs[it]
+      fill!(buf, 0)
       while (i = Threads.atomic_add!(next, 1)) <= ntile
         t = b.order1[i]
         r = b.tileptr[t]:b.tileptr[t+1]-1
@@ -81,13 +82,12 @@ end
 # Adjoint resampling: each task takes the next tile, spreads it into a private zeroed buffer of edge
 # B+W+1 (it stays in L1/L2) and flushes it into the grid (ducc's scheme; checkerboard colouring of
 # tiles without buffers was slower because neighbouring tiles reload shared halo rows).
-function resample_adjoint_tiles!(gp, K::SymKernel{W}, b::Binned{D}, vals, Ñ, L::TileLocks{D}, B, nthreads) where {W,D}
+function resample_adjoint_tiles!(gp, K::SymKernel{W}, b::Binned{D}, vals, Ñ, L::TileLocks{D}, bufs) where {W,D}
   ntile = length(b.tileptr) - 1
   next = Threads.Atomic{Int}(1)
-  @sync for _ in 1:min(4nthreads, ntile)
+  @sync for it in 1:min(length(bufs), ntile)
     Threads.@spawn begin
-      # one extra point: tile assignment and support may round differently at tile edges
-      buf = zeros(eltype(gp), ntuple(_ -> B + W + 1, D))
+      buf = bufs[it]
       while (t = Threads.atomic_add!(next, 1)) <= ntile
         r = b.tileptr[t]:b.tileptr[t+1]-1
         isempty(r) && continue
@@ -108,16 +108,16 @@ end
 # after each tile only the B slices the next tile no longer touches are flushed, the remaining W+1
 # slices move to the front. Every grid point is flushed from (E/B)^(D−1) instead of (E/B)^D
 # buffers, E = B+W+1 (3D, W = 13: 37.6 → 29.4 ms).
-function resample_adjoint_slide!(gp, K::SymKernel{W}, b::Binned{D}, vals, Ñ, L::TileLocks{D}, B, nthreads) where {W,D}
+function resample_adjoint_slide!(gp, K::SymKernel{W}, b::Binned{D}, vals, Ñ, L::TileLocks{D}, bufs) where {W,D}
   ntD = b.ntiles[D]; ncol = prod(Base.front(b.ntiles))
-  ntasks = 4nthreads
+  ntasks = length(bufs); B = L.B
   nseg = clamp(cld(2ntasks, ncol), 1, ntD); seglen = cld(ntD, nseg)
   segs = [(c - 1) * ntD .+ (s:min(s + seglen - 1, ntD)) for c in 1:ncol for s in 1:seglen:ntD]
-  E = B + W + 1
+  E = size(bufs[1], 1)
   next = Threads.Atomic{Int}(1)
-  @sync for _ in 1:min(ntasks, length(segs))
+  @sync for it in 1:min(ntasks, length(segs))
     Threads.@spawn begin
-      buf = zeros(eltype(gp), ntuple(_ -> E, D))
+      buf = bufs[it]
       S = E^(D - 1)
       while (si = Threads.atomic_add!(next, 1)) <= length(segs)
         tiles = segs[si]
@@ -148,9 +148,9 @@ function resample_adjoint_slide!(gp, K::SymKernel{W}, b::Binned{D}, vals, Ñ, L:
   gp
 end
 
-resample_adjoint!(gp, K, b::Binned{D}, vals, Ñ, L, B, nthreads) where {D} =
-  D >= 3 ? resample_adjoint_slide!(gp, K, b, vals, Ñ, L, B, nthreads) :
-           resample_adjoint_tiles!(gp, K, b, vals, Ñ, L, B, nthreads)
+resample_adjoint!(gp, K, b::Binned{D}, vals, Ñ, L, bufs) where {D} =
+  D >= 3 ? resample_adjoint_slide!(gp, K, b, vals, Ñ, L, bufs) :
+           resample_adjoint_tiles!(gp, K, b, vals, Ñ, L, bufs)
 
 # Halo of the padded grid, h = halo(W): fill it periodically from the interior before resampling,
 # fold it back onto the interior after the adjoint resampling. One dimension after the other (this

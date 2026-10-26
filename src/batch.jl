@@ -21,6 +21,7 @@ struct BatchCore{D,K<:SymKernel,T,Tk,D1,CH}
   fwd::PassFFT{D1}
   bwd::PassFFT{D1}
   locks::TileLocks{D}
+  bufs::Vector{Array{Complex{T},D1}} # tile buffers (Lp, B+W+1, …)
   # 1D: FFT buffer with the batch dimension last. A 1D FFT along dimension 2 of the batch-first grid
   # (stride Lp) is ≈ 3× slower than on contiguous columns (Ñ = 354294, L = 8: 11.6 vs 3.8 ms).
   F::Union{Nothing,Matrix{Complex{T}}}
@@ -50,7 +51,8 @@ function BatchCore(k::AbstractMatrix, N::NTuple{D,Int}, Ñ::NTuple{D,Int}, W, φ
   end
   BatchCore{D,typeof(K),T,eltype(k),D + 1,CH}(L, Lp, N, Ñ, W, B, K, invphi, Binned(k, Ñ, B, nthreads), gp,
     PassFFT(fft, g, Nf; dir=:fwd, nthreads, tdims=2:D+1), PassFFT(fft, g, Nf; dir=:bwd, nthreads, tdims=2:D+1),
-    TileLocks(Ñ .+ W, B), F, fwdF, bwdF, nthreads)
+    TileLocks(Ñ .+ W, B), task_buffers(Complex{T}, (Lp, ntuple(_ -> B + W + 1, D)...), nthreads),
+    F, fwdF, bwdF, nthreads)
 end
 
 interior_b(c::BatchCore{D}) where {D} = view(c.gp, :, ntuple(d -> halo(c.W)[1]+1:halo(c.W)[1]+c.Ñ[d], D)...)
@@ -151,9 +153,10 @@ end
 function resample_b!(out, c::BatchCore{D,K,T,Tk,D1,CH}) where {D,K,T,Tk,D1,CH}
   b, W, B, L = c.binned, c.W, c.B, c.L
   ntile = length(b.tileptr) - 1; next = Threads.Atomic{Int}(1)
-  @sync for _ in 1:min(4c.nthreads, ntile)
+  @sync for it in 1:min(length(c.bufs), ntile)
     Threads.@spawn begin
-      buf = zeros(Complex{T}, c.Lp, ntuple(_ -> B + W + 1, D)...)
+      buf = c.bufs[it]
+      fill!(buf, 0)
       while (i = Threads.atomic_add!(next, 1)) <= ntile
         t = b.order1[i]
         r = b.tileptr[t]:b.tileptr[t+1]-1
@@ -199,9 +202,9 @@ end
 function resample_adjoint_b!(c::BatchCore{D,K,T,Tk,D1,CH}, vals) where {D,K,T,Tk,D1,CH}
   b, W, B, L = c.binned, c.W, c.B, c.L
   ntile = length(b.tileptr) - 1; next = Threads.Atomic{Int}(1)
-  @sync for _ in 1:min(4c.nthreads, ntile)
+  @sync for it in 1:min(length(c.bufs), ntile)
     Threads.@spawn begin
-      buf = zeros(Complex{T}, c.Lp, ntuple(_ -> B + W + 1, D)...)
+      buf = c.bufs[it]
       while (t = Threads.atomic_add!(next, 1)) <= ntile
         r = b.tileptr[t]:b.tileptr[t+1]-1
         isempty(r) && continue
