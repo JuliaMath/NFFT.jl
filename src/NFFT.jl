@@ -36,6 +36,7 @@ include("real.jl")
 include("rnfft.jl")
 include("nnfft.jl")
 include("direct.jl")
+include("precompile.jl")
 
 function __init__()
   activate!()
