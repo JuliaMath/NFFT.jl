@@ -10,9 +10,18 @@ LinearAlgebra = "37e2e46d-f89d-539d-b4ee-838fcccc9c8e"
 Reexport = "189a3867-3050-52da-a836-e630ba90ab69"
 StaticArrays = "90137ffa-7385-5640-81b9-e52037218182"
 
+[weakdeps]
+GPUArrays = "0c68f7d7-f131-5f86-a1c3-88cf8149b2d7"
+KernelAbstractions = "63c18a36-062a-441e-b654-da1e3ab1ce7c"
+
+[extensions]
+NFFTGPUExt = ["GPUArrays", "KernelAbstractions"]
+
 [compat]
 AbstractNFFTs = "1"
 FFTW = "1.5"
+GPUArrays = "11, 12"
+KernelAbstractions = "0.9, 0.10"
 Reexport = "1.0"
 StaticArrays = "1.4"
 julia = "1.10"

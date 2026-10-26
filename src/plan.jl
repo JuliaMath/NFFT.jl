@@ -91,7 +91,6 @@ const NFFT_OPTIONS = (:window, :W, :σ, :fft, :tilesize)
 function AbstractNFFTs.plan_nfft(b::NFFTBackend, k::AbstractMatrix, N::Dims{D}; kwargs...) where {D}
   g, rest = generic_options(k, N; kwargs...)
   check_options(b, rest, NFFT_OPTIONS)
-  g.storage <: Array || throw(ArgumentError("storage = $(g.storage) is not supported yet"))
   NFFTPlan(k, N, g; rest...)
 end
 
@@ -112,19 +111,26 @@ function NFFTPlan(k::AbstractMatrix, N::NTuple{D,Int}, g::GenericOptions{T}; win
     throw(ArgumentError("window must be :auto or an AbstractWindow, got $window"))
   end
   NOut = (N[1:first(dims)-1]..., J, N[last(dims)+1:end]...)
-  strategy, core, fbuf, gbuf = make_engine(k, N, dims, kernel, T, fft, tilesize, g.nthreads)
-  NFFTPlan{T,D,length(NOut)}(N, NOut, dims, k, kernel, acc, g, fft, tilesize, strategy, core, fbuf, gbuf)
+  strategy, core, fbuf, gbuf = make_engine(k, N, dims, kernel, T, fft, tilesize, g.nthreads, g.storage)
+  NFFTPlan{T,D,length(NOut)}(N, NOut, dims, to_storage(g.storage, k), kernel, acc, g, fft, tilesize,
+                             strategy, core, fbuf, gbuf)
 end
 
 batch_sizes(N, dims) = (prod(N[1:first(dims)-1]; init=1), prod(N[last(dims)+1:end]; init=1))
 
-function make_engine(k, N, dims, kernel::KernelEntry, ::Type{T}, fft, tilesize, nthreads) where {T}
+# The plan is set up on the CPU (parameters, binning, window); a GPU core moves what the transforms
+# need to the device.
+function make_engine(k, N, dims, kernel::KernelEntry, ::Type{T}, fft, tilesize, nthreads, storage=Array) where {T}
   Nd = N[dims]; Dd = length(dims); J = size(k, 2)
   L1, L3 = batch_sizes(N, dims)
+  k = k isa Array ? k : Array(k)
   check_nodes(k)
   Ñ = grid_size(kernel.σ, Nd, kernel.W)
   φ = window_function(kernel.window, kernel.W, kernel.β, kernel.e0)
-  if L1 == 1 && L3 == 1
+  if !(storage <: Array)
+    L1 == 1 && L3 == 1 || throw(ArgumentError("batch dimensions are not supported with storage = $storage"))
+    :single, device_core(storage, k, Nd, Ñ, kernel.W, φ, T, nthreads), nothing, nothing
+  elseif L1 == 1 && L3 == 1
     :single, NFFTCore(k, Nd, Ñ, kernel.W, φ, T, fft, tilesize, nthreads), nothing, nothing
   elseif use_slices(L1 * L3, J + prod(Nd), nthreads)
     :slices, single_cores(NFFTCore(k, Nd, Ñ, kernel.W, φ, T, fft, tilesize, nthreads), L1 * L3), nothing, nothing
@@ -137,6 +143,13 @@ function make_engine(k, N, dims, kernel::KernelEntry, ::Type{T}, fft, tilesize, 
     :loop, NFFTCore(k, Nd, Ñ, kernel.W, φ, T, fft, tilesize, nthreads), nothing, nothing
   end
 end
+
+# Core of a plan whose data live on a device (GPU array types); implemented by the GPU extension.
+device_core(storage, args...) = throw(ArgumentError(
+  "storage = $storage is not supported; for GPU arrays load the GPU package (CUDA, AMDGPU, Metal, …)"))
+
+# The nodes as the plan returns them (`nodes(p)`): in the storage of the plan.
+to_storage(::Type{S}, k) where {S} = k isa S ? k : S(Array(k))
 
 # Nodes must be finite and in [−1/2, 1/2] (1/2 is the same node as −1/2); anything else would be
 # binned outside the grid.
@@ -171,7 +184,7 @@ end
 function Base.copy(p::NFFTPlan{T,D,R}) where {T,D,R}
   strategy, core, fbuf, gbuf = p.strategy in (:single, :loop) ? (p.strategy, copy(p.core), nothing, nothing) :
     p.strategy === :slices ? (:slices, single_cores(p.core[1], length(p.core)), nothing, nothing) :
-    make_engine(p.k, p.N, p.dims, p.kernel, T, p.fft, p.tilesize, p.options.nthreads)
+    make_engine(p.k, p.N, p.dims, p.kernel, T, p.fft, p.tilesize, p.options.nthreads, p.options.storage)
   NFFTPlan{T,D,R}(p.N, p.NOut, p.dims, p.k, p.kernel, p.accuracy, p.options, p.fft, p.tilesize,
                   strategy, core, fbuf, gbuf)
 end
@@ -184,8 +197,9 @@ AbstractNFFTs.accuracy(p::NFFTPlan) = p.accuracy
 function AbstractNFFTs.nodes!(p::NFFTPlan{T}, k::AbstractMatrix) where {T}
   size(k, 1) == length(p.dims) || throw(DimensionMismatch("nodes must have $(length(p.dims)) rows"))
   J = size(k, 2)
-  p.strategy, p.core, p.fbuf, p.gbuf = make_engine(k, p.N, p.dims, p.kernel, T, p.fft, p.tilesize, p.options.nthreads)
-  p.k = k
+  p.strategy, p.core, p.fbuf, p.gbuf = make_engine(k, p.N, p.dims, p.kernel, T, p.fft, p.tilesize,
+                                                   p.options.nthreads, p.options.storage)
+  p.k = to_storage(p.options.storage, k)
   p.NOut = (p.N[1:first(p.dims)-1]..., J, p.N[last(p.dims)+1:end]...)
   p
 end
@@ -302,32 +316,36 @@ end
 
 AbstractNFFTs.oversampled_size(p::NFFTPlan) = full_core(p).Ñ
 
-function AbstractNFFTs.resampling_correction!(p::NFFTPlan, f::AbstractArray, g::AbstractArray)
-  c = check_stage(p, f, g, nothing)
+AbstractNFFTs.resampling_correction!(p::NFFTPlan, f::AbstractArray, g::AbstractArray) =
+  (correction_stage!(check_stage(p, f, g, nothing), g, f); g)
+AbstractNFFTs.oversampled_fft!(p::NFFTPlan, g::AbstractArray) = (check_stage(p, nothing, g, nothing); FFTW.fft!(g); g)
+AbstractNFFTs.oversampled_bfft!(p::NFFTPlan, g::AbstractArray) = (check_stage(p, nothing, g, nothing); FFTW.bfft!(g); g)
+AbstractNFFTs.resampling!(p::NFFTPlan, g::AbstractArray, fHat::AbstractArray) =
+  (resampling_stage!(check_stage(p, nothing, g, fHat), vec(fHat), g); fHat)
+AbstractNFFTs.resampling_adjoint!(p::NFFTPlan, fHat::AbstractArray, g::AbstractArray) =
+  (resampling_adjoint_stage!(check_stage(p, nothing, g, fHat), g, vec(fHat)); g)
+AbstractNFFTs.resampling_correction_adjoint!(p::NFFTPlan, g::AbstractArray, f::AbstractArray) =
+  (correction_adjoint_stage!(check_stage(p, f, g, nothing), f, g); f)
+
+function correction_stage!(c::NFFTCore, g, f)
   fill!(g, 0)
   resampling_correction_core!(g, f, c.invphi, c.N, c.Ñ, c.nthreads)
 end
 
-AbstractNFFTs.oversampled_fft!(p::NFFTPlan, g::AbstractArray) = (check_stage(p, nothing, g, nothing); FFTW.fft!(g); g)
-AbstractNFFTs.oversampled_bfft!(p::NFFTPlan, g::AbstractArray) = (check_stage(p, nothing, g, nothing); FFTW.bfft!(g); g)
-
-function AbstractNFFTs.resampling!(p::NFFTPlan, g::AbstractArray, fHat::AbstractArray)
-  c = check_stage(p, nothing, g, fHat); h = halo(c.W)
+function resampling_stage!(c::NFFTCore, fHat, g)
+  h = halo(c.W)
   copyto!(interior(c.gp, h), g)
   fill_halo!(c.gp, h, c.nthreads)
-  resample!(vec(fHat), c.gp, c.kernel, c.binned, c.Ñ, c.bufs)
-  fHat
+  resample!(fHat, c.gp, c.kernel, c.binned, c.Ñ, c.bufs)
 end
 
-function AbstractNFFTs.resampling_adjoint!(p::NFFTPlan, fHat::AbstractArray, g::AbstractArray)
-  c = check_stage(p, nothing, g, fHat); h = halo(c.W)
+function resampling_adjoint_stage!(c::NFFTCore, g, fHat)
+  h = halo(c.W)
   threaded_fill!(c.gp, 0, c.nthreads)
-  resample_adjoint!(c.gp, c.kernel, c.binned, vec(fHat), c.Ñ, c.locks, c.bufs)
+  resample_adjoint!(c.gp, c.kernel, c.binned, fHat, c.Ñ, c.locks, c.bufs)
   fold_halo!(c.gp, h, c.nthreads)
   copyto!(g, interior(c.gp, h))
 end
 
-function AbstractNFFTs.resampling_correction_adjoint!(p::NFFTPlan, g::AbstractArray, f::AbstractArray)
-  c = check_stage(p, f, g, nothing)
+correction_adjoint_stage!(c::NFFTCore, f, g) =
   resampling_correction_adjoint_core!(f, g, c.invphi, c.N, c.Ñ, c.nthreads)
-end

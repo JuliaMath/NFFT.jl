@@ -18,7 +18,8 @@ The weights are real, positive and scaled such that ``A^{\\mathsf{H}} \\operator
 AbstractNFFTs (`oversampled_size`, `resampling!`, `resampling_adjoint!`).
 """
 function sdc(p::AbstractNFFTPlan{T,D,1}; iters::Int = 20) where {T<:Real,D}
-  weights = Vector{T}(undef, only(size_out(p)))
+  # in the storage of the plan (e.g. on the GPU), like its nodes
+  weights = similar(nodes(p), T, only(size_out(p)))
   return sdc!(weights, p; iters)
 end
 
