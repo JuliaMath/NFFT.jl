@@ -1,44 +1,75 @@
 ```@meta
-Author = "Tobias Knopp and contributors"
 CurrentModule = NFFT
 ```
 
 # API
 
-In the following, you find the documentation of some, and hopefully soon all, exported functions of the [NFFT.jl](https://github.com/JuliaMath/NFFT.jl) package family:
+## Plans and transforms
 
-[AbstractNFFTs.jl](https://github.com/JuliaMath/NFFT/AbstractNFFTs)
+```@docs
+plan_nfft
+plan_nnfft
+plan_nfct
+plan_nfst
+NFFTPlan
+NFFTBackend
+NFFT.parameters
+accuracy
+nodes
+nodes!
+size_in
+size_out
+mul!
+*
+nfft
+nfft_adjoint
+nfct
+nfct_transpose
+nfst
+nfst_transpose
+```
+
+## Windows and FFT
+
+```@docs
+AbstractWindow
+KaiserBessel
+ExpSemicircle
+CustomWindow
+AbstractFFTBackend
+FFTWBackend
+```
+
+## Stages
+
+```@docs
+oversampled_size
+resampling_correction!
+oversampled_fft!
+resampling!
+resampling_adjoint!
+oversampled_bfft!
+resampling_correction_adjoint!
+```
+
+## Abstract interface
+
+```@docs
+AbstractFTPlan
+AbstractComplexFTPlan
+AbstractRealFTPlan
+AbstractNFFTPlan
+AbstractNNFFTPlan
+AbstractNFCTPlan
+AbstractNFSTPlan
+AbstractNFFTs.set_active_backend!
+DEFAULT_RELTOL
+GenericOptions
+generic_options
+check_options
+```
+
+## Index
+
 ```@index
-Modules = [AbstractNFFTs]
 ```
-
-[NFFT.jl](https://github.com/JuliaMath/NFFT.jl)
-```@index
-Modules = [NFFT]
-```
-
-```@meta
-CurrentModule = NFFTTools
-```
-
-[NFFTTools.jl](https://github.com/JuliaMath/NFFT/AbstractNFFTs)
-```@index
-Modules = [NFFTTools]
-```
-
-```@meta
-CurrentModule = NFFT
-```
-
-```@autodocs
-Modules = [AbstractNFFTs, NFFT]
-```
-
-```@meta
-CurrentModule = NFFTTools
-```
-
-```@autodocs
-Modules = [NFFTTools]
-```
-

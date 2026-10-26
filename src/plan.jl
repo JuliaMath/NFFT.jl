@@ -174,6 +174,13 @@ function AbstractNFFTs.nodes!(p::NFFTPlan{T}, k::AbstractMatrix) where {T}
   p
 end
 
+"""
+    NFFT.parameters(p::NFFTPlan) -> (; window, W, σ)
+
+Window family, window width and oversampling factor the plan uses.
+"""
+parameters(p::NFFTPlan) = (window=p.kernel.window, W=p.kernel.W, σ=p.kernel.σ)
+
 function Base.show(io::IO, p::NFFTPlan{T}) where {T}
   e = p.kernel
   print(io, "NFFTPlan{$T} for an input of size $(p.N) along dims $(p.dims) at $(size(p.k, 2)) nodes: ",

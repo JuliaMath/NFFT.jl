@@ -1,19 +1,27 @@
-# Accuracy and Performance
+# Performance
 
-On this page, the accuracy and the performance of NFFT.jl are investigated. For comparison we use
-the C library NFFT3 and the C++ library FINUFFT. 
-The parameters for the benchmark are 
-* ``\bm{N}_\text{1D}=(512*512,), \bm{N}_\text{2D}=(512,512), \bm{N}_\text{3D}=(64,64,64)``
-* ``J= \vert \bm{N} \vert``
-* ``m=3, \dots, 8``
-* ``\sigma = 2``
-* `POLYNOMIAL` and `TENSOR` precomputation
-* 1 thread
-* random nodes
-All benchmarks are performed with `@belapsed` from [BenchmarkTools.jl](https://github.com/JuliaCI/BenchmarkTools.jl) which takes the minimum of several runs (120 s upper benchmark time). The benchmark is run on a computer with 2 AMD EPYC 7702 CPUs running at 2.0 GHz (256 cores in total) and a main memory of 1024 GB. The benchmark suite is described [here](https://github.com/JuliaMath/NFFT.jl/blob/master/benchmark/Readme.md).
+The figure compares the run time of NFFT.jl with FINUFFT, ducc and the previous version NFFT.jl
+0.14, plotted against the relative error each library actually reaches. Each point is one
+tolerance of a sweep from ``10^{-2}`` to ``10^{-14}``; lower and further right is better.
 
-The results for ``D=1,\dots,3`` are shown in the following graphic illustrating the accuracy (x-axis) versus the performance (y-axis) for various ``m``. 
+![Run time versus accuracy](assets/performance.svg)
 
-![Performance vs Accurracy 1D](./assets/performanceVsAccuracy.svg)
+Setup:
+- ``J = 2^{18}`` uniformly random nodes; ``\bm{N} = (2^{18})``, ``(512, 512)`` and
+  ``(64, 64, 64)``; double precision.
+- Apple M1 Max, 8 threads, Julia 1.13. FINUFFT and ducc built from their main branches with
+  native CPU flags. FFTW with `ESTIMATE` for all libraries that use FFTW.
+- Error: relative ``\ell^2`` error against the NDFT on 64 sampled outputs. Time: minimum over
+  repeated calls of a precomputed plan.
 
-The results show that NFFT.jl is one of the fastest NFFT libraries. One can chose between shorter precomputation time using `POLYNOMIAL` precomputation or faster transforms using `TENSOR` precomputation.
+How to read it:
+- **1D**: NFFT.jl is the fastest library at every accuracy, by a factor of about 1.3–2 for the
+  NFFT and up to 2 for the adjoint.
+- **2D**: NFFT.jl and ducc are close, both ahead of FINUFFT.
+- **3D**: NFFT.jl and ducc are on par, FINUFFT is slower at medium and high accuracy.
+- Compared with NFFT.jl 0.14 the new implementation is 2–6 times faster and reaches the
+  requested accuracy reliably.
+
+The libraries interpret their tolerance parameters differently, which is why the comparison is
+made at equal measured error rather than at equal tolerance. The benchmark code lives outside the
+package so that the libraries it compares against do not become dependencies.

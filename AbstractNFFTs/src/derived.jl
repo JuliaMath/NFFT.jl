@@ -25,6 +25,51 @@ $(planfunc)(::Missing, args...; kwargs...) = no_backend_error()
 end
 end
 
+"""
+    plan_nfft([backend,] k, N; reltol=1e-8, dims=:, eltype, storage, nthreads, kwargs...)
+
+Plan an NFFT for the nodes `k` (a d × J matrix, or a vector for d = 1, entries in [-1/2, 1/2))
+and an equidistant array of size `N` (an integer or a tuple; with `dims`, the size of the whole
+array including batch dimensions). Without `backend` the active backend is used.
+
+Generic options, accepted by every implementation:
+
+* `reltol`: requested relative error (ℓ² norm over random data)
+* `dims`: dimensions to transform (`:`, an integer or a contiguous range); the other dimensions
+  are batch dimensions and pass through unchanged
+* `eltype`: real element type of the data, default `float(eltype(k))`
+* `storage`: array type of data and workspace, default the array type of `k`
+* `nthreads`: number of CPU threads, default `Threads.nthreads()`
+
+Further keyword arguments are specific to the implementation; an implementation throws an
+`ArgumentError` for options it does not know.
+"""
+plan_nfft
+
+"""
+    plan_nfct([backend,] k, N; kwargs...)
+
+Plan a non-equidistant fast cosine transform (NFCT) for nodes `k` in [0, 1/2] and a real array of
+size `N`. Keyword arguments as for [`plan_nfft`](@ref).
+"""
+plan_nfct
+
+"""
+    plan_nfst([backend,] k, N; kwargs...)
+
+Plan a non-equidistant fast sine transform (NFST) for nodes `k` in [0, 1/2] and a real array of
+size `N`. Keyword arguments as for [`plan_nfft`](@ref).
+"""
+plan_nfst
+
+"""
+    plan_nnfft([backend,] k, y; kwargs...)
+
+Plan an NNFFT with non-equidistant nodes `k` in the frequency domain and `y` in the spatial
+domain. Keyword arguments as for [`plan_nfft`](@ref).
+"""
+plan_nnfft
+
 ## NNFFT constructor
 plan_nnfft(k::AbstractVecOrMat, y::AbstractVecOrMat; kwargs...) = plan_nnfft(active_backend(), k, y; kwargs...)
 plan_nnfft(b::AbstractNFFTBackend, k::AbstractVector, y::AbstractVector; kwargs...) =

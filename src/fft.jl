@@ -10,9 +10,9 @@ abstract type AbstractFFTBackend end
     FFTWBackend(; flags = FFTW.ESTIMATE)
 
 FFTW on the CPU. In D ≥ 2 NFFT.jl threads the per-dimension passes itself over single-threaded
-FFTW plans: FFTW's own threading with ESTIMATE produced plans up to 17× slower than MEASURE
-(notes of the refactoring), while single-threaded batched ESTIMATE plans are within 10–20 % of
-MEASURE. A transform with one dimension uses FFTW's own threading.
+FFTW plans: FFTW's own threading with ESTIMATE produces plans up to 17× slower than MEASURE, while
+single-threaded batched ESTIMATE plans are within 10–20 % of MEASURE. A transform with one
+dimension uses FFTW's own threading.
 """
 Base.@kwdef struct FFTWBackend <: AbstractFFTBackend
   flags::UInt32 = FFTW.ESTIMATE

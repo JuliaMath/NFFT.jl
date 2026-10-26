@@ -1,75 +1,85 @@
 # NFFT.jl
 
-*Julia package for the Non-equidistant Fast Fourier Transform*
+*Fast Fourier transforms at non-equidistant nodes, in pure Julia.*
 
-## Introduction
+NFFT.jl computes the non-equidistant fast Fourier transform (NFFT, also called NUFFT, or gridding in
+MRI): a discrete Fourier transform where the nodes in one domain do not lie on a grid. It is
+accurate to a tolerance you choose and runs in ``\mathcal{O}(|\bm{N}| \log |\bm{N}| + J)`` operations
+for ``J`` nodes and an array of size ``\bm{N}``.
 
-This package provides a Julia implementation of the Non-equidistant Fast Fourier Transform (NFFT).
-For a detailed introduction into the NFFT and its application please have a look at the [software paper](https://arxiv.org/pdf/2208.00049.pdf) on the `NFFT.jl`. Further resources are [nfft.org](http://www.nfft.org) and [finufft.readthedocs.io](https://finufft.readthedocs.io).
+```julia
+using NFFT
 
-The NFFT is a fast implementation of the Non-equidistant Discrete Fourier Transform (NDFT) that is
-basically a Discrete Fourier Transform (DFT) with non-equidistant sampling nodes in either Fourier or time/space domain.
-In contrast to the Fast Fourier Transform (FFT), the NFFT is an approximative algorithm whereas the accuracy can be controlled
-by two parameters: the window width parameter `m` and the oversampling factor `σ`.
+k = rand(2, 10_000) .- 0.5           # 10 000 nodes in [-1/2, 1/2)²
+f = randn(ComplexF64, 256, 256)      # equidistant data
 
-The `NFFT.jl` project serves two different purposes:
-* Provide a package `AbstractNFFTs.jl` that allows to use any NFFT Julia package such as [NFFT3.jl](https://github.com/NFFT/NFFT3.jl) or [FINUFFT.jl](https://github.com/ludvigak/FINUFFT.jl) using the same interface
-* Provide a high-performance, multi-threaded reference implementation in pure Julia. This is realized in the Julia package `NFFT.jl`.
-The term `NFFT.jl` thus may either mean the entire Github project consisting of several packages or the concrete reference implementation.
+p = plan_nfft(k, size(f))            # relative error 1e-8 by default
+fHat = p * f                         # NFFT: equidistant → nodes
+g = adjoint(p) * fHat                # adjoint NFFT: nodes → equidistant
+```
+
+## What NFFT.jl offers
+
+- **You ask for an accuracy, not for parameters.** `reltol` is all you need to set. The plan picks
+  the window function, its width and the oversampling factor that reach this error at the lowest
+  predicted cost, and `accuracy(p)` tells you what it expects to achieve.
+- **Fast.** Tiled resampling with piecewise-polynomial window evaluation, an FFT that skips the
+  zero padding, and multi-threading in every stage. See [Performance](@ref) for a comparison with
+  FINUFFT and ducc.
+- **Transforms along some dimensions of an array** (`dims`), with batch kernels that process many
+  transforms with the same nodes at once, as needed for multi-coil MRI or OCT.
+- **Single and double precision**, with node positions always computed in double precision.
+- **The three stages of the algorithm as an interface**: resampling correction, FFT and
+  resampling can be called one by one, for example to embed the NFFT into a Toeplitz approach or to
+  profile it.
+- **One interface for several implementations.** `AbstractNFFTs.jl` defines plans, options and
+  operations; NFFT.jl is one implementation, wrappers for FINUFFT and NFFT3 are others. Code written
+  against the interface runs with each of them.
 
 ## Installation
 
-Start julia and open the package mode by entering `]`. Then enter
 ```julia
-add NFFT
+using Pkg
+Pkg.add("NFFT")
 ```
-This will install the packages `NFFT.jl` and all its dependencies. Most importantly it installs the abstract interface package `AbstractNFFTs.jl`, which `NFFT.jl` implements.
 
-Additional NFFT related tools can be obtained by adding the package `NFFTTools.jl`. If you need support for `CUDA` or other GPU backends, you only need to install the respective GPU backend and a GPU compatible plan will be available via a package extension.
-
-In case you want to use an alternative NFFT implementation such as [NFFT3.jl](https://github.com/NFFT/NFFT3.jl) or [FINUFFT.jl](https://github.com/ludvigak/FINUFFT.jl) we provide wrapper types allowing to use them as `AbstractNFFTs` implementations. They can be used like this:
-
-```julia
-julia> using AbstractNFFTs
-julia> include(joinpath(dirname(pathof(AbstractNFFTs)), "..", "..", "Wrappers", "FINUFFT.jl"))
-julia> include(joinpath(dirname(pathof(AbstractNFFTs)), "..", "..", "Wrappers", "NFFT3.jl"))
-```
-This requires that you first `add` the package you want to use.
-
-A related package is [NonuniformFFTs.jl](https://github.com/jipolanco/NonuniformFFTs.jl) which provides a pure Julia implementation using KernelAbstractions.jl. It also features an implementation of the `AbstractNFFTs.jl` interface.
+This also installs `AbstractNFFTs.jl`, the interface package. Additional tools (sampling density
+compensation, Toeplitz kernels) are in `NFFTTools.jl`.
 
 ## Guide
 
-* The documentation starts with the [Mathematical Background](@ref) that properly defines the NDFT, the NFFT and its directional variants. You might want to skip this part if you are familiar with the notation and concepts of the NFFT. 
-* Then, an [Overview](@ref) about the usage of the NFFT functions is given in a tutorial style manner.  
-* Then, an overview about [Accuracy and Performance](@ref) is given.
-* The section about [Tools](@ref) introduced some high-level functions that build upon the NFFT. For instance NFFT inversion is discussed in that section.
-* In the section about the [Abstract Interface for NFFTs](@ref) we outline how the package is divided into an interface package and implementation packages. This part is useful if you plan to use different NFFT implementations, e.g. one for the CPU and another for the GPU and would like to switch.
-* Finally, the documentation contains an [API](@ref) index.
+- [Mathematical Background](@ref) defines the NDFT, the NFFT and its three stages.
+- [Getting Started](@ref) shows plans, transforms, precision, threads and changing nodes.
+- [Transforms along Dimensions](@ref) covers `dims` and batched transforms.
+- [Accuracy and Parameters](@ref) explains how `reltol` becomes window, width and oversampling, and
+  how to set these yourself.
+- [Stages of the NFFT](@ref) shows the stage interface.
+- [Performance](@ref) compares NFFT.jl with other libraries.
+- [Abstract Interface](@ref) describes `AbstractNFFTs.jl` and how to write an implementation.
+- [Migrating from NFFT.jl 0.x](@ref) lists what changed in version 1.0.
+- [API](@ref) lists all exported functions and types.
 
-## License / Terms of Usage
+## Citing
 
-The source code of this project is licensed under the MIT license. This implies that
-you are free to use, share, and adapt it. However, please give appropriate credit
-by citing the project. You can do so by citing the publication
+The source code is licensed under the MIT license. If you use NFFT.jl in your work, please cite
 
-T. Knopp, M. Boberg and M. Grosser, NFFT.jl: Generic and Fast Julia Implementation of the Nonequidistant
- Fast Fourier Transform, 2022 [*arXiv:2208.00049*](http://arxiv.org/abs/2208.00049)
+> T. Knopp, M. Boberg and M. Grosser, NFFT.jl: Generic and Fast Julia Implementation of the
+> Nonequidistant Fast Fourier Transform, SIAM Journal on Scientific Computing 45(3), C179–C205, 2023
+> ([arXiv:2208.00049](https://arxiv.org/abs/2208.00049)).
 
-A BibTeX file `NFFT.bib` can be found in the root folder of the Github repository.
+A BibTeX entry is in `NFFT.bib` in the root of the repository.
 
 ## Contact
 
-If you have problems using the software, find bugs or have ideas for improvements please use
-the [issue tracker](https://github.com/JuliaMath/NFFT.jl/issues). For general questions please use
-the [discussions](https://github.com/JuliaMath/NFFT.jl/discussions) section on Github.
+Bugs and ideas go to the [issue tracker](https://github.com/JuliaMath/NFFT.jl/issues), questions to
+the [discussions](https://github.com/JuliaMath/NFFT.jl/discussions).
 
 ## Contributors
 
-* [Tobias Knopp](https://www.tuhh.de/ibi/people/tobias-knopp-head-of-institute.html)
-* [Robert Dahl Jacobsen](https://github.com/robertdj)
-* [Mirco Grosser](https://github.com/migrosser)
-* [Jakob Assländer](https://med.nyu.edu/faculty/jakob-asslaender)
-* [Mosè Giordano](https://github.com/giordano)
+- [Tobias Knopp](https://www.imt.uni-luebeck.de)
+- [Robert Dahl Jacobsen](https://github.com/robertdj)
+- [Mirco Grosser](https://github.com/migrosser)
+- [Jakob Assländer](https://med.nyu.edu/faculty/jakob-asslaender)
+- [Mosè Giordano](https://github.com/giordano)
 
-A complete list of contributors can be found on the [Github page](https://github.com/JuliaMath/NFFT.jl/graphs/contributors).
+The complete list is on [GitHub](https://github.com/JuliaMath/NFFT.jl/graphs/contributors).

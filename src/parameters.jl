@@ -63,11 +63,9 @@ function kernel_cost(e::KernelEntry, N::NTuple{D,Int}, J) where {D}
   a * J * e.W^D + a1 * J * e.W + b * M * log2(M) + c
 end
 
-"""
-Choose the kernel for requested `reltol` from the table, restricted by the user's `window`
-(`:auto` or a family), `W` and `σ`. Returns the table entry (with σ replaced by the user's σ when
-given) and the predicted error.
-"""
+# Choose the kernel for requested `reltol` from the table, restricted by the user's `window`
+# (`:auto` or a family), `W` and `σ`. Returns the table entry (with σ replaced by the user's σ when
+# given) and the predicted error.
 function choose_kernel(reltol, N::NTuple{D,Int}, J, T; window=:auto, W=nothing, σ=nothing) where {D}
   cands = filter(KERNEL_TABLE) do e
     (window === :auto || e.window == window) && (W === nothing || e.W == W)
