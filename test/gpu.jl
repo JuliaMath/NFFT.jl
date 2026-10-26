@@ -1,67 +1,51 @@
-#=
-# uncomment this block for stand-alone testing
-using JLArrays: JLArray
-arrayTypes = [JLArray]
-=#
+# GPU tests. Included by test/gpu/<backend>.jl, which loads the GPU package and defines
+# `arrayTypes` (GPU array types) and `floatTypes` (precisions the device supports).
 
-import FFTW # ESTIMATE
-using LinearAlgebra: norm
-using NFFT: plan_nfft, NDFTPlan
-import NFFT # LINEAR, FULL, TENSOR, POLYNOMIAL
-using NFFTTools: sdc
-using Test: @test, @testset, @test_throws
+using NFFT, NFFTTools, Test, Random, LinearAlgebra
+using NFFT: NDFTPlan
 
-m = 5
-σ = 2.0
+relerr(a, b) = norm(a - b) / norm(b)
 
-@testset "GPU NFFT Plans" begin
-  for arrayType in arrayTypes
+@testset "GPU $arrayType" for arrayType in arrayTypes
+  @testset "$T, N = $N" for T in floatTypes, N in [(256,), (32, 32), (12, 12, 12)]
+    Random.seed!(1)
+    D = length(N)
+    J = prod(N)
+    k = rand(T, D, J) .- T(1 // 2)
+    reltol = T == Float32 ? 1e-5 : 1e-9
 
-    @testset "GPU_NFFT in multiple dimensions" begin
-      for (u, N) in enumerate([(256,), (32, 32), (12, 12, 12)])
-        eps = [1e-7, 1e-3, 1e-6, 1e-4]
-        for (l, window) in enumerate([:kaiser_bessel, :gauss, :kaiser_bessel_rev, :spline])
-          D = length(N)
-          @info "Testing $arrayType in $D dimensions using $window window"
+    p = plan_nfft(k, N; reltol, storage=arrayType)
+    pcpu = plan_nfft(k, N; reltol)
+    pndft = NDFTPlan(k, N)
 
-          J = prod(N)
-          k = rand(Float64, D, J) .- 0.5
-          p = plan_nfft(Array, k, N; m, σ, window, precompute=NFFT.FULL,
-            fftflags=FFTW.ESTIMATE)
-          p_d = plan_nfft(arrayType, k, N; m, σ, window, precompute=NFFT.FULL)
-          pNDFT = NDFTPlan(k, N)
+    f = randn(Complex{T}, N)
+    fHat = randn(Complex{T}, J)
 
-          fHat = rand(Float64, J) + rand(Float64, J) * im
-          f = adjoint(pNDFT) * fHat
-          fHat_d = arrayType(fHat)
-          fApprox_d = adjoint(p_d) * fHat_d
-          fApprox = Array(fApprox_d)
-          e = norm(f[:] - fApprox[:]) / norm(f[:])
-          @debug "error adjoint nfft " e
-          @test e < eps[l]
+    # against the exact transform at the accuracy the plan promises, and against the CPU plan
+    # with the same parameters at the rounding level
+    y = Array(p * arrayType(f))
+    @test y isa Vector{Complex{T}}
+    @test relerr(y, pndft * f) < 10 * accuracy(p)
+    @test relerr(y, pcpu * f) < 100 * eps(T)
 
-          gHat = pNDFT * f
-          gHatApprox = Array(p_d * arrayType(f))
-          e = norm(gHat[:] - gHatApprox[:]) / norm(gHat[:])
-          @debug "error nfft " e
-          @test e < eps[l]
-        end
-      end
-    end
+    x = Array(adjoint(p) * arrayType(fHat))
+    @test x isa Array{Complex{T},D}
+    @test relerr(x, adjoint(pndft) * fHat) < 10 * accuracy(p)
+    @test relerr(x, adjoint(pcpu) * fHat) < 100 * eps(T)
 
-    @testset "GPU_NFFT Sampling Density" begin
+    # storage defaults to the array type of the nodes
+    q = plan_nfft(arrayType(k), N; reltol)
+    @test relerr(Array(q * arrayType(f)), y) < 100 * eps(T)
+  end
 
-      N = (9, 8) # 9×8 grid of equally spaced sampling points
-      # create a 10x10 grid of unit spaced sampling points
-      T = Float32
-      fun = N -> @. T((0:(N-1)) / N - 0.5) # 1D grid
-      nodes = hcat([[x; y] for x in fun(N[1]), y in fun(N[2])]...)
-
-      # approximate the density weights
-      p = plan_nfft(arrayType, nodes, N; m=5, σ=2.0)
-      weights = sdc(p, iters=5)
-      weights = Vector(weights)
-      @test all(≈(1/prod(N)), weights)
-    end
+  @testset "sdc" begin
+    # equispaced nodes: all weights equal 1/|N|
+    N = (9, 8)
+    T = first(floatTypes)
+    grid(n) = T.((0:n-1) / n .- 1 // 2)
+    nodes = reduce(hcat, [[x; y] for x in grid(N[1]), y in grid(N[2])])
+    p = plan_nfft(nodes, N; reltol = T == Float32 ? 1e-5 : 1e-8, storage=arrayType)
+    weights = Array(sdc(p; iters=10))
+    @test weights ≈ fill(T(1 / prod(N)), length(weights)) rtol = 1e-3
   end
 end

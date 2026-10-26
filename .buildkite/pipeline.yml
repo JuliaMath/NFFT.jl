@@ -1,0 +1,24 @@
+steps:
+  - label: "Nvidia GPUs -- NFFT.jl"
+    plugins:
+      - JuliaCI/julia#v1:
+          version: "1.10"
+    agents:
+      queue: "juliagpu"
+      cuda: "*"
+    command: |
+      julia --color=yes test/gpu/run.jl cuda
+    timeout_in_minutes: 30
+
+  - label: "AMD GPUs -- NFFT.jl"
+    plugins:
+      - JuliaCI/julia#v1:
+          version: "1.10"
+    agents:
+      queue: "juliagpu"
+      rocm: "*"
+      rocmgpu: "*"
+    command: |
+      julia --color=yes test/gpu/run.jl rocm
+    timeout_in_minutes: 30
+    soft_fail: true

@@ -6,8 +6,8 @@ using Zygote
 using NFFTTools
 
 # Contract tests of the AbstractNFFTs interface (implementation-independent), then NFFT.jl's own
-# behaviour, then NFFTTools. Not run until migrated to the 1.0 interface: gpu.jl (GPU path),
-# wrappers.jl (wrappers in Wrappers/).
+# behaviour, then NFFTTools. The GPU tests run separately (test/gpu/run.jl, on Buildkite).
+# Not run until migrated to the 1.0 interface: wrappers.jl (wrappers in Wrappers/).
 include("contract.jl")
 
 nfft_plan(k, N; kwargs...) = plan_nfft(NFFT.backend(), k, N; kwargs...)
