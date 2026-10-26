@@ -87,6 +87,18 @@ relerr(a, b) = norm(a - b) / norm(b)
     @test relerr(Array(back(p) * arrayType(y)), back(pcpu) * y) < 100 * eps(T)
   end
 
+  @testset "nnfft $T, D = $D" for T in floatTypes, D in 1:3
+    Random.seed!(4)
+    y = (rand(T, D, 200) .- T(0.3)) .* 6 .+ 1
+    k = (rand(T, D, 300) .- T(0.6)) .* 12
+    reltol = T == Float32 ? 1e-4 : 1e-9
+    p = plan_nnfft(k, y; reltol, storage=arrayType)
+    pcpu = plan_nnfft(k, y; reltol)
+    f = randn(Complex{T}, 200); v = randn(Complex{T}, 300)
+    @test relerr(Array(p * arrayType(f)), pcpu * f) < 100 * eps(T) * pcpu.outer.amp
+    @test relerr(Array(adjoint(p) * arrayType(v)), adjoint(pcpu) * v) < 100 * eps(T) * pcpu.outer.amp
+  end
+
   @testset "sdc" begin
     # equispaced nodes: all weights equal 1/|N|
     N = (9, 8)

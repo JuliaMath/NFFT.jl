@@ -112,7 +112,7 @@ function NFFTPlan(k::AbstractMatrix, N::NTuple{D,Int}, g::GenericOptions{T}; win
   end
   NOut = (N[1:first(dims)-1]..., J, N[last(dims)+1:end]...)
   strategy, core, fbuf, gbuf = make_engine(k, N, dims, kernel, T, fft, tilesize, g.nthreads, g.storage)
-  NFFTPlan{T,D,length(NOut)}(N, NOut, dims, to_storage(g.storage, k), kernel, acc, g, fft, tilesize,
+  NFFTPlan{T,D,length(NOut)}(N, NOut, dims, to_storage(g.storage, k, T), kernel, acc, g, fft, tilesize,
                              strategy, core, fbuf, gbuf)
 end
 
@@ -148,8 +148,10 @@ end
 device_core(storage, args...) = throw(ArgumentError(
   "storage = $storage is not supported; for GPU arrays load the GPU package (CUDA, AMDGPU, Metal, …)"))
 
-# The nodes as the plan returns them (`nodes(p)`): in the storage of the plan.
+# The nodes as the plan returns them (`nodes(p)`): in the storage of the plan, on a device in the
+# precision T of the plan (devices may lack Float64).
 to_storage(::Type{S}, k) where {S} = k isa S ? k : S(Array(k))
+to_storage(::Type{S}, k, ::Type{T}) where {S,T} = S <: Array || k isa S ? k : S(Array{T}(k))
 
 # Nodes must be finite and in [−1/2, 1/2] (1/2 is the same node as −1/2); anything else would be
 # binned outside the grid.
@@ -199,7 +201,7 @@ function AbstractNFFTs.nodes!(p::NFFTPlan{T}, k::AbstractMatrix) where {T}
   J = size(k, 2)
   p.strategy, p.core, p.fbuf, p.gbuf = make_engine(k, p.N, p.dims, p.kernel, T, p.fft, p.tilesize,
                                                    p.options.nthreads, p.options.storage)
-  p.k = to_storage(p.options.storage, k)
+  p.k = to_storage(p.options.storage, k, T)
   p.NOut = (p.N[1:first(p.dims)-1]..., J, p.N[last(p.dims)+1:end]...)
   p
 end

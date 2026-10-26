@@ -7,7 +7,7 @@ using Reexport
 
 @reexport using AbstractNFFTs
 
-export NFFTBackend, NFFTPlan, NFCTPlan, NFSTPlan, RNFFTPlan, NDFTPlan, NDCTPlan, NDSTPlan, NNDFTPlan
+export NFFTBackend, NFFTPlan, NFCTPlan, NFSTPlan, RNFFTPlan, NNFFTPlan, NDFTPlan, NDCTPlan, NDSTPlan, NNDFTPlan
 export AbstractWindow, KaiserBessel, ExpSemicircle, CustomWindow
 export AbstractFFTBackend, FFTWBackend
 
@@ -34,6 +34,7 @@ include("batch.jl")
 include("plan.jl")
 include("real.jl")
 include("rnfft.jl")
+include("nnfft.jl")
 include("direct.jl")
 
 function __init__()

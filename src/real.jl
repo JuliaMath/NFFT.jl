@@ -347,7 +347,7 @@ function RealPlan(P::Type, k::AbstractMatrix, N::NTuple{D,Int}, g::GenericOption
   end
   NOut = (N[1:first(dims)-1]..., J, N[last(dims)+1:end]...)
   core = real_core(kind(P), k, N[dims], kernel, T, fft, tilesize, g.nthreads, g.storage, batch_sizes(N, dims)...)
-  P{T,D,length(NOut)}(N, NOut, dims, to_storage(g.storage, k), kernel, acc, g, fft, tilesize, core,
+  P{T,D,length(NOut)}(N, NOut, dims, to_storage(g.storage, k, T), kernel, acc, g, fft, tilesize, core,
                       slice_cores(core, N[dims], J, prod(batch_sizes(N, dims))))
 end
 
@@ -383,7 +383,7 @@ function AbstractNFFTs.nodes!(p::RealPlan{T}, k::AbstractMatrix) where {T}
   p.core = real_core(kind(p), k, p.N[p.dims], p.kernel, T, p.fft, p.tilesize, p.options.nthreads,
                      p.options.storage, batch_sizes(p.N, p.dims)...)
   p.slicecores = slice_cores(p.core, p.N[p.dims], size(k, 2), prod(batch_sizes(p.N, p.dims)))
-  p.k = to_storage(p.options.storage, k)
+  p.k = to_storage(p.options.storage, k, T)
   p.NOut = (p.N[1:first(p.dims)-1]..., size(k, 2), p.N[last(p.dims)+1:end]...)
   p
 end
