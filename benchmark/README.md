@@ -6,11 +6,12 @@ its own git revisions. The results in `results/` are the data of the
 
 ```
 julia benchmark/bench.jl list                       # suites and libraries
+julia benchmark/bench.jl run fast                   # NFFT.jl alone, ≈ 15 s
 julia benchmark/bench.jl run quick                  # NFFT vs FINUFFT vs ducc, ≈ 1 min
 julia benchmark/bench.jl run quick --libs NFFT --dims 2 --tols 1e-8
-julia benchmark/bench.jl ab HEAD~1                  # working tree against a revision, ≈ 1.5 min
+julia benchmark/bench.jl ab HEAD~1                  # working tree against a revision (suite fast), ≈ 1 min
 julia benchmark/bench.jl compare out/a.csv out/b.csv
-julia benchmark/bench.jl run all --save             # all suites of the documentation, ≈ 30 min
+julia benchmark/bench.jl run all --save             # all suites of the documentation, ≈ 15 min
 julia benchmark/bench.jl report                     # figures and explorer data for the docs
 ```
 

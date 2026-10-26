@@ -73,7 +73,7 @@ function main()
   for task in CFG["task"]
     r = Dict{String,Any}(task)
     r["threads"] = Threads.nthreads()
-    merge!(r, Dict("lib_" * k => v for (k, v) in info))
+    merge!(r, Dict("lib_" * k => replace(v, homedir() => "~") for (k, v) in info))
     reason = supports(task)
     if reason !== nothing
       r["skipped"] = reason
