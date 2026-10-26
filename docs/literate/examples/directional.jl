@@ -1,13 +1,14 @@
 # # Transforms along Dimensions
 #
-# Many applications transform only some dimensions of an array and keep the others: the coils of
-# a multi-coil MRI acquisition, the lateral position in OCT, time frames or channels. With `dims`
-# the plan transforms along a contiguous range of dimensions; all other dimensions are batch
-# dimensions and pass through unchanged.
+# This guide shows how to transform some dimensions of an array and keep the others, for example
+# the coils of a multi-coil MRI acquisition, the A-scans of an OCT B-scan, time frames or channels.
+# With `dims` a plan transforms along a contiguous range of dimensions; all other dimensions are
+# batch dimensions and pass through unchanged. How the plan processes the batches is explained in
+# [How NFFT.jl Works](@ref "Batch strategies").
 #
-# ## One dimension of a matrix
+# ## Transform one dimension of a matrix
 #
-# A 1D NFFT along the first dimension of a ``16 × 20`` matrix, with 11 nodes:
+# A 1D NFFT along the first dimension of a ``16 × 20`` matrix, at 11 nodes:
 
 using NFFT, LinearAlgebra, Random
 Random.seed!(1)
@@ -22,15 +23,15 @@ size(p1 * f)
 p2 = plan_nfft(y, size(f); dims=2)
 size(p2 * f)
 
-# The result equals one NFFT per column (or row):
+# The result is one NFFT per column (or row):
 
 q = plan_nfft(y, 16)
 p1 * f ≈ reduce(hcat, [q * f[:, c] for c in 1:20])
 
-# ## Several dimensions: multi-coil MRI
+# ## Transform all coils of an MRI acquisition
 #
-# Images of ``L`` receive coils are stored as an ``N_1 × N_2 × L`` array; each coil is sampled at
-# the same 2D trajectory. A plan with `dims = 1:2` transforms all coils at once and returns a
+# Images of ``L`` receive coils are stored as an ``N_1 × N_2 × L`` array, and every coil is sampled
+# at the same 2D trajectory. A plan with `dims = 1:2` transforms all coils in one call and returns a
 # ``J × L`` array:
 
 L = 8
@@ -45,11 +46,8 @@ size(data)
 
 size(adjoint(p) * data)
 
-# ## Why not a loop?
-#
-# The plan processes the slices together. With few slices (here 8 coils) it evaluates the window
-# once per node and applies it to all slices with SIMD instructions; batch dimensions behind
-# `dims` are first transposed into this layout. Compared with a loop over single plans:
+# One plan for all coils is faster than a loop over the coils with a plan for one image, because
+# the window weights of a node are computed once for all coils:
 
 single = plan_nfft(k, N)
 out = similar(data)
@@ -59,16 +57,12 @@ end
 loop!(out, single, coils); mul!(data, p, coils)        # compile
 t_loop = minimum(@elapsed(loop!(out, single, coils)) for _ in 1:5)
 t_batch = minimum(@elapsed(mul!(data, p, coils)) for _ in 1:5)
-(loop_ms=1e3t_loop, batch_ms=1e3t_batch, speedup=t_loop / t_batch)
+(loop_ms=1e3t_loop, batch_ms=1e3t_batch, agree=out ≈ data)
 
-# and the results agree:
-
-out ≈ data
-
-# With many slices (at least four per thread), or with at least one small slice per thread, each
-# thread transforms whole slices on its own single-threaded copy of the plan, which shares nodes,
-# window and correction factors. Small transforms cannot use many threads, so this is much faster
-# for, e.g., many short 1D transforms:
+# ## Transform many short signals
+#
+# For many small transforms, such as the 512 A-scans of an OCT B-scan, the plan runs whole slices
+# in parallel, one per thread. Again a single plan with `dims` does it:
 
 k1 = rand(1, 2048) .- 0.5
 pm = plan_nfft(k1, (2048, 512); dims=1)
@@ -79,7 +73,6 @@ loop1!(y, p, f) = for c in axes(f, 2)
 end
 loop1!(y1, single1, f1)
 (loop_ms=1e3minimum(@elapsed(loop1!(y1, single1, f1)) for _ in 1:5),
- slices_ms=1e3minimum(@elapsed(mul!(y1, pm, f1)) for _ in 1:5))
+ dims_ms=1e3minimum(@elapsed(mul!(y1, pm, f1)) for _ in 1:5))
 
-# Batch kernels are used for 1D and 2D transforms with few slices; 3D transforms with few slices
-# and batch dimensions on both sides of `dims` loop over the slices.
+# For real-valued interferograms, as in OCT, see [Real Data](@ref).

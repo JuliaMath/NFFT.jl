@@ -102,6 +102,24 @@ NFFT.jl computes grid positions and phases in double precision also for single-p
 the large coordinates of the type 3 this matters: NFFT.jl reaches ``10^{-7}`` in 1D and 2D, where
 FINUFFT stays at ``10^{-2}`` (1D) and ``5·10^{-5}`` (2D). In 3D FINUFFT is faster at equal error.
 
+## On GPUs
+
+Apple M1 Max (Metal, single precision, ``2^{18}`` nodes, tolerance ``10^{-4}``) against the CPU
+with 8 threads, ms (direct / adjoint; including the allocation of the output):
+
+| | CPU | GPU |
+|:--|--:|--:|
+| NFFT, 1D ``2^{18}`` | 1.6 / 1.1 | 1.1 / 2.7 |
+| NFFT, 2D ``512^2`` | 2.4 / 1.9 | 2.0 / 5.9 |
+| NFFT, 3D ``64^3`` | 3.5 / 4.9 | 1.9 / 21.5 |
+| RNFFT, 3D | 3.2 / 3.1 | 3.0 / 14.7 |
+| NFFT, OCT ``2048 \times 512`` | 2.5 / 2.1 | 1.7 / 6.3 |
+
+The direct transforms are as fast as or faster than on the CPU. The adjoint transforms are slower:
+Apple GPUs have slow floating point atomics and 32 KB of local memory per workgroup, which limits
+the tiles of the adjoint resampling (see [How NFFT.jl Works](@ref "GPUs")). Measurements on Nvidia and
+AMD GPUs are still missing.
+
 ## NFFT.jl 1.0 against 0.14
 
 ![Speedup over NFFT.jl 0.14](assets/benchmarks/history.svg)

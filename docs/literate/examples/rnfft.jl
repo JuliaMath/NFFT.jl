@@ -1,20 +1,17 @@
 # # Real Data
 #
-# When the values at the nodes are real, the coefficients are Hermitian, ``f_{-\bm{n}} =
-# \overline{f_{\bm{n}}}``, and half of them suffice. `plan_rnfft` is the NFFT counterpart of
-# FFTW's `brfft`/`rfft`: for an array of logical size ``\bm{N}`` its input is the half
-# ``\bm{h}`` with ``n_1 = 0, \dots, \lfloor N_1/2 \rfloor`` (the other dimensions indexed as in
-# `plan_nfft`), and
-# ```math
-# \hat{f}_j = \operatorname{Re} \sum_{\bm{n}} h_{\bm{n}} \, \mathrm{e}^{-2\pi\mathrm{i}\,\bm{n}\cdot\bm{k}_j},
-# \qquad
-# h_{\bm{n}} = \sum_{j=1}^J y_j \, \mathrm{e}^{2\pi\mathrm{i}\,\bm{n}\cdot\bm{k}_j} \quad \text{(adjoint)}.
-# ```
-# The two are adjoint with respect to the real inner product, so they can be used in iterative
-# solvers. The grid of the algorithm is real, which saves half of the FFT and of the adjoint
-# resampling.
+# This guide shows how to transform real values at the nodes with `plan_rnfft`, the NFFT
+# counterpart of FFTW's `rfft`/`brfft`. Real values at the nodes mean Hermitian coefficients, and
+# the plan works with the half ``n_1 = 0, \dots, \lfloor N_1/2 \rfloor`` of them (definition in
+# [Mathematical Background](@ref "Other transforms"), implementation in
+# [How NFFT.jl Works](@ref "Real-valued transforms")).
 #
-# ## Optical coherence tomography
+# For an array of logical size ``\bm{N}`` the input of the plan has size
+# ``(\lfloor N_1/2 \rfloor + 1, N_2, \dots)``; the other dimensions are indexed as in `plan_nfft`.
+# The direct transform returns real values, the adjoint takes real values. The two are adjoint
+# with respect to the real inner product, so they can be used in iterative solvers.
+#
+# ## Reconstruct OCT depth profiles
 #
 # In spectral-domain OCT, each A-scan is a real interferogram sampled at wavenumbers that are not
 # equidistant; the depth profile is its Fourier transform. With `dims = 1` one plan reconstructs
@@ -50,12 +47,12 @@ hm = heatmap!(ax, 1:L, 0:Nz, dB'; colormap=:grays, colorrange=(-40, 0))
 Colorbar(fig[1, 2], hm; label="dB")
 fig
 
-# The plan runs the 256 A-scans in parallel (one single-threaded transform per thread):
+# The plan runs the 256 A-scans in parallel:
 
 t = minimum(@elapsed(mul!(h, adjoint(p), w .* y)) for _ in 1:5)
 (ms=1e3t, threads=Threads.nthreads())
 
-# ## Accuracy
+# ## Check the result
 #
 # Against the direct evaluation of the definition:
 

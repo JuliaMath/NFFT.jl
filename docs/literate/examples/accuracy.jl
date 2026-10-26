@@ -87,48 +87,5 @@ fig
 # faster overall depends on ``D`` and on the number of nodes. This is the trade-off the automatic
 # choice makes.
 
-# ## Setting the parameters yourself
-#
-# `W` and `σ` restrict the search as well; with both given, only the window shape comes from the
-# table. ``W`` may be odd. In the notation of the NFFT.jl paper the window has the half width
-# ``m``, so `W = 2m`.
-
-p = plan_nfft(k, N; W=7, σ=1.5)
-NFFT.parameters(p), relerr(p)
-
-# Any other window can be used through [`CustomWindow`](@ref). The function receives the offset
-# ``z`` in grid points and the width ``W``; it must be symmetric and vanish for ``|z| \ge W/2``.
-# Without a table, `W` and `σ` must be given and `accuracy(p)` is unknown (`NaN`):
-
-gauss = CustomWindow((z, W) -> abs(z) < W / 2 ? exp(-(2z / W)^2 * 9) : 0.0)
-pg = plan_nfft(k, N; window=gauss, W=8, σ=2.0)
-relerr(pg), accuracy(pg)
-
-# ## FFT
-#
-# The FFT on the oversampled grid uses FFTW. `fft = FFTWBackend(flags=FFTW.MEASURE)` lets FFTW
-# measure its plans, which takes longer when creating the NFFT plan:
-#
-# ```julia
-# using FFTW
-# p = plan_nfft(k, N; fft=FFTWBackend(flags=FFTW.MEASURE))
-# ```
-#
-# NFFT.jl computes only the parts of the oversampled FFT that are needed: the input is zero
-# outside the ``\bm{N}`` modes, and only those modes are kept in the adjoint.
-#
-# ## All options
-#
-# | keyword | meaning |
-# |:--|:--|
-# | `reltol` | requested relative error, default `1e-8` |
-# | `dims` | dimensions to transform, see [Transforms along Dimensions](@ref) |
-# | `eltype` | `Float32` or `Float64`, default from the nodes |
-# | `nthreads` | number of threads, default `Threads.nthreads()` |
-# | `window` | `:auto`, `KaiserBessel()`, `ExpSemicircle()`, `CustomWindow(φ)` |
-# | `W`, `σ` | window width and oversampling factor |
-# | `fft` | FFT backend, default `FFTWBackend()` |
-# | `tilesize` | edge length of the tiles the nodes are sorted into (expert option) |
-#
-# The first four are part of the [Abstract Interface](@ref) and mean the same for every
-# implementation; the others are specific to NFFT.jl. An unknown option is an error.
+# To set window, width or oversampling yourself, see [Choosing Parameters](@ref); all plan options
+# are listed in the [API](@ref "Options").

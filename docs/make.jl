@@ -33,12 +33,14 @@ makedocs(;
       "Non-equidistant in Both Domains" => "generated/examples/nnfft.md",
       "GPU" => "gpu.md",
       "Density Compensation and Toeplitz" => "generated/examples/tools.md",
+      "Choosing Parameters" => "generated/examples/parameters.md",
       "Stages of the NFFT" => "generated/examples/stages.md",
       "Migrating from NFFT.jl 0.x" => "migration.md",
     ],
     "Explanation" => [
       "Mathematical Background" => "background.md",
       "Accuracy and Parameters" => "generated/examples/accuracy.md",
+      "How NFFT.jl Works" => "internals.md",
       "Performance" => "performance.md",
     ],
     "Reference" => [

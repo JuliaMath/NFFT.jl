@@ -1,8 +1,8 @@
 # # Stages of the NFFT
 #
-# The NFFT consists of three stages, resampling correction, FFT and resampling (see
-# [Mathematical Background](@ref)). The stage interface exposes them one by one on the
-# oversampled array of size `oversampled_size(p)`. This is useful for methods that operate on the
+# This guide shows how to call the three stages of the NFFT one by one: resampling correction, FFT
+# and resampling (see [Mathematical Background](@ref)). The stage interface works on the
+# oversampled array of size `oversampled_size(p)`. It is useful for methods that operate on the
 # oversampled grid, such as Toeplitz embeddings, for teaching, and for profiling.
 
 using NFFT, LinearAlgebra, Random, CairoMakie
@@ -14,7 +14,7 @@ k = rand(2, 100_000) .- 0.5
 p = plan_nfft(k, N)
 Ñ = oversampled_size(p)
 
-# ## Direct NFFT
+# ## Run the direct NFFT stage by stage
 
 f = randn(ComplexF64, N)
 g = zeros(ComplexF64, Ñ)
@@ -25,7 +25,7 @@ oversampled_fft!(p, g)            # F
 resampling!(p, g, fHat)           # B: evaluate at the nodes
 fHat ≈ p * f
 
-# ## Adjoint NFFT
+# ## Run the adjoint stage by stage
 #
 # The adjoint runs the adjoint stages in reverse order:
 
@@ -35,7 +35,7 @@ oversampled_bfft!(p, g)                   # Fᴴ
 resampling_correction_adjoint!(p, g, back) # Dᴴ: crop, divide by φ̂
 back ≈ adjoint(p) * fHat
 
-# ## Where the time goes
+# ## Find out where the time goes
 #
 # Timing the stages shows which part dominates. The FFT stages of this interface transform the
 # full oversampled array, while `p * f` skips the zero padding, so the sum is a bit larger than a

@@ -4,6 +4,27 @@ CurrentModule = NFFT
 
 # API
 
+## Options
+
+Keyword arguments of `plan_nfft`, `plan_rnfft`, `plan_nfct` and `plan_nfst`; `plan_nnfft` takes
+them without `dims` and `tilesize`, and its `window`, `W` and `σ` apply to its inner NFFT:
+
+| keyword | meaning |
+|:--|:--|
+| `reltol` | requested relative error, default `1e-8` |
+| `dims` | dimensions to transform, see [Transforms along Dimensions](@ref) |
+| `eltype` | `Float32` or `Float64`, default from the nodes |
+| `storage` | array type of data and workspace, default from the nodes; see [GPU](@ref) |
+| `nthreads` | number of threads, default `Threads.nthreads()` |
+| `window` | `:auto`, `KaiserBessel()`, `ExpSemicircle()`, `CustomWindow(φ)` |
+| `W`, `σ` | window width and oversampling factor |
+| `fft` | FFT backend, default `FFTWBackend()` |
+| `tilesize` | edge length of the tiles the nodes are sorted into (expert option) |
+
+The first five are part of the [Abstract Interface](@ref) and mean the same for every
+implementation; the others are specific to NFFT.jl. An unknown option is an error. How to use
+`window`, `W`, `σ` and `fft` is shown in [Choosing Parameters](@ref).
+
 ## Plans and transforms
 
 ```@docs

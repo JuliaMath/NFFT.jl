@@ -91,3 +91,11 @@ size(p * f)
 fHat = nfft(k, f)
 g = nfft_adjoint(k, N, fHat)
 size(g)
+
+# ## Where to go next
+#
+# - Transform only some dimensions, e.g. many coils or A-scans: [Transforms along Dimensions](@ref).
+# - Real data, cosine and sine transforms, points that are non-equidistant on both sides, GPUs: the
+#   other how-to guides in the navigation.
+# - What the plan computes and why it is fast: [Mathematical Background](@ref) and
+#   [How NFFT.jl Works](@ref).

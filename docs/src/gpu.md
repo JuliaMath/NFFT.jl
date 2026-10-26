@@ -1,11 +1,12 @@
 # GPU
 
-All transforms of NFFT.jl (NFFT, RNFFT, NFCT, NFST, NNFFT) run on GPUs, including batch dimensions. The
-kernels are written with [KernelAbstractions.jl](https://github.com/JuliaGPU/KernelAbstractions.jl)
-and the FFTs go through AbstractFFTs, so the same code serves CUDA.jl, AMDGPU.jl and Metal.jl
-arrays. The GPU path is a package extension: it is loaded with the GPU package.
+This guide shows how to run the transforms of NFFT.jl on a GPU. All transforms (NFFT, RNFFT, NFCT,
+NFST, NNFFT) run there, including batch dimensions. The kernels are written with
+[KernelAbstractions.jl](https://github.com/JuliaGPU/KernelAbstractions.jl) and the FFTs go through
+AbstractFFTs, so the same code serves CUDA.jl, AMDGPU.jl and Metal.jl arrays. The GPU code is a
+package extension that is loaded together with the GPU package.
 
-## Usage
+## Create a plan on the GPU
 
 A plan works on the GPU when its storage is a GPU array type: give the nodes as a GPU array, or pass
 `storage` with nodes on the CPU.
@@ -34,32 +35,14 @@ plan_nfft(k, (256, 256, 16); dims=1:2, storage=CuArray)   # 16 coils in one call
 `sdc` from NFFTTools.jl and the stage interface work with GPU plans as well. Data on the CPU passed
 to a GPU plan raise an error instead of being copied.
 
-## How it works
+## How fast
 
-The plan is set up on the CPU: parameter choice, binning of the nodes and the polynomial
-approximation of the window. The GPU holds, per node, the offset of its support in the grid and its
-fractional position, so that the window is evaluated in the working precision (Metal has no
-`Float64`) while the grid position itself was computed in double precision. No sparse matrix is
-stored: memory grows like the grid plus the nodes.
+On GPUs with slow floating point atomics and little local memory, such as Apple GPUs, the direct
+transforms are faster than on the CPU and the adjoint transforms slower; see
+[Performance](@ref "On GPUs"). How the kernels work, and why the adjoint needs no atomic operations, is
+explained in [How NFFT.jl Works](@ref "GPUs").
 
-- **Resampling** (grid to nodes): one work-item per node and transform.
-- **Adjoint resampling** (nodes to grid) in 2D and 3D: one workgroup per tile of the grid collects
-  the contributions of the nodes near the tile in local memory and writes the tile once. This needs
-  no atomic operations, and the result is the same in every call. In 1D, and for tiles that do not
-  fit into local memory, the work-items add their contributions with atomic additions.
-- **Halo**: filled and folded by gathering, without atomics.
-- **Batches** (`dims`): every kernel and FFT processes all transforms at once.
-
-## Speed on GPUs
-
-On an Apple M1 Max (Metal, single precision, ``2^{18}`` nodes) the direct transforms on the GPU are
-as fast as or faster than on the 8 performance cores of the CPU (3D, ``64^3``, tolerance
-``10^{-4}``: 1.7 ms against 3.7 ms). The adjoint transforms are slower than on the CPU there, since
-Apple GPUs have slow floating point atomics and little local memory (3D: 14.5 ms against 3.9 ms).
-GPUs with fast atomics and more local memory, such as those of Nvidia, are expected to behave
-differently; measurements there are still missing.
-
-## Testing
+## Run the GPU tests
 
 `test/gpu.jl` compares every transform on the GPU with the CPU plan. It runs with
 

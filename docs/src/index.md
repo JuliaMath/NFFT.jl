@@ -70,12 +70,15 @@ The documentation follows the [Diátaxis](https://diataxis.fr) structure:
 - [Non-equidistant in Both Domains](@ref): the NNFFT.
 - [GPU](@ref): all transforms on GPUs.
 - [Density Compensation and Toeplitz Kernels](@ref): `NFFTTools.jl`.
+- [Choosing Parameters](@ref): window, width, oversampling and FFT planning by hand.
 - [Stages of the NFFT](@ref): calling the stages one by one.
 - [Migrating from NFFT.jl 0.x](@ref): what changed in version 1.0.
 
 **Explanation**, for understanding:
 - [Mathematical Background](@ref): the transforms and the three stages of the algorithm.
 - [Accuracy and Parameters](@ref): how `reltol` becomes window, width and oversampling.
+- [How NFFT.jl Works](@ref): tiles, halo, pruned FFT, batches, real data, NNFFT and GPUs, with
+  the ideas behind them.
 - [Performance](@ref): NFFT.jl against FINUFFT, ducc and NonuniformFFTs.jl.
 
 **Reference**, to look things up:

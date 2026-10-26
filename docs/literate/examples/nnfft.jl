@@ -1,28 +1,24 @@
 # # Non-equidistant in Both Domains
 #
-# The NNFFT (type 3 in the terminology of FINUFFT) has arbitrary real points in both domains:
-# values ``f_l`` at sources ``\bm{y}_l \in \mathbb{R}^D`` are transformed to targets
-# ``\bm{k}_j \in \mathbb{R}^D``,
+# This guide shows how to compute the NNFFT (type 3 in the terminology of FINUFFT), which has
+# arbitrary real points in both domains: values ``f_l`` at sources ``\bm{y}_l \in \mathbb{R}^D``
+# are transformed to targets ``\bm{k}_j \in \mathbb{R}^D``,
 # ```math
 # \hat{f}_j = \sum_{l=1}^{L} f_l \, \mathrm{e}^{-2\pi\mathrm{i}\,\bm{k}_j\cdot\bm{y}_l},
 # \qquad
 # f_l = \sum_{j=1}^{J} \hat{f}_j \, \mathrm{e}^{2\pi\mathrm{i}\,\bm{k}_j\cdot\bm{y}_l} \quad \text{(adjoint)}.
 # ```
 # Neither the sources nor the targets need to lie in a fixed interval. `plan_nnfft(k, y)` takes the
-# targets `k` (``D \times J``) and the sources `y` (``D \times L``) and the same options as
-# `plan_nfft` (`reltol`, `eltype`, `storage`, `nthreads`).
+# targets `k` (``D \times J``) and the sources `y` (``D \times L``) and the options `reltol`,
+# `eltype`, `storage` and `nthreads`.
 #
-# ## How it works
+# The cost grows with the product of the extents of sources and targets, not with their number: the
+# plan contains an NFFT of about ``4\sigma_1 Y_d K_d`` modes per dimension, where ``Y_d`` and ``K_d``
+# are the half-widths of the two point sets and ``\sigma_1`` (between 1.2 and 2.5) is the
+# oversampling factor of the spreading. How the transform is assembled from spreading, an NFFT
+# and a division is explained in [How NFFT.jl Works](@ref "Non-equidistant on both sides").
 #
-# The sources are spread with a window onto an equidistant grid of spacing ``h``, an NFFT evaluates
-# the Fourier series of that grid at the scaled targets ``h \bm{k}_j``, and a division by the
-# Fourier transform of the window undoes the spreading (Elbel and Steidl 1998; Barnett et al.
-# 2019). Both node sets are first centred, which is a phase factor before and after. The size of the
-# inner NFFT is about ``4\sigma^2 Y_d K_d`` per dimension, where ``Y_d`` and ``K_d`` are the
-# half-widths of the sources and targets: the cost grows with the space-frequency product of the
-# data, not with the number of points.
-#
-# ## The Fourier transform of a function sampled at random points
+# ## Fourier transform of a function sampled at random points
 #
 # A Gaussian ``f(y) = \mathrm{e}^{-\pi y^2}`` has the Fourier transform
 # ``\hat{f}(k) = \int_{-\infty}^{\infty} f(y) \mathrm{e}^{-2\pi\mathrm{i}ky} \,\mathrm{d}y
@@ -56,7 +52,7 @@ scatter!(ax, k, real.(F); markersize=5, label="NNFFT")
 axislegend(ax)
 fig
 
-# ## In several dimensions
+# ## Several dimensions
 #
 # Sources and targets in 2D, off-centre on purpose, against the direct sum:
 

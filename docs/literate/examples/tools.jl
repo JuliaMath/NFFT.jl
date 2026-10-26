@@ -1,10 +1,11 @@
 # # Density Compensation and Toeplitz Kernels
 #
-# `NFFTTools.jl` builds on the interface of `AbstractNFFTs.jl` and works with any implementation
-# that provides the stage interface. It offers sampling density compensation and the Toeplitz
-# kernel of the normal operator ``\bm{A}^{\mathsf{H}}\bm{A}``.
+# This guide shows how to compute sampling density compensation weights and the Toeplitz kernel of
+# the normal operator ``\bm{A}^{\mathsf{H}}\bm{A}`` with `NFFTTools.jl`. The package builds on
+# the interface of `AbstractNFFTs.jl` and works with any implementation that provides the stage
+# interface.
 #
-# ## Sampling density compensation
+# ## Compute density compensation weights
 #
 # The adjoint NFFT is not the inverse of the NFFT. For nodes of non-uniform density, a weighted
 # adjoint ``\bm{A}^{\mathsf{H}} \operatorname{diag}(\bm{w})`` is a much better approximate inverse.
@@ -42,7 +43,7 @@ heatmap(fig[1, 1], phantom; colormap=:grays, axis=(aspect=1, title="phantom"))
 heatmap(fig[1, 2], real.(recon); colormap=:grays, axis=(aspect=1, title="weighted adjoint"))
 fig
 
-# ## Toeplitz kernel
+# ## Apply the normal operator with a Toeplitz kernel
 #
 # The normal operator ``\bm{A}^{\mathsf{H}}\bm{A}`` of an NFFT is a Toeplitz matrix, so it can be
 # applied with two FFTs of twice the image size instead of an NFFT and its adjoint.

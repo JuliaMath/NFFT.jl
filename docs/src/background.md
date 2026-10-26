@@ -102,9 +102,16 @@ NFFT.jl chooses all three from the requested relative error, see [Accuracy and P
 ## Other transforms
 
 **Real values at the nodes (RNFFT).** If the values at the nodes are real, the coefficients are
-Hermitian, ``f_{-\bm{n}} = \overline{f_{\bm{n}}}``, and the half with ``n_1 \ge 0`` determines
-them. The RNFFT takes this half and computes on a real oversampled grid, which saves half of the FFT
-and of the adjoint resampling; see [Real Data](@ref).
+Hermitian, ``f_{-\bm{n}} = \overline{f_{\bm{n}}}``, and the half ``\bm{h}`` with
+``n_1 = 0, \dots, \lfloor N_1/2 \rfloor`` determines them. The RNFFT is the counterpart of FFTW's
+`brfft`/`rfft`:
+```math
+\hat{f}_j = \operatorname{Re} \sum_{\bm{n}} h_{\bm{n}} \, \mathrm{e}^{-2\pi\mathrm{i}\,\bm{n}\cdot\bm{k}_j},
+\qquad
+h_{\bm{n}} = \sum_{j=1}^J y_j \, \mathrm{e}^{2\pi\mathrm{i}\,\bm{n}\cdot\bm{k}_j} \quad \text{(adjoint)},
+```
+adjoint to each other with respect to the real inner product. It computes on a real oversampled
+grid, which saves half of the FFT and of the adjoint resampling; see [Real Data](@ref).
 
 **Cosine and sine transforms (NFCT, NFST).** The non-equidistant fast cosine and sine transforms
 of NFFT3 use real data and nodes in ``[0, 1/2]^D``:
