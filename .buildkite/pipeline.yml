@@ -4,8 +4,7 @@ steps:
       - JuliaCI/julia#v1:
           version: "1.10"
     agents:
-      queue: "juliagpu"
-      cuda: "*"
+      queue: "cuda"
     command: |
       julia --color=yes test/gpu/run.jl cuda
     timeout_in_minutes: 30
@@ -15,8 +14,7 @@ steps:
       - JuliaCI/julia#v1:
           version: "1.10"
     agents:
-      queue: "juliagpu"
-      rocm: "*"
+      queue: "rocm"
       rocmgpu: "*"
     command: |
       julia --color=yes test/gpu/run.jl rocm
