@@ -152,7 +152,6 @@ end
 function AbstractNFFTs.plan_rnfft(b::NFFTBackend, k::AbstractMatrix, N::Dims{D}; kwargs...) where {D}
   g, rest = generic_options(k, N; kwargs...)
   check_options(b, rest, NFFT_OPTIONS)
-  g.storage <: Array || throw(ArgumentError("storage = $(g.storage) is not supported yet"))
   RNFFTPlan(k, N, g; rest...)
 end
 
@@ -173,8 +172,8 @@ function RNFFTPlan(k::AbstractMatrix, N::NTuple{D,Int}, g::GenericOptions{T}; wi
   d1 = first(dims)
   Nin = Base.setindex(N, N[d1] ÷ 2 + 1, d1)
   NOut = (N[1:d1-1]..., J, N[last(dims)+1:end]...)
-  core = rnfft_core(k, N[dims], kernel, T, fft, tilesize, g.nthreads)
-  RNFFTPlan{T,D,length(NOut)}(N, Nin, NOut, dims, k, kernel, acc, g, fft, tilesize, core,
+  core = rnfft_core(k, N[dims], kernel, T, fft, tilesize, g.nthreads, g.storage, batch_sizes(N, dims)...)
+  RNFFTPlan{T,D,length(NOut)}(N, Nin, NOut, dims, to_storage(g.storage, k), kernel, acc, g, fft, tilesize, core,
                               slice_cores(core, N[dims], J, prod(batch_sizes(N, dims))))
 end
 
@@ -187,11 +186,17 @@ single_core(c::RNFFTCore{D,K,T}) where {D,K,T} =
   RNFFTCore(zeros(0, 0), c.N, c.Ñ, c.W, nothing, T, FFTWBackend(flags=c.flags), c.B, 1;
             binned=c.binned, kernel=c.kernel, invphi=c.invphi)
 
-function rnfft_core(k, Nd, kernel::KernelEntry, ::Type{T}, fft, tilesize, nthreads) where {T}
+function rnfft_core(k, Nd, kernel::KernelEntry, ::Type{T}, fft, tilesize, nthreads, storage=Array, L1=1, L3=1) where {T}
+  k = k isa Array ? k : Array(k)
   check_nodes(k)
   φ = window_function(kernel.window, kernel.W, kernel.β, kernel.e0)
-  RNFFTCore(k, Nd, grid_size(kernel.σ, Nd, kernel.W), kernel.W, φ, T, fft, tilesize, nthreads)
+  Ñ = grid_size(kernel.σ, Nd, kernel.W)
+  storage <: Array || return device_rnfft_core(storage, k, Nd, Ñ, kernel.W, φ, T, nthreads, L1, L3)
+  RNFFTCore(k, Nd, Ñ, kernel.W, φ, T, fft, tilesize, nthreads)
 end
+
+# Core for data on a device (GPU array types; the GPU extension), handling all batch dimensions.
+device_rnfft_core(storage, args...) = device_core(storage)
 
 AbstractNFFTs.size_in(p::RNFFTPlan) = p.Nin
 AbstractNFFTs.size_out(p::RNFFTPlan) = p.NOut
@@ -207,9 +212,10 @@ end
 
 function AbstractNFFTs.nodes!(p::RNFFTPlan{T}, k::AbstractMatrix) where {T}
   size(k, 1) == length(p.dims) || throw(DimensionMismatch("nodes must have $(length(p.dims)) rows"))
-  p.core = rnfft_core(k, p.N[p.dims], p.kernel, T, p.fft, p.tilesize, p.options.nthreads)
+  p.core = rnfft_core(k, p.N[p.dims], p.kernel, T, p.fft, p.tilesize, p.options.nthreads, p.options.storage,
+                      batch_sizes(p.N, p.dims)...)
   p.slicecores = slice_cores(p.core, p.N[p.dims], size(k, 2), prod(batch_sizes(p.N, p.dims)))
-  p.k = k
+  p.k = to_storage(p.options.storage, k)
   p.NOut = (p.N[1:first(p.dims)-1]..., size(k, 2), p.N[last(p.dims)+1:end]...)
   p
 end

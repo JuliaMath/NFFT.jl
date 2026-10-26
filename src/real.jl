@@ -321,13 +321,11 @@ kind(::Type{<:NFSTPlan}) = :sin
 function AbstractNFFTs.plan_nfct(b::NFFTBackend, k::AbstractMatrix, N::Dims{D}; kwargs...) where {D}
   g, rest = generic_options(k, N; kwargs...)
   check_options(b, rest, NFFT_OPTIONS)
-  g.storage <: Array || throw(ArgumentError("storage = $(g.storage) is not supported yet"))
   RealPlan(NFCTPlan, k, N, g; rest...)
 end
 function AbstractNFFTs.plan_nfst(b::NFFTBackend, k::AbstractMatrix, N::Dims{D}; kwargs...) where {D}
   g, rest = generic_options(k, N; kwargs...)
   check_options(b, rest, NFFT_OPTIONS)
-  g.storage <: Array || throw(ArgumentError("storage = $(g.storage) is not supported yet"))
   RealPlan(NFSTPlan, k, N, g; rest...)
 end
 
@@ -348,20 +346,25 @@ function RealPlan(P::Type, k::AbstractMatrix, N::NTuple{D,Int}, g::GenericOption
     throw(ArgumentError("window must be :auto or an AbstractWindow, got $window"))
   end
   NOut = (N[1:first(dims)-1]..., J, N[last(dims)+1:end]...)
-  core = real_core(kind(P), k, N[dims], kernel, T, fft, tilesize, g.nthreads)
-  P{T,D,length(NOut)}(N, NOut, dims, k, kernel, acc, g, fft, tilesize, core,
+  core = real_core(kind(P), k, N[dims], kernel, T, fft, tilesize, g.nthreads, g.storage, batch_sizes(N, dims)...)
+  P{T,D,length(NOut)}(N, NOut, dims, to_storage(g.storage, k), kernel, acc, g, fft, tilesize, core,
                       slice_cores(core, N[dims], J, prod(batch_sizes(N, dims))))
 end
 
-function real_core(S, k, Nd, kernel::KernelEntry, ::Type{T}, fft, tilesize, nthreads) where {T}
+function real_core(S, k, Nd, kernel::KernelEntry, ::Type{T}, fft, tilesize, nthreads, storage=Array, L1=1, L3=1) where {T}
+  k = k isa Array ? k : Array(k)
   for x in k
     (isfinite(x) && 0 <= x <= 0.5) ||
       throw(ArgumentError("nodes of an NFCT/NFST must be in [0, 1/2], found $x"))
   end
   Ñv = grid_size(kernel.σ, virtual_size(S, Nd), kernel.W)
   φ = window_function(kernel.window, kernel.W, kernel.β, kernel.e0)
+  storage <: Array || return device_real_core(Val(S), storage, k, Nd, Ñv, kernel.W, φ, T, nthreads, L1, L3)
   RealCore{S}(k, Nd, Ñv, kernel.W, φ, T, fft, tilesize, nthreads)
 end
+
+# Core for data on a device (GPU array types; the GPU extension), handling all batch dimensions.
+device_real_core(S, storage, args...) = device_core(storage)
 
 AbstractNFFTs.size_in(p::RealPlan) = p.N
 AbstractNFFTs.size_out(p::RealPlan) = p.NOut
@@ -377,9 +380,10 @@ end
 
 function AbstractNFFTs.nodes!(p::RealPlan{T}, k::AbstractMatrix) where {T}
   size(k, 1) == length(p.dims) || throw(DimensionMismatch("nodes must have $(length(p.dims)) rows"))
-  p.core = real_core(kind(p), k, p.N[p.dims], p.kernel, T, p.fft, p.tilesize, p.options.nthreads)
+  p.core = real_core(kind(p), k, p.N[p.dims], p.kernel, T, p.fft, p.tilesize, p.options.nthreads,
+                     p.options.storage, batch_sizes(p.N, p.dims)...)
   p.slicecores = slice_cores(p.core, p.N[p.dims], size(k, 2), prod(batch_sizes(p.N, p.dims)))
-  p.k = k
+  p.k = to_storage(p.options.storage, k)
   p.NOut = (p.N[1:first(p.dims)-1]..., size(k, 2), p.N[last(p.dims)+1:end]...)
   p
 end

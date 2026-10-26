@@ -35,7 +35,7 @@ relerr(a, b) = norm(a - b) / norm(b)
 
     # the adjoint resampling by tiles (2D, 3D, if its buffers fit into local memory) has no
     # atomics: repeated calls agree exactly
-    if p.core.tiles !== nothing
+    if p.core.nodes.tiles !== nothing
       @test Array(adjoint(p) * arrayType(fHat)) == x
     end
 
@@ -57,6 +57,34 @@ relerr(a, b) = norm(a - b) / norm(b)
     fHat = randn(Complex{T}, size_out(pcpu))
     @test relerr(Array(p * arrayType(f)), pcpu * f) < 100 * eps(T)
     @test relerr(Array(adjoint(p) * arrayType(fHat)), adjoint(pcpu) * fHat) < 100 * eps(T)
+  end
+
+  # real transforms against the CPU plans: RNFFT (real values at the nodes), NFCT, NFST (real data,
+  # nodes in [0, 1/2]); with batch dimensions
+  @testset "$name $T, N = $N, dims = $dims" for name in ("rnfft", "nfct", "nfst"), T in floatTypes,
+      (N, dims) in [((256,), 1:1), ((32, 32), 1:2), ((12, 12, 12), 1:3), ((3, 32, 32), 2:3), ((24, 20, 2), 1:2)]
+    Random.seed!(3)
+    Dd = length(dims)
+    J = 600
+    reltol = T == Float32 ? 1e-5 : 1e-9
+    if name == "rnfft"
+      k = rand(T, Dd, J) .- T(1 // 2)
+      p = plan_rnfft(k, N; dims, reltol, storage=arrayType)
+      pcpu = plan_rnfft(k, N; dims, reltol)
+      x = randn(Complex{T}, size_in(pcpu))
+      y = randn(T, size_out(pcpu))
+      back = adjoint
+    else
+      k = rand(T, Dd, J) ./ 2
+      plan = name == "nfct" ? plan_nfct : plan_nfst
+      p = plan(k, N; dims, reltol, storage=arrayType)
+      pcpu = plan(k, N; dims, reltol)
+      x = randn(T, N)
+      y = randn(T, size_out(pcpu))
+      back = transpose
+    end
+    @test relerr(Array(p * arrayType(x)), pcpu * x) < 100 * eps(T)
+    @test relerr(Array(back(p) * arrayType(y)), back(pcpu) * y) < 100 * eps(T)
   end
 
   @testset "sdc" begin
