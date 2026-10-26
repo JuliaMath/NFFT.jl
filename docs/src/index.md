@@ -2,6 +2,11 @@
 
 *Fast Fourier transforms at non-equidistant nodes, in pure Julia.*
 
+!!! warning "Development version"
+    This documentation describes NFFT.jl 1.0, which is under development on the master branch
+    and not released yet. `Pkg.add("NFFT")` installs version 0.14, documented
+    [here](https://JuliaMath.github.io/NFFT.jl/stable). See [Migrating from NFFT.jl 0.x](@ref).
+
 NFFT.jl computes the non-equidistant fast Fourier transform (NFFT, also called NUFFT, or gridding in
 MRI): a discrete Fourier transform where the nodes in one domain do not lie on a grid. It is
 accurate to a tolerance you choose and runs in ``\mathcal{O}(|\bm{N}| \log |\bm{N}| + J)`` operations
