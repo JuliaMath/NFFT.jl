@@ -25,7 +25,8 @@ function load(suite)
   meta, filter(ok, rows)
 end
 
-dimlabel(r) = r["D"] == 1 ? "1D, N = $(r["N"][1])" : "$(r["D"])D, N = $(join(r["N"], "×"))"
+dimlabel(r) = r["transform"] == "nnfft" ? "$(r["D"])D, $(r["J"]) sources and targets" :
+              r["D"] == 1 ? "1D, N = $(r["N"][1])" : "$(r["D"])D, N = $(join(r["N"], "×"))"
 libs_in(rows) = filter(l -> any(r -> r["lib"] == l, rows), LIBORDER)
 ms(t) = 1e3t
 set_theme!(Theme(fontsize=13, Axis=(xgridstyle=:dash, ygridstyle=:dash, xgridcolor=(:black, 0.08),
@@ -60,8 +61,8 @@ end
 save_fig(name, fig) = (save(joinpath(OUT, name * ".svg"), fig); println("  ", name, ".svg"))
 
 # time against the measured error
-function pareto(T)
-  meta, rows = load("pareto")
+function pareto(T; suite="pareto", name="pareto_" * lowercase(T))
+  meta, rows = load(suite)
   rows = filter(r -> r["T"] == T, rows)
   isempty(rows) && return
   fig = Figure(size=(900, 560))
@@ -78,7 +79,7 @@ function pareto(T)
     end
   end
   legend_below!(fig, 3, libs_in(rows))
-  save_fig("pareto_" * lowercase(T), fig)
+  save_fig(name, fig)
 end
 
 # strong scaling
@@ -254,4 +255,6 @@ function data()
 end
 
 println("report from $SRC:")
-pareto("Float64"); pareto("Float32"); threads(); sizes(); nodes(); batch(); real(); history(); data()
+pareto("Float64"); pareto("Float32"); threads(); sizes(); nodes(); batch(); real(); history()
+pareto("Float64"; suite="nnfft", name="nnfft_float64"); pareto("Float32"; suite="nnfft", name="nnfft_float32")
+data()

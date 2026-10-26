@@ -4,7 +4,7 @@
   const base = document.currentScript.src.replace(/explorer\.js.*$/, "");
   const COLORS = { "NFFT": "#1f4e9c", "FINUFFT": "#d9822b", "ducc": "#3a9e5f",
                    "NonuniformFFTs": "#8e5bb5", "NFFT 0.14": "#9a9a9a" };
-  const DASH = { nfft: "solid", rnfft: "dash", nfct: "dot", nfst: "dashdot" };
+  const DASH = { nfft: "solid", rnfft: "dash", nfct: "dot", nfst: "dashdot", nnfft: "solid" };
   const SUITES = {
     pareto:  { x: "err", sweep: ["tol"], label: "time against measured error" },
     threads: { x: "threads", sweep: ["threads"], label: "strong scaling" },
@@ -12,6 +12,7 @@
     nodes:   { x: "nodes", sweep: ["nodes"], label: "node distributions" },
     batch:   { x: "L", sweep: ["L"], y: "per_transform", label: "batches (OCT, MRI, volumes)" },
     real:    { x: "transform", sweep: ["transform"], label: "real data" },
+    nnfft:   { x: "err", sweep: ["tol"], label: "NNFFT (type 3): time against measured error" },
     history: { x: "tol", sweep: ["tol"], label: "NFFT.jl 0.14 and now" },
   };
   const XAXES = {
@@ -92,7 +93,7 @@
       const op = state.y === "t_adj" ? "t_adj" : "t_trafo";
       const series = {};
       for (const r of sel) {
-        const name = state.suite === "real" ? r.lib : r.lib + (r.transform !== "nfft" ? " " + r.transform.toUpperCase() : "");
+        const name = state.suite === "real" || state.suite === "nnfft" ? r.lib : r.lib + (r.transform !== "nfft" ? " " + r.transform.toUpperCase() : "");
         (series[name] = series[name] || []).push(r);
       }
       const traces = Object.entries(series).map(([name, rs]) => {

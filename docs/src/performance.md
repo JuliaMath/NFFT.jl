@@ -82,6 +82,26 @@ size, tolerance ``10^{-8}``.
 The RNFFT computes on a real grid and needs about 60 % of the time of the complex NFFT. NFCT and
 NFST cost about as much as the complex NFFT in 2D and 3D; in 1D they are still slower.
 
+## Non-equidistant in both domains (NNFFT)
+
+The NNFFT (FINUFFT's type 3) maps values at arbitrary sources ``\bm{y}_l`` to arbitrary targets
+``\bm{k}_j``. Here ``|\bm{N}|`` sources uniformly random in ``\prod_d [-N_d/2, N_d/2)`` and as many
+targets in ``[-1/2, 1/2)^D``, the space-frequency extent of an NFFT of size ``\bm{N}`` (``2^{16}``,
+``256^2``, ``32^3``); tolerance sweep as above.
+
+![NNFFT, double precision](assets/benchmarks/nnfft_float64.svg)
+
+In double precision NFFT.jl and FINUFFT are on par in 1D and 2D; in 3D FINUFFT is up to 20 %
+faster between ``10^{-8}`` and ``10^{-11}``. At the highest accuracy NFFT.jl is ahead: in 2D it
+reaches ``7·10^{-14}`` in 4.4 ms, FINUFFT ``9·10^{-13}`` in 21 ms. Planning takes 6–16 ms in NFFT.jl
+and 4–7 ms in FINUFFT (more at its accuracy limits).
+
+![NNFFT, single precision](assets/benchmarks/nnfft_float32.svg)
+
+NFFT.jl computes grid positions and phases in double precision also for single-precision data. With
+the large coordinates of the type 3 this matters: NFFT.jl reaches ``10^{-7}`` in 1D and 2D, where
+FINUFFT stays at ``10^{-2}`` (1D) and ``5·10^{-5}`` (2D). In 3D FINUFFT is faster at equal error.
+
 ## NFFT.jl 1.0 against 0.14
 
 ![Speedup over NFFT.jl 0.14](assets/benchmarks/history.svg)

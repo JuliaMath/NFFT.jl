@@ -16,6 +16,7 @@ NFFTPlan
 NFCTPlan
 NFSTPlan
 RNFFTPlan
+NNFFTPlan
 NFFTBackend
 NFFT.parameters
 accuracy

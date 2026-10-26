@@ -67,30 +67,45 @@ end
 # at the N modes; quadrature per mode costs O(N·nq) (130 ms for N = 2^18). 32 points reach the
 # rounding floor of the quadrature itself (≈ 1e-13 relative).
 function kernel_ft(φ, W, N, Ñ; nq=2W + 20, nc=32, nthreads=Threads.nthreads())
-  x, w = gausslegendre(nq)
-  z = x .* (W / 2); wz = w .* (W / 2) .* φ.(z)
-  quad(ξ) = sum(wz[q] * cospi(2ξ * z[q]) for q in eachindex(z))
   ks = -N÷2:N-N÷2-1
   kmax = max(N ÷ 2, N - N ÷ 2 - 1)
-  N <= 4nc && return [quad(k / Ñ) for k in ks]
-  ξmax = kmax / Ñ
+  N <= 4nc && (quad = window_quadrature(φ, W; nq); return [quad(k / Ñ) for k in ks])
+  ft = WindowFT(φ, W, kmax / Ñ; nq, nc)
+  out = Vector{Float64}(undef, N)
+  Threads.@threads for r in chunks(eachindex(ks), nthreads)
+    for i in r
+      out[i] = ft(abs(ks[i]) / Ñ)
+    end
+  end
+  out
+end
+
+# ξ ↦ ∫ φ(z) cos(2πξz) dz by Gauss–Legendre quadrature with nq points
+function window_quadrature(φ, W; nq=2W + 20)
+  x, w = gausslegendre(nq)
+  z = x .* (W / 2); wz = w .* (W / 2) .* φ.(z)
+  ξ -> sum(wz[q] * cospi(2ξ * z[q]) for q in eachindex(z))
+end
+
+# φ̂ on [0, ξmax] as a Chebyshev interpolant of degree nc − 1 of the quadrature
+struct WindowFT
+  c::Vector{Float64}
+  ξmax::Float64
+end
+function WindowFT(φ, W, ξmax; nq=2W + 20, nc=32)
+  quad = window_quadrature(φ, W; nq)
   θ = [π * (j - 0.5) / nc for j in 1:nc]
   fv = [quad(ξmax * (cos(t) + 1) / 2) for t in θ]
   c = [2 / nc * sum(fv[j] * cos(m * θ[j]) for j in 1:nc) for m in 0:nc-1]
   c[1] /= 2
-  function cheb(ξ)
-    y = 2ξ / ξmax - 1
-    b1 = 0.0; b2 = 0.0
-    for m in nc:-1:2
-      b1, b2 = muladd(2y, b1, -b2) + c[m], b1
-    end
-    muladd(y, b1, -b2) + c[1]
+  WindowFT(c, ξmax)
+end
+function (ft::WindowFT)(ξ)
+  c = ft.c
+  y = 2ξ / ft.ξmax - 1
+  b1 = 0.0; b2 = 0.0
+  for m in length(c):-1:2
+    b1, b2 = muladd(2y, b1, -b2) + c[m], b1
   end
-  out = Vector{Float64}(undef, N)
-  Threads.@threads for r in chunks(eachindex(ks), nthreads)
-    for i in r
-      out[i] = cheb(abs(ks[i]) / Ñ)
-    end
-  end
-  out
+  muladd(y, b1, -b2) + c[1]
 end

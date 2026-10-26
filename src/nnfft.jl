@@ -63,46 +63,120 @@ function NNFFTPlan(k::AbstractMatrix, y::AbstractMatrix, g::GenericOptions{T}; w
                    fft=FFTWBackend()) where {T}
   kc = Array{Float64}(k); yc = Array{Float64}(y)
   all(isfinite, kc) && all(isfinite, yc) || throw(ArgumentError("nodes must be finite"))
-  D = size(kc, 1); J = size(kc, 2); N = size(yc, 2)
-  center(x) = isempty(x) ? zeros(D) : [(minimum(x[d, :]) + maximum(x[d, :])) / 2 for d in 1:D]
-  extent(x, c) = isempty(x) ? zeros(D) : [maximum(abs, x[d, :] .- c[d]) for d in 1:D]
-  y0 = center(yc); k0 = center(kc)
-  Y = extent(yc, y0); K = extent(kc, k0)
-  # outer window: half the error budget at the grid the spreading will have
-  nest = ntuple(d -> ceil(Int, 8Y[d] * K[d]) + 16, D)
-  outer, e1 = choose_kernel(g.reltol / 2, nest, N + J, T)
+  nnfft_plan(Val(size(kc, 1)), k, y, kc, yc, g; window, W, σ, fft)
+end
+
+function nnfft_plan(::Val{D}, k, y, kc, yc, g::GenericOptions{T}; window, W, σ, fft) where {D,T}
+  J = size(kc, 2); N = size(yc, 2)
+  y0 = ntuple(d -> N == 0 ? 0.0 : (minimum(view(yc, d, :)) + maximum(view(yc, d, :))) / 2, Val(D))
+  k0 = ntuple(d -> J == 0 ? 0.0 : (minimum(view(kc, d, :)) + maximum(view(kc, d, :))) / 2, Val(D))
+  Y = ntuple(d -> N == 0 ? 0.0 : maximum(x -> abs(x - y0[d]), view(yc, d, :)), Val(D))
+  K = ntuple(d -> J == 0 ? 0.0 : maximum(x -> abs(x - k0[d]), view(kc, d, :)), Val(D))
+  outer, inner_entry, n, acc = choose_nnfft(g.reltol, Y, K, N, J, T; window, W, σ)
   σ1 = outer.σ; W1 = outer.W
-  h = [K[d] > 0 ? 1 / (2σ1 * K[d]) : 1.0 for d in 1:D]
-  n = ntuple(d -> smooth_size(ceil(Int, 2Y[d] / h[d]) + W1 + 2), D)
+  h = map(x -> x > 0 ? 1 / (2σ1 * x) : 1.0, K)
   # the outer grid as an NFFT core: source y′/h sits at grid position y′/h + n÷2
   ys = Matrix{Float64}(undef, D, N)
-  for l in 1:N, d in 1:D
-    x = (yc[d, l] - y0[d]) / (h[d] * n[d]) + (n[d] ÷ 2) / n[d]
-    ys[d, l] = x >= 0.5 ? x - 1 : x
+  Threads.@threads for l in 1:N
+    for d in 1:D
+      x = (yc[d, l] - y0[d]) / (h[d] * n[d]) + (n[d] ÷ 2) / n[d]
+      ys[d, l] = x >= 0.5 ? x - 1 : x
+    end
   end
   φ = window_function(outer.window, W1, outer.β, outer.e0)
   core = g.storage <: Array ?
     NFFTCore(ys, n, n, W1, φ, T, FFTWBackend(), nothing, g.nthreads) :
     device_core(g.storage, ys, n, n, W1, φ, T, g.nthreads, 1, 1)
   # inner NFFT at h k′ in Float64 (its grid positions are computed from these)
-  xs = (kc .- k0) .* h
-  inner = plan_nfft(NFFTBackend(), xs, n; reltol=g.reltol / (2outer.amp), eltype=T, storage=g.storage,
-                    nthreads=g.nthreads, window, W, σ, fft)
-  # phases and the division by φ̂ in Float64
-  x, w = gausslegendre(2W1 + 20)
-  z = x .* (W1 / 2); wz = w .* (W1 / 2) .* φ.(z)
-  φ̂(ξ) = sum(wz[q] * cospi(2ξ * z[q]) for q in eachindex(z))
-  pre = [cispi(-2 * sum(k0[d] * (yc[d, l] - y0[d]) for d in 1:D; init=0.0)) for l in 1:N]
+  xs = Matrix{Float64}(undef, D, J)
+  Threads.@threads for j in 1:J
+    for d in 1:D
+      xs[d, j] = (kc[d, j] - k0[d]) * h[d]
+    end
+  end
+  e2 = inner_entry
+  # the kernel is fixed by the choice above; below the reachable error the tolerance only must stay positive
+  inner = plan_nfft(NFFTBackend(), xs, n; reltol=max((g.reltol - acc.outer) / outer.amp, eps(Float64)), eltype=T, storage=g.storage,
+                    nthreads=g.nthreads, window=e2.window, W=e2.W, σ=e2.σ, fft)
+  # phases and the division by φ̂ in Float64; |h k′| ≤ 1/(2σ₁)
+  ft = WindowFT(φ, W1, 1 / (2σ1))
+  pre = Vector{ComplexF64}(undef, N)
+  Threads.@threads for l in 1:N
+    pre[l] = cispi(-2 * sum(ntuple(d -> k0[d] * (yc[d, l] - y0[d]), Val(D))))
+  end
   post = Vector{ComplexF64}(undef, J)
   Threads.@threads for j in 1:J
-    post[j] = cispi(-2 * sum(kc[d, j] * y0[d] for d in 1:D; init=0.0)) / prod(φ̂(xs[d, j]) for d in 1:D)
+    post[j] = cispi(-2 * sum(ntuple(d -> kc[d, j] * y0[d], Val(D)))) / prod(ntuple(d -> ft(abs(xs[d, j])), Val(D)))
   end
   S = g.storage
   store(v) = to_storage(S, Complex{T}.(v))
-  acc = e1 + outer.amp * accuracy(inner)
-  NNFFTPlan{T,D}(N, J, to_storage(S, k, T), to_storage(S, y, T), outer, n, acc, g, core, inner, store(pre), store(post),
-                 to_storage(S, zeros(Complex{T}, n)), to_storage(S, zeros(Complex{T}, N)),
-                 to_storage(S, zeros(Complex{T}, J)))
+  NNFFTPlan{T,D}(N, J, to_storage(S, k, T), to_storage(S, y, T), outer, n, acc.outer + outer.amp * accuracy(inner),
+                 g, core, inner, store(pre), store(post), to_storage(S, zeros(Complex{T}, n)),
+                 to_storage(S, zeros(Complex{T}, N)), to_storage(S, zeros(Complex{T}, J)))
+end
+
+# Outer window e₁ (spreading) and inner NFFT kernel e₂ at the lowest predicted cost: e₁ with error
+# ε₁ ≤ reltol/2 fixes the grid n ≈ 4σ₁·Y·K and leaves (reltol − ε₁)/A₁ for the inner NFFT. Cost:
+# the spreading term of the cost model for the N sources plus the cost of the inner NFFT (both
+# directions). `window`, `W`, `σ` restrict the inner kernel.
+function choose_nnfft(reltol, Y::NTuple{D}, K::NTuple{D}, N, J, ::Type{T}; window=:auto, W=nothing, σ=nothing) where {D,T}
+  a, a1, b, c = COST_COEF[min(D, 3)]
+  grid(e1) = ntuple(d -> smooth_size(ceil(Int, 4 * e1.σ * Y[d] * K[d]) + e1.W + 2), Val(D))
+  inner = filter(KERNEL_TABLE) do e
+    (window === :auto || e.window == window) && (W === nothing || e.W == W)
+  end
+  if σ !== nothing
+    σtab = argmin(s -> abs(s - σ), unique(e.σ for e in inner))
+    inner = filter(e -> e.σ == σtab, inner)
+  end
+  isempty(inner) && throw(ArgumentError("no table entry for window = $window, W = $W, σ = $σ"))
+  # Only kernels on the Pareto front matter: an inner kernel is dropped if another one is at least as
+  # accurate with no larger W and σ, an outer one if another one also has no larger amplification.
+  ε(e) = window_error(e, D) + 10 * eps(T) * e.amp
+  inner = pareto_front(inner, e -> (ε(e), e.W, e.σ))
+  outer = pareto_front(KERNEL_TABLE, e -> (ε(e), e.W, e.σ, e.amp))
+  # inner error without the floor (which depends on n), and the n-independent cost per kernel
+  ε2 = [ε(e) for e in inner]
+  c2 = [a * J * e.W^D + a1 * J * e.W for e in inner]
+  σ2 = [e.σ^D for e in inner]
+  best = nothing; bestcost = Inf
+  for e1 in outer
+    ε1w = ε(e1)
+    ε1w <= reltol / 2 || continue
+    n = grid(e1)
+    fl = error_floor(n, T)
+    ε1 = ε1w + fl
+    ε1 <= reltol / 2 || continue
+    tol2 = (reltol - ε1) / e1.amp - fl
+    c1 = a * N * e1.W^D + a1 * N * e1.W + c
+    Mn = prod(n)
+    for i in eachindex(inner)
+      ε2[i] <= tol2 || continue
+      M = σ2[i] * Mn
+      cost = c1 + c2[i] + b * M * log2(M)
+      cost < bestcost && ((best, bestcost) = ((e1, inner[i], n, ε1), cost))
+    end
+  end
+  # below what any pair reaches: the most accurate
+  e1, e2, n, ε1 = best === nothing ? most_accurate(grid, inner, T) : best
+  e1, e2, n, (outer=ε1,)
+end
+
+function most_accurate(grid, inner, T)
+  e1 = argmin(e -> predicted_error(e, grid(e), T), KERNEL_TABLE)
+  n = grid(e1)
+  e1, argmin(e -> predicted_error(e, n, T), inner), n, predicted_error(e1, n, T)
+end
+
+# entries whose key tuple is not dominated (all components ≥, one >) by another entry's
+function pareto_front(entries, key)
+  ks = map(key, entries)
+  order = sortperm(ks)
+  front = Int[]
+  for i in order
+    any(j -> all(map(<=, ks[j], ks[i])), front) || push!(front, i)
+  end
+  entries[front]
 end
 
 AbstractNFFTs.size_in(p::NNFFTPlan) = (p.N,)

@@ -90,6 +90,15 @@ const BATCH_CASES = [("oct", [2048], 2048, [1, 8, 64, 512]), ("mri", [256, 256],
   for threads in opt(o, :threads, unique([1, default_threads()])) for D in opt(o, :dims, [1, 2, 3])
   for tol in opt(o, :tols, [10.0^-e for e in 2:2:12]) for lib in opt(o, :libs, ["NFFT", "NFFT 0.14"])]
 
-const HOMEPAGE = ["pareto", "threads", "sizes", "nodes", "batch", "real", "history"]
+@suite "nnfft" "NNFFT (type 3) against FINUFFT: time against measured error, D = 1…3" o -> [
+  task(; lib, transform="nnfft", N=NNFFT_SIZES[D], J=prod(NNFFT_SIZES[D]), tol, T, threads=opt(o, :threads, [default_threads()])[1],
+       budget=opt(o, :budget, 0.1), suite="nnfft")
+  for D in opt(o, :dims, [1, 2, 3]) for T in opt(o, :T, ["Float64", "Float32"])
+  for tol in opt(o, :tols, T == "Float32" ? [1e-2, 1e-4, 1e-6] : [1e-2, 1e-4, 1e-6, 1e-8, 1e-10, 1e-12])
+  for lib in opt(o, :libs, ["NFFT", "FINUFFT"])]
+# sources and targets: prod(N) each, with the space-frequency extent of an NFFT of size N
+const NNFFT_SIZES = Dict(1 => [2^16], 2 => [256, 256], 3 => [32, 32, 32])
+
+const HOMEPAGE = ["pareto", "threads", "sizes", "nodes", "batch", "real", "nnfft", "history"]
 @suite "all" "all suites of the documentation (" * join(HOMEPAGE, ", ") * ")" o ->
   reduce(vcat, [SUITES[s](o) for s in HOMEPAGE])

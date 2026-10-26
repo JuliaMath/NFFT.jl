@@ -7,6 +7,8 @@
 #   rnfft: l_1 = 0 … N_1÷2, others as nfft,     g_j = Re Σ_l h_l e^{-2πi l·k_j}, adjoint e^{+2πi l·k_j}
 #   nfct:  l_d = 0 … N_d-1,                     g_j = Σ_l f_l Π_d cos(2π l_d k_dj), transposed alike
 #   nfst:  l_d = 1 … N_d,                       g_j = Σ_l f_l Π_d sin(2π l_d k_dj), transposed alike
+#   nnfft: prod(N) sources y_l uniform in Π_d [-N_d/2, N_d/2), g_j = Σ_l f_l e^{-2πi k_j·y_l}, adjoint
+#          e^{+2πi k_j·y_l}; the same space-frequency extent as an NFFT of size N
 # A batch of L transforms has the data as (input..., L) and (J, L); the reference covers slice 1.
 
 using Random, LinearAlgebra, Serialization
@@ -16,6 +18,7 @@ struct Problem
   T::Type
   N::Tuple
   k::Matrix                  # D × J, element type T
+  src::Matrix                # nnfft: D × prod(N) sources, element type T
   x::Array                   # input of the direct transform (input..., L)
   y::Array                   # input of the adjoint (J, L)
   ref_nodes::Vector{Int}     # sampled nodes j
@@ -44,7 +47,7 @@ function nodes(dist, D, J, rng)
   end
 end
 
-input_size(kind, N) = kind == "rnfft" ? (N[1] ÷ 2 + 1, Base.tail(N)...) : N
+input_size(kind, N) = kind == "rnfft" ? (N[1] ÷ 2 + 1, Base.tail(N)...) : kind == "nnfft" ? (prod(N),) : N
 
 # mode of array index i along dimension d
 function mode(kind, d, i, Nd)
@@ -69,13 +72,14 @@ function Problem(task::Dict{String,Any})
   k = nodes(task["nodes"], D, J, rng)
   kind in ("nfct", "nfst") && (k = clamp.(abs.(k), 0.0, 0.5))
   k = T.(k)
+  src = kind == "nnfft" ? T.((rand(rng, D, prod(N)) .- 0.5) .* collect(N)) : zeros(T, D, 0)
   Nin = input_size(kind, N)
   realin = kind in ("nfct", "nfst")
-  realout = kind != "nfft"
+  realout = kind in ("rnfft", "nfct", "nfst")
   x = realin ? randn(rng, T, Nin..., L) : randn(rng, Complex{T}, Nin..., L)
   y = realout ? randn(rng, T, J, L) : randn(rng, Complex{T}, J, L)
   ref_nodes = rand(rng, 1:J, NSAMPLES)
-  ref_modes = [CartesianIndex(ntuple(d -> rand(rng, 1:Nin[d]), D)) for _ in 1:NSAMPLES]
+  ref_modes = [CartesianIndex(ntuple(d -> rand(rng, 1:Nin[d]), length(Nin))) for _ in 1:NSAMPLES]
   # the exact sums take up to seconds (3D: 64·J·D phases); the problem is deterministic, so they
   # are cached on disk
   file = joinpath(REFCACHE, string(hash((kind, N, J, L, task["nodes"], task["T"], get(task, "seed", 1234), NSAMPLES)); base=16) * ".jls")
@@ -84,12 +88,15 @@ function Problem(task::Dict{String,Any})
   else
     kd = Float64.(k)
     x1 = ComplexF64.(selectdim(x, D + 1, 1)); y1 = ComplexF64.(y[:, 1])
-    r = ([ref_direct(kind, kd[:, j], N, Nin, x1) for j in ref_nodes],
-         [ref_adj(kind, kd, N, I, y1) for I in ref_modes])
+    r = kind == "nnfft" ?
+      ([ref_nnfft(kd[:, j:j], Float64.(src), x1, -1) for j in ref_nodes],
+       [ref_nnfft(Float64.(src[:, I[1]:I[1]]), kd, y1, 1) for I in ref_modes]) :
+      ([ref_direct(kind, kd[:, j], N, Nin, x1) for j in ref_nodes],
+       [ref_adj(kind, kd, N, I, y1) for I in ref_modes])
     mkpath(REFCACHE); serialize(file, r)
     r
   end
-  Problem(task, T, N, k, x, y, ref_nodes, ref_trafo, ref_modes, ref_adjoint)
+  Problem(task, T, N, k, src, x, y, ref_nodes, ref_trafo, ref_modes, ref_adjoint)
 end
 
 const REFCACHE = joinpath(dirname(@__DIR__), ".cache", "references")
@@ -102,6 +109,19 @@ function ref_direct(kind, kj, N, Nin, x)
     r = reshape(transpose(e) * reshape(r, Nin[d], :), Nin[d+1:end])
   end
   kind == "rnfft" ? complex(real(r[])) : r[]
+end
+
+# NNFFT at one point a (D × 1) from the points b with values c: Σ_l c_l e^{sign 2πi a·b_l}
+function ref_nnfft(a, b, c, sign)
+  s = zero(ComplexF64)
+  @inbounds for l in axes(b, 2)
+    p = 0.0
+    for d in axes(b, 1)
+      p += a[d] * b[d, l]
+    end
+    s += c[l] * cispi(sign * 2 * (p - round(p)))
+  end
+  s
 end
 
 # adjoint (transposed) transform at one mode
