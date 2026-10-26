@@ -28,6 +28,7 @@ makedocs(;
     "Transforms along Dimensions" => "generated/examples/directional.md",
     "Accuracy and Parameters" => "generated/examples/accuracy.md",
     "Stages of the NFFT" => "generated/examples/stages.md",
+    "Real Data" => "generated/examples/rnfft.md",
     "Cosine and Sine Transforms" => "generated/examples/real.md",
     "Density Compensation and Toeplitz" => "generated/examples/tools.md",
     "Performance" => "performance.md",

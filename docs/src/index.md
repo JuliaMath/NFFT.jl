@@ -28,6 +28,7 @@ g = adjoint(p) * fHat                # adjoint NFFT: nodes → equidistant
   FINUFFT and ducc.
 - **Transforms along some dimensions of an array** (`dims`), with batch kernels that process many
   transforms with the same nodes at once, as needed for multi-coil MRI or OCT.
+- **Real data at the nodes** (`plan_rnfft`, e.g. OCT), on a real grid.
 - **Cosine and sine transforms** (NFCT, NFST) for real data, with the definitions of NFFT3 and
   about the cost of a complex NFFT.
 - **Single and double precision**, with node positions always computed in double precision.
@@ -56,6 +57,7 @@ Toeplitz kernels are in `NFFTTools.jl` (`Pkg.add("NFFTTools")`).
 - [Accuracy and Parameters](@ref) explains how `reltol` becomes window, width and oversampling, and
   how to set these yourself.
 - [Stages of the NFFT](@ref) shows the stage interface.
+- [Real Data](@ref) covers `plan_rnfft` for real values at the nodes (e.g. OCT).
 - [Cosine and Sine Transforms](@ref) covers the NFCT and NFST.
 - [Density Compensation and Toeplitz Kernels](@ref) shows `NFFTTools.jl`.
 - [Performance](@ref) compares NFFT.jl with other libraries.

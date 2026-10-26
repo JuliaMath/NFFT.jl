@@ -47,9 +47,9 @@ size(adjoint(p) * data)
 
 # ## Why not a loop?
 #
-# The plan processes all slices together. For batch dimensions in front of `dims` it evaluates the
-# window once per node and applies it to all slices with SIMD instructions; batch dimensions
-# behind `dims` are first transposed into this layout. Compared with a loop over single plans:
+# The plan processes the slices together. With few slices (here 8 coils) it evaluates the window
+# once per node and applies it to all slices with SIMD instructions; batch dimensions behind
+# `dims` are first transposed into this layout. Compared with a loop over single plans:
 
 single = plan_nfft(k, N)
 out = similar(data)
@@ -65,5 +65,21 @@ t_batch = minimum(@elapsed(mul!(data, p, coils)) for _ in 1:5)
 
 out ≈ data
 
-# Batch kernels are used for 1D and 2D transforms. For 3D transforms, and for batch dimensions on
-# both sides of `dims`, the plan loops over the slices.
+# With many slices (at least four per thread), or with at least one small slice per thread, each
+# thread transforms whole slices on its own single-threaded copy of the plan, which shares nodes,
+# window and correction factors. Small transforms cannot use many threads, so this is much faster
+# for, e.g., many short 1D transforms:
+
+k1 = rand(1, 2048) .- 0.5
+pm = plan_nfft(k1, (2048, 512); dims=1)
+f1 = randn(ComplexF64, 2048, 512); y1 = pm * f1
+single1 = plan_nfft(k1, 2048)
+loop1!(y, p, f) = for c in axes(f, 2)
+  mul!(view(y, :, c), p, view(f, :, c))
+end
+loop1!(y1, single1, f1)
+(loop_ms=1e3minimum(@elapsed(loop1!(y1, single1, f1)) for _ in 1:5),
+ slices_ms=1e3minimum(@elapsed(mul!(y1, pm, f1)) for _ in 1:5))
+
+# Batch kernels are used for 1D and 2D transforms with few slices; 3D transforms with few slices
+# and batch dimensions on both sides of `dims` loop over the slices.

@@ -11,9 +11,11 @@ plan_nfft
 plan_nnfft
 plan_nfct
 plan_nfst
+plan_rnfft
 NFFTPlan
 NFCTPlan
 NFSTPlan
+RNFFTPlan
 NFFTBackend
 NFFT.parameters
 accuracy
@@ -91,6 +93,7 @@ AbstractNFFTPlan
 AbstractNNFFTPlan
 AbstractNFCTPlan
 AbstractNFSTPlan
+AbstractRNFFTPlan
 AbstractNFFTs.set_active_backend!
 DEFAULT_RELTOL
 GenericOptions
