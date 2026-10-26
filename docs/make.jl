@@ -1,4 +1,4 @@
-using Documenter, Literate, NFFT
+using Documenter, Literate, NFFT, NFFTTools
 
 # Examples are Literate scripts in literate/<section>/, rendered to src/generated/<section>/
 # and run when the documentation is built.
@@ -11,7 +11,7 @@ end
 DocMeta.setdocmeta!(NFFT, :DocTestSetup, :(using NFFT); recursive=true)
 
 makedocs(;
-  modules=[NFFT, AbstractNFFTs],
+  modules=[NFFT, AbstractNFFTs, NFFTTools],
   sitename="NFFT.jl",
   authors="Tobias Knopp and contributors",
   repo=Remotes.GitHub("JuliaMath", "NFFT.jl"),
@@ -28,6 +28,8 @@ makedocs(;
     "Transforms along Dimensions" => "generated/examples/directional.md",
     "Accuracy and Parameters" => "generated/examples/accuracy.md",
     "Stages of the NFFT" => "generated/examples/stages.md",
+    "Cosine and Sine Transforms" => "generated/examples/real.md",
+    "Density Compensation and Toeplitz" => "generated/examples/tools.md",
     "Performance" => "performance.md",
     "Abstract Interface" => "abstract.md",
     "Migrating from NFFT.jl 0.x" => "migration.md",

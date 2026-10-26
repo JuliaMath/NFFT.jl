@@ -12,6 +12,8 @@ plan_nnfft
 plan_nfct
 plan_nfst
 NFFTPlan
+NFCTPlan
+NFSTPlan
 NFFTBackend
 NFFT.parameters
 accuracy
@@ -50,6 +52,33 @@ resampling!
 resampling_adjoint!
 oversampled_bfft!
 resampling_correction_adjoint!
+```
+
+## NFFTTools
+
+```@meta
+CurrentModule = NFFTTools
+```
+
+```@docs
+sdc
+sdc!
+calculateToeplitzKernel
+calculateToeplitzKernel!
+convolveToeplitzKernel!
+```
+
+```@meta
+CurrentModule = NFFT
+```
+
+## Direct transforms
+
+```@docs
+NDFTPlan
+NDCTPlan
+NDSTPlan
+NNDFTPlan
 ```
 
 ## Abstract interface

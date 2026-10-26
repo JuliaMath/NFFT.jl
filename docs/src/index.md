@@ -28,6 +28,8 @@ g = adjoint(p) * fHat                # adjoint NFFT: nodes → equidistant
   FINUFFT and ducc.
 - **Transforms along some dimensions of an array** (`dims`), with batch kernels that process many
   transforms with the same nodes at once, as needed for multi-coil MRI or OCT.
+- **Cosine and sine transforms** (NFCT, NFST) for real data, with the definitions of NFFT3 and
+  about the cost of a complex NFFT.
 - **Single and double precision**, with node positions always computed in double precision.
 - **The three stages of the algorithm as an interface**: resampling correction, FFT and
   resampling can be called one by one, for example to embed the NFFT into a Toeplitz approach or to
@@ -43,8 +45,8 @@ using Pkg
 Pkg.add("NFFT")
 ```
 
-This also installs `AbstractNFFTs.jl`, the interface package. Additional tools (sampling density
-compensation, Toeplitz kernels) are in `NFFTTools.jl`.
+This also installs `AbstractNFFTs.jl`, the interface package. Sampling density compensation and
+Toeplitz kernels are in `NFFTTools.jl` (`Pkg.add("NFFTTools")`).
 
 ## Guide
 
@@ -54,6 +56,8 @@ compensation, Toeplitz kernels) are in `NFFTTools.jl`.
 - [Accuracy and Parameters](@ref) explains how `reltol` becomes window, width and oversampling, and
   how to set these yourself.
 - [Stages of the NFFT](@ref) shows the stage interface.
+- [Cosine and Sine Transforms](@ref) covers the NFCT and NFST.
+- [Density Compensation and Toeplitz Kernels](@ref) shows `NFFTTools.jl`.
 - [Performance](@ref) compares NFFT.jl with other libraries.
 - [Abstract Interface](@ref) describes `AbstractNFFTs.jl` and how to write an implementation.
 - [Migrating from NFFT.jl 0.x](@ref) lists what changed in version 1.0.

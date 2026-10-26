@@ -29,8 +29,7 @@ Its adjoint maps values at the nodes back to the grid,
 y_{\bm{n}} = \sum_{j=1}^{J} \hat{f}_j \, \mathrm{e}^{2\pi\mathrm{i}\,\bm{n}\cdot\bm{k}_j},
 \quad \bm{n} \in I_{\bm{N}} \qquad \textit{(non-equidistant to equidistant)}.
 ```
-In general the adjoint is not the inverse; see [`NFFTTools.jl`](https://github.com/JuliaMath/NFFT.jl/tree/master/NFFTTools)
-for density compensation and inversion.
+In general the adjoint is not the inverse; see [Density Compensation and Toeplitz Kernels](@ref).
 
 !!! note
     The indices in ``I_{\bm{N}}`` are centred around zero, while an ordinary DFT runs over
@@ -100,5 +99,5 @@ in ``[0, 1/2]^D``:
 \hat{f}_j = \sum_{\bm{n}} f_{\bm{n}} \prod_{d=1}^D \sin(2\pi n_d k_{d,j}),
 ```
 with ``n_d = 0,\dots,N_d-1`` (cosine) and ``n_d = 1,\dots,N_d`` (sine) for an array of size ``\bm{N}``. Their transposes take
-the role of the adjoint. NFFT.jl currently evaluates them directly (`NDCTPlan`, `NDSTPlan`); fast
-versions are in preparation.
+the role of the adjoint. NFFT.jl computes them as NFFTs of the even and odd extension of the data,
+see [Cosine and Sine Transforms](@ref).
