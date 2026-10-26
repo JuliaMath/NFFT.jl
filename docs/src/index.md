@@ -36,6 +36,8 @@ g = adjoint(p) * fHat                # adjoint NFFT: nodes → equidistant
 - **Real data at the nodes** (`plan_rnfft`, e.g. OCT), on a real grid.
 - **Cosine and sine transforms** (NFCT, NFST) for real data, with the definitions of NFFT3 and
   about the cost of a complex NFFT.
+- **Non-equidistant points in both domains** (NNFFT, `plan_nnfft`).
+- **GPUs** (CUDA, AMD, Apple) for all transforms through `storage`, from the same code base.
 - **Single and double precision**, with node positions always computed in double precision.
 - **The three stages of the algorithm as an interface**: resampling correction, FFT and
   resampling can be called one by one, for example to embed the NFFT into a Toeplitz approach or to
@@ -64,7 +66,9 @@ Toeplitz kernels are in `NFFTTools.jl` (`Pkg.add("NFFTTools")`).
 - [Stages of the NFFT](@ref) shows the stage interface.
 - [Real Data](@ref) covers `plan_rnfft` for real values at the nodes (e.g. OCT).
 - [Cosine and Sine Transforms](@ref) covers the NFCT and NFST.
+- [Non-equidistant in Both Domains](@ref) covers the NNFFT.
 - [Density Compensation and Toeplitz Kernels](@ref) shows `NFFTTools.jl`.
+- [GPU](@ref) shows how to run the transforms on GPUs.
 - [Performance](@ref) compares NFFT.jl with other libraries.
 - [Abstract Interface](@ref) describes `AbstractNFFTs.jl` and how to write an implementation.
 - [Migrating from NFFT.jl 0.x](@ref) lists what changed in version 1.0.
