@@ -44,6 +44,21 @@ relerr(a, b) = norm(a - b) / norm(b)
     @test relerr(Array(q * arrayType(f)), y) < 100 * eps(T)
   end
 
+  @testset "batch $T, N = $N, dims = $dims" for T in floatTypes,
+      (N, dims) in [((4, 256), 2:2), ((256, 4), 1:1), ((3, 32, 32), 2:3), ((24, 24, 2), 1:2), ((2, 12, 12, 12), 2:4)]
+    Random.seed!(2)
+    Dd = length(dims)
+    J = 500
+    k = rand(T, Dd, J) .- T(1 // 2)
+    reltol = T == Float32 ? 1e-5 : 1e-9
+    p = plan_nfft(k, N; dims, reltol, storage=arrayType)
+    pcpu = plan_nfft(k, N; dims, reltol)
+    f = randn(Complex{T}, N)
+    fHat = randn(Complex{T}, size_out(pcpu))
+    @test relerr(Array(p * arrayType(f)), pcpu * f) < 100 * eps(T)
+    @test relerr(Array(adjoint(p) * arrayType(fHat)), adjoint(pcpu) * fHat) < 100 * eps(T)
+  end
+
   @testset "sdc" begin
     # equispaced nodes: all weights equal 1/|N|
     N = (9, 8)

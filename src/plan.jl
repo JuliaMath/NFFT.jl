@@ -128,8 +128,8 @@ function make_engine(k, N, dims, kernel::KernelEntry, ::Type{T}, fft, tilesize, 
   Ñ = grid_size(kernel.σ, Nd, kernel.W)
   φ = window_function(kernel.window, kernel.W, kernel.β, kernel.e0)
   if !(storage <: Array)
-    L1 == 1 && L3 == 1 || throw(ArgumentError("batch dimensions are not supported with storage = $storage"))
-    :single, device_core(storage, k, Nd, Ñ, kernel.W, φ, T, nthreads), nothing, nothing
+    # the device core handles batch dimensions itself
+    :single, device_core(storage, k, Nd, Ñ, kernel.W, φ, T, nthreads, L1, L3), nothing, nothing
   elseif L1 == 1 && L3 == 1
     :single, NFFTCore(k, Nd, Ñ, kernel.W, φ, T, fft, tilesize, nthreads), nothing, nothing
   elseif use_slices(L1 * L3, J + prod(Nd), nthreads)

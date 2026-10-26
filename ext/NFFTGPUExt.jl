@@ -4,6 +4,9 @@
 # coordinate s ∈ [−1, 1] of every dimension, so that the kernels evaluate the window in the working
 # precision T (Metal has no Float64) while the grid position itself was computed in Float64.
 #
+# Batch dimensions: the data are viewed as (L1, N..., L3) and (L1, J, L3), the grids as (Ñ..., L)
+# with L = L1·L3; every kernel runs over all L transforms at once and the FFT is batched.
+#
 # Closures inside a @kernel that capture its local variables are boxed (KernelAbstractions wraps the
 # body), and a boxed variable crashes the Metal compiler instead of raising an error: kernels call
 # helper functions that take everything as arguments.
@@ -40,14 +43,16 @@ end
 struct GPUCore{D,K,V,O,S,P,G,PF,PB,B,TL}
   N::NTuple{D,Int}
   Ñ::NTuple{D,Int}
+  L1::Int                    # batch size before and after the transformed dimensions
+  L3::Int
   W::Int
   kernel::K
   invphi::NTuple{D,V}        # 1/φ̂ of the kept modes per dimension
   offs::O                    # (D, J) Int32: index of support point 0 in the padded grid, minus 1
   ss::S                      # (D, J) fractional coordinates s = 2t − 1 in T
   perm::P                    # binned order → input index
-  gp::G                      # padded grid Ñ .+ W (halo as in geometry.jl)
-  gf::G                      # grid Ñ for the FFT
+  gp::G                      # padded grids (Ñ .+ W..., L) (halo as in geometry.jl)
+  gf::G                      # grids (Ñ..., L) for the FFT
   pf::PF
   pb::PB
   backend::B
@@ -67,7 +72,7 @@ function tile_edges(D, W, T)
 end
 
 function NFFT.device_core(storage::Type{<:AbstractGPUArray}, k::Matrix, N::NTuple{D,Int}, Ñ::NTuple{D,Int}, W, φ,
-                          ::Type{T}, nthreads) where {D,T}
+                          ::Type{T}, nthreads, L1, L3) where {D,T}
   K = SymKernel(PolyKernel(φ, W, W + 3; T))
   invphi = ntuple(d -> T.(1 ./ kernel_ft(φ, W, N[d], Ñ[d]; nthreads)), D)
   J = size(k, 2)
@@ -94,19 +99,20 @@ function NFFT.device_core(storage::Type{<:AbstractGPUArray}, k::Matrix, N::NTupl
     counts[t] += 1
   end
   tileptr = cumsum([1; counts])
-  gf = storage(zeros(Complex{T}, Ñ))
+  gf = storage(zeros(Complex{T}, Ñ..., L1 * L3))
   backend = KA.get_backend(gf)
-  gp = KA.zeros(backend, Complex{T}, (Ñ .+ W)...)
+  gp = KA.zeros(backend, Complex{T}, (Ñ .+ W)..., L1 * L3)
   tiles = Bt === nothing ? nothing : Tiles(B, nt, tstr, strides(B), storage(Int32.(tileptr)))
-  GPUCore(N, Ñ, W, K, map(storage, invphi), storage(offs[:, perm]), storage(ss[:, perm]), storage(Int32.(perm)),
-          gp, gf, plan_fft!(gf), plan_bfft!(gf), backend, tiles)
+  GPUCore(N, Ñ, L1, L3, W, K, map(storage, invphi), storage(offs[:, perm]), storage(ss[:, perm]),
+          storage(Int32.(perm)), gp, gf, plan_fft!(gf, 1:D), plan_bfft!(gf, 1:D), backend, tiles)
 end
 
 # A copy has its own grids and FFT plans and shares the rest.
 function Base.copy(c::GPUCore)
   gp = similar(c.gp); gf = similar(c.gf)
-  GPUCore(c.N, c.Ñ, c.W, c.kernel, c.invphi, c.offs, c.ss, c.perm, gp, gf, plan_fft!(gf), plan_bfft!(gf), c.backend,
-          c.tiles)
+  D = length(c.N)
+  GPUCore(c.N, c.Ñ, c.L1, c.L3, c.W, c.kernel, c.invphi, c.offs, c.ss, c.perm, gp, gf, plan_fft!(gf, 1:D),
+          plan_bfft!(gf, 1:D), c.backend, c.tiles)
 end
 
 function check_device(c::GPUCore, xs...)
@@ -120,30 +126,38 @@ end
 
 @inline node_weights(K, ss, q, ::Val{D}) where {D} = ntuple(d -> weights(K, @inbounds(ss[d, q])), Val(D))
 @inline node_offset(offs, q, ::Val{D}) where {D} = ntuple(d -> Int(@inbounds(offs[d, q])), Val(D))
+# the first D indices, and grid l of an array of grids
+@inline front(I, ::Val{D}) where {D} = ntuple(d -> I[d], Val(D))
+@inline grid(g, l, ::Val{D}) where {D} = view(g, ntuple(_ -> Colon(), Val(D))..., l)
+# batch index l = a + (b − 1)·L1
+@inline batch(l, L1) = ((l - 1) % L1 + 1, (l - 1) ÷ L1 + 1)
 
-@kernel function resample_kernel!(out, @Const(gp), K, @Const(offs), @Const(ss), @Const(perm), ::Val{D}) where {D}
-  q = @index(Global)
+# One work-item per node and transform; `out` is (L1, J, L3).
+@kernel function resample_kernel!(out, @Const(gp), K, @Const(offs), @Const(ss), @Const(perm), L1, ::Val{D}) where {D}
+  q, l = @index(Global, NTuple)
   ws = node_weights(K, ss, q, Val(D))
   off = node_offset(offs, q, Val(D))
-  @inbounds out[perm[q]] = resample_node(gp, off, ws)
+  a, b = batch(l, L1)
+  @inbounds out[a, perm[q], b] = resample_node(grid(gp, l, Val(D)), off, ws)
 end
 
 # `gr` is the padded grid reinterpreted as real numbers with a leading dimension (re, im): atomic
 # additions exist for real numbers only.
-@kernel function resample_adjoint_kernel!(gr, K, @Const(offs), @Const(ss), @Const(perm), @Const(vals),
+@kernel function resample_adjoint_kernel!(gr, K, @Const(offs), @Const(ss), @Const(perm), @Const(vals), L1,
                                           ::Val{D}, ::Val{W}) where {D,W}
-  q = @index(Global)
+  q, l = @index(Global, NTuple)
   ws = node_weights(K, ss, q, Val(D))
   off = node_offset(offs, q, Val(D))
-  v = @inbounds vals[perm[q]]
+  a, b = batch(l, L1)
+  v = @inbounds vals[a, perm[q], b]
   w1v = ws[1] .* v
   for It in CartesianIndices(ntuple(_ -> Base.OneTo(W), Val(D - 1)))
     wt = prod(ntuple(d -> ws[d+1][It[d]], Val(D - 1)); init=one(eltype(gr)))
     jt = Base.tail(off) .+ Tuple(It)
     for i in 1:W
-      a = wt * w1v[i]
-      KA.@atomic gr[1, off[1]+i, jt...] += real(a)
-      KA.@atomic gr[2, off[1]+i, jt...] += imag(a)
+      c = wt * w1v[i]
+      KA.@atomic gr[1, off[1]+i, jt..., l] += real(c)
+      KA.@atomic gr[2, off[1]+i, jt..., l] += imag(c)
     end
   end
 end
@@ -153,10 +167,12 @@ end
 # in chunks (weights, offsets and values into local memory); for each node the work-items split the
 # intersection of its support with the tile, and a barrier separates the nodes. The tile is then
 # written to the padded grid, which it covers exactly once. D = 2, 3.
+# One workgroup per tile and transform.
 @kernel function adjoint_tile_kernel!(gp::AbstractArray{Complex{T}}, K, @Const(offs), @Const(ss), @Const(perm),
-                                      @Const(vals), @Const(tileptr), nt, B, tstr, bstr,
+                                      @Const(vals), @Const(tileptr), nt, B, tstr, bstr, L1,
                                       ::Val{D}, ::Val{W}, ::Val{S}, ::Val{C}) where {T,D,W,S,C}
-  t = @index(Group, Linear)
+  t, lb = batch(@index(Group, Linear), prod(nt))
+  a0, b0 = batch(lb, L1)
   li = @index(Local, Linear)
   gs = @groupsize()[1]
   bre = @localmem T (S,)
@@ -193,7 +209,7 @@ end
         @inbounds ob[c * D + d] = offs[d, q]
       end
       for a in li:gs:cnt
-        v = @inbounds vals[perm[qc + a - 1]]
+        v = @inbounds vals[a0, perm[qc + a - 1], b0]
         @inbounds vre[a] = real(v); @inbounds vim[a] = imag(v)
       end
       @synchronize
@@ -229,8 +245,8 @@ end
   @synchronize
   for i in li:gs:prod(B)
     gi = map((x, y) -> x + y + 1, o, lin2cart(i, bstr, B))
-    if all(map(<=, gi, size(gp)))
-      @inbounds gp[gi...] = complex(bre[i], bim[i])
+    if all(map(<=, gi, front(size(gp), Val(D))))
+      @inbounds gp[gi..., lb] = complex(bre[i], bim[i])
     end
   end
 end
@@ -244,56 +260,62 @@ end
   lo, max(hi - lo + Int32(1), Int32(0))
 end
 
-# Resampling correction between the modes f and the grid gf (no halo), one work-item per mode.
-@kernel function correction_kernel!(gf, f, @Const(invphi), N, ::Val{D}, adjoint::Bool) where {D}
-  I = @index(Global, Cartesian)
-  Ñ = size(gf)
+# Resampling correction between the modes f, (L1, N..., L3), and the grids gf, (Ñ..., L): one
+# work-item per mode and transform.
+@kernel function correction_kernel!(gf, f, @Const(invphi), N, L1, ::Val{D}, adjoint::Bool) where {D}
+  I = Tuple(@index(Global, Cartesian))
+  m = front(I, Val(D)); l = I[D+1]
+  a, b = batch(l, L1)
   c = one(real(eltype(gf)))
   for d in 1:D
-    @inbounds c *= invphi[d][I[d]]
+    @inbounds c *= invphi[d][m[d]]
   end
-  gi = ntuple(d -> mod(I[d] - 1 - N[d] ÷ 2, Ñ[d]) + 1, Val(D))
+  gi = map((i, n, ñ) -> mod(i - 1 - n ÷ 2, ñ) + 1, m, N, front(size(gf), Val(D)))
   if adjoint
-    @inbounds f[I] = c * gf[gi...]
+    @inbounds f[a, m..., b] = c * gf[gi..., l]
   else
-    @inbounds gf[gi...] = c * f[I]
+    @inbounds gf[gi..., l] = c * f[a, m..., b]
   end
 end
 
-# Padded grid from the grid: every padded point reads its periodic partner (interior and halo).
+# Padded grids from the grids: every padded point reads its periodic partner (interior and halo).
 @kernel function pad_kernel!(gp, @Const(gf), h::Int, ::Val{D}) where {D}
-  I = @index(Global, Cartesian)
-  Ñ = size(gf)
-  @inbounds gp[I] = gf[ntuple(d -> mod(I[d] - 1 - h, Ñ[d]) + 1, Val(D))...]
+  I = Tuple(@index(Global, Cartesian))
+  src = map((i, ñ) -> mod(i - 1 - h, ñ) + 1, front(I, Val(D)), front(size(gf), Val(D)))
+  @inbounds gp[I...] = gf[src..., I[D+1]]
 end
 
-# Grid from the padded grid: every point sums its periodic images (folds the halo without atomics).
-# The grid has at least W points, so the images are p − Ñ, p, p + Ñ.
+# Grids from the padded grids: every point sums its periodic images (folds the halo without
+# atomics). The grid has at least W points, so the images are p − Ñ, p, p + Ñ.
 @kernel function unpad_kernel!(gf, @Const(gp), h::Int, ::Val{D}) where {D}
-  I = @index(Global, Cartesian)
-  Ñ = size(gf); P = size(gp)
+  I = Tuple(@index(Global, Cartesian))
   acc = zero(eltype(gf))
   for c in CartesianIndices(ntuple(_ -> 3, Val(D)))
-    p = ntuple(d -> I[d] + h + (c[d] - 2) * Ñ[d], Val(D))
-    if all(map((x, s) -> 1 <= x <= s, p, P))
-      @inbounds acc += gp[p...]
+    p = image(front(I, Val(D)), Tuple(c), h, front(size(gf), Val(D)))
+    if all(map((x, s) -> 1 <= x <= s, p, front(size(gp), Val(D))))
+      @inbounds acc += gp[p..., I[D+1]]
     end
   end
-  @inbounds gf[I] = acc
+  @inbounds gf[I...] = acc
 end
+@inline image(i, c, h, Ñ) = map((x, s, n) -> x + h + (s - 2) * n, i, c, Ñ)
 
 ## stages
 
 launch(c, k, args...; ndrange) = prod(ndrange) == 0 || k(c.backend, WORKGROUP)(args...; ndrange)
 
+# The stage functions take f as (L1, N..., L3), values as (L1, J, L3) and grids as (Ñ..., L).
 correction!(c::GPUCore{D}, g, f) where {D} =
-  (fill!(g, 0); launch(c, correction_kernel!, g, f, c.invphi, c.N, Val(D), false; ndrange=c.N); g)
+  (fill!(g, 0); launch(c, correction_kernel!, g, f, c.invphi, c.N, c.L1, Val(D), false; ndrange=(c.N..., nbatch(c))); g)
 correction_adjoint!(c::GPUCore{D}, f, g) where {D} =
-  (launch(c, correction_kernel!, g, f, c.invphi, c.N, Val(D), true; ndrange=c.N); f)
+  (launch(c, correction_kernel!, g, f, c.invphi, c.N, c.L1, Val(D), true; ndrange=(c.N..., nbatch(c))); f)
+
+nbatch(c::GPUCore) = c.L1 * c.L3
 
 function resampling!(c::GPUCore{D}, out, g) where {D}
   launch(c, pad_kernel!, c.gp, g, halo(c.W)[1], Val(D); ndrange=size(c.gp))
-  launch(c, resample_kernel!, out, c.gp, c.kernel, c.offs, c.ss, c.perm, Val(D); ndrange=length(c.perm))
+  launch(c, resample_kernel!, out, c.gp, c.kernel, c.offs, c.ss, c.perm, c.L1, Val(D);
+         ndrange=(length(c.perm), nbatch(c)))
   out
 end
 
@@ -302,34 +324,45 @@ function resampling_adjoint!(c::GPUCore{D}, g, vals) where {D}
   if tl === nothing
     fill!(c.gp, 0)
     gr = reinterpret(reshape, real(eltype(c.gp)), c.gp)
-    launch(c, resample_adjoint_kernel!, gr, c.kernel, c.offs, c.ss, c.perm, vals, Val(D), Val(c.W);
-           ndrange=length(c.perm))
+    launch(c, resample_adjoint_kernel!, gr, c.kernel, c.offs, c.ss, c.perm, vals, c.L1, Val(D), Val(c.W);
+           ndrange=(length(c.perm), nbatch(c)))
   else
     adjoint_tile_kernel!(c.backend, TILE_WORKGROUP)(c.gp, c.kernel, c.offs, c.ss, c.perm, vals, tl.tileptr,
-      tl.nt, tl.B, tl.tstr, tl.bstr, Val(D), Val(c.W), Val(prod(tl.B)), Val(TILE_CHUNK);
-      ndrange=prod(tl.nt) * TILE_WORKGROUP)
+      tl.nt, tl.B, tl.tstr, tl.bstr, c.L1, Val(D), Val(c.W), Val(prod(tl.B)), Val(TILE_CHUNK);
+      ndrange=prod(tl.nt) * nbatch(c) * TILE_WORKGROUP)
   end
-  launch(c, unpad_kernel!, g, c.gp, halo(c.W)[1], Val(D); ndrange=c.Ñ)
+  launch(c, unpad_kernel!, g, c.gp, halo(c.W)[1], Val(D); ndrange=size(g))
   g
 end
 
+modes(c::GPUCore, f) = reshape(f, c.L1, c.N..., c.L3)
+values(c::GPUCore, v) = reshape(v, c.L1, length(c.perm), c.L3)
+
 function NFFT.trafo_core!(out, c::GPUCore, f)
   check_device(c, out, f)
-  correction!(c, c.gf, f)
+  correction!(c, c.gf, modes(c, f))
   c.pf * c.gf
-  resampling!(c, out, c.gf)
+  resampling!(c, values(c, out), c.gf)
+  out
 end
 
 function NFFT.adjoint_core!(f, c::GPUCore, vals)
   check_device(c, f, vals)
-  resampling_adjoint!(c, c.gf, vals)
+  resampling_adjoint!(c, c.gf, values(c, vals))
   c.pb * c.gf
-  correction_adjoint!(c, f, c.gf)
+  correction_adjoint!(c, modes(c, f), c.gf)
+  f
 end
 
-NFFT.correction_stage!(c::GPUCore, g, f) = (check_device(c, g, f); correction!(c, g, f))
-NFFT.correction_adjoint_stage!(c::GPUCore, f, g) = (check_device(c, f, g); correction_adjoint!(c, f, g))
-NFFT.resampling_stage!(c::GPUCore, fHat, g) = (check_device(c, fHat, g); resampling!(c, fHat, g))
-NFFT.resampling_adjoint_stage!(c::GPUCore, g, fHat) = (check_device(c, g, fHat); resampling_adjoint!(c, g, fHat))
+# Stage interface: plans without batch dimensions, g of size Ñ.
+grids(c::GPUCore, g) = reshape(g, c.Ñ..., 1)
+NFFT.correction_stage!(c::GPUCore, g, f) =
+  (check_device(c, g, f); correction!(c, grids(c, g), modes(c, f)); g)
+NFFT.correction_adjoint_stage!(c::GPUCore, f, g) =
+  (check_device(c, f, g); correction_adjoint!(c, modes(c, f), grids(c, g)); f)
+NFFT.resampling_stage!(c::GPUCore, fHat, g) =
+  (check_device(c, fHat, g); resampling!(c, values(c, fHat), grids(c, g)); fHat)
+NFFT.resampling_adjoint_stage!(c::GPUCore, g, fHat) =
+  (check_device(c, g, fHat); resampling_adjoint!(c, grids(c, g), values(c, fHat)); g)
 
 end
