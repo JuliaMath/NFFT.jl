@@ -60,7 +60,8 @@ end
 NNFFTPlan(k::AbstractVecOrMat, y::AbstractVecOrMat; kwargs...) = plan_nnfft(NFFTBackend(), k, y; kwargs...)
 
 function NNFFTPlan(k::AbstractMatrix, y::AbstractMatrix, g::GenericOptions{T}; window=:auto, W=nothing, σ=nothing,
-                   fft=FFTWBackend()) where {T}
+                   fft=nothing) where {T}
+  cpu_options(g.storage, fft, nothing)
   kc = Array{Float64}(k); yc = Array{Float64}(y)
   all(isfinite, kc) && all(isfinite, yc) || throw(ArgumentError("nodes must be finite"))
   nnfft_plan(Val(size(kc, 1)), k, y, kc, yc, g; window, W, σ, fft)

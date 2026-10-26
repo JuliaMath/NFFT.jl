@@ -47,7 +47,7 @@ hm = heatmap!(ax, 1:L, 0:Nz, dB'; colormap=:grays, colorrange=(-40, 0))
 Colorbar(fig[1, 2], hm; label="dB")
 fig
 
-# The plan runs the 256 A-scans in parallel:
+# With several threads, the plan runs the 256 A-scans in parallel:
 
 t = minimum(@elapsed(mul!(h, adjoint(p), w .* y)) for _ in 1:5)
 (ms=1e3t, threads=Threads.nthreads())

@@ -25,8 +25,9 @@ NFFT.parameters(pkb), NFFT.parameters(pes)
 # ## Set the width and the oversampling factor
 #
 # `W` and `σ` restrict the search as well; with both given, only the window shape comes from the
-# table. ``W`` may be odd. In the notation of the NFFT.jl paper the window has the half width
-# ``m``, so `W = 2m`.
+# table. ``W`` may be odd (see [Mathematical Background](@ref "Window, width and oversampling") for
+# ``W = 2m``). A `σ` between the tabulated values (steps of 0.05) uses the shape of the nearest one,
+# and `accuracy(p)` is then an estimate.
 
 p = plan_nfft(k, N; W=7, σ=1.5)
 NFFT.parameters(p), relerr(p)

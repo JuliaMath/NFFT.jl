@@ -116,9 +116,10 @@ with 8 threads, ms (direct / adjoint; including the allocation of the output):
 | NFFT, OCT ``2048 \times 512`` | 2.5 / 2.1 | 1.7 / 6.3 |
 
 The direct transforms are as fast as or faster than on the CPU. The adjoint transforms are slower:
-Apple GPUs have slow floating point atomics and 32 KB of local memory per workgroup, which limits
-the tiles of the adjoint resampling (see [How NFFT.jl Works](@ref "GPUs")). Measurements on Nvidia and
-AMD GPUs are still missing.
+in 2D and 3D a workgroup adds the nodes of its tile one after the other, and the 32 KB of local
+memory of Apple GPUs keep the tiles small; in 1D the adjoint uses floating point atomics, which are
+slow on Apple GPUs (see [How NFFT.jl Works](@ref "GPUs")). Measurements on Nvidia and AMD GPUs are
+still missing.
 
 ## NFFT.jl 1.0 against 0.14
 

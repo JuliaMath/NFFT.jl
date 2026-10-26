@@ -18,8 +18,8 @@ Creating a plan does all work that depends only on the nodes and the sizes:
 - **FFT plans** for the passes of the pruned FFT, and the work arrays: the padded grid and one tile
   buffer per task.
 
-A transform then allocates nothing. `copy(p)` shares the read-only parts and gets its own work
-arrays, so copies can run concurrently.
+A transform then allocates no arrays, only a few kilobytes for scheduling its tasks. `copy(p)`
+shares the read-only parts and gets its own work arrays, so copies can run concurrently.
 
 ## The window as polynomial pieces
 
@@ -41,8 +41,8 @@ accuracy is that of the window itself.
 The oversampled grid is periodic: the support of a node near the edge continues on the other side.
 NFFT.jl stores the grid with a halo of ``W`` extra points per dimension. Before the resampling the
 halo is filled with copies from the opposite side, after the adjoint resampling it is added back.
-In between, every node reads or writes one contiguous block of ``W^D`` points, and the inner loops
-contain no modulo operations and no branches.
+In between, every node reads or writes one block of ``W^D`` points without wrap-around, and the
+inner loops contain no modulo operations and no branches.
 
 The node positions on the grid are always computed in double precision, also for single-precision
 data: in `Float32`, ``k \tilde N`` would be off by about ``10^{-2}`` grid points for
@@ -75,30 +75,37 @@ same time.
 Before the FFT of the direct transform, only the ``|\bm{N}|`` kept modes in the corners of the
 grid are nonzero; after the FFT of the adjoint, only those are needed. NFFT.jl runs the FFT as one
 pass per dimension and skips the lines that contain only zeros (direct) or are not needed later
-(adjoint). In 2D with ``\sigma = 2`` the first pass touches half of the lines; in 3D the first two
-passes touch a quarter and a half. Each pass is split into boxes of lines that run in parallel, each
-with a single-threaded batched FFTW plan; FFTW's own threading with `ESTIMATE` plans is up to
-17 times slower. In 1D, FFTW's threading is used. The grid sizes are products of 2, 3, 5 and 7,
+(adjoint). In 2D with ``\sigma = 2`` the first pass of the direct transform touches half of the
+lines, in 3D the first two passes a quarter and a half; the adjoint saves the same in its last
+passes. Each pass is split into boxes of lines that run in parallel, each with a single-threaded
+batched FFTW plan: with `ESTIMATE`, FFTW's own threading produces plans up to 17 times slower than
+`MEASURE` plans, while single-threaded batched `ESTIMATE` plans come within 10–20 % of `MEASURE`.
+In 1D, FFTW's threading is used. The grid sizes are products of 2, 3, 5 and 7,
 not powers of two, so that ``\sigma`` can be chosen freely.
 
 ## Batch strategies
 
 ![Strategies for batch dimensions](./assets/nfft_batch.svg)
 
-With `dims`, the data are viewed as ``(L_1, \bm{N}, L_3)``: batch dimensions before and after
-the transformed ones. The plan chooses one of four strategies at plan time:
+With `dims`, the data are viewed as ``(L_1, \bm{N}, L_3)``: ``L = L_1 L_3`` slices, with the batch
+dimensions before and after the transformed ones (see [Transforms along Dimensions](@ref) for the
+usage). An NFFT plan chooses one of four strategies at plan time, in this order:
 
-- **Batch kernels** (1D and 2D, few slices, batch dimensions before `dims`): the grid stores the
-  ``L`` values of each grid point next to each other. The window weights of a node are evaluated
-  once and applied to all ``L`` values with SIMD instructions.
-- **Transposition** (batch dimensions after `dims`): the data are transposed into the layout of the
-  batch kernels and back.
-- **Slices in parallel** (many slices, or small ones): every thread runs whole slices on its own
-  single-threaded copy of the plan, which shares nodes, window and correction factors. Small
-  transforms cannot use many threads; for 512 short 1D transforms this is about 50 times faster than
-  running them one after the other.
-- **A loop** over the slices with the threaded transform (3D with few slices, or batch dimensions
-  on both sides of `dims`).
+- **Slices in parallel**, if there are several threads and either many slices (``L \ge 4`` per
+  thread) or at least one small slice per thread (``J + |\bm{N}| \le 2^{15}``): every thread runs
+  whole slices on its own single-threaded copy of the plan, which shares nodes, window and
+  correction factors. Small transforms cannot use many threads; for 512 short 1D transforms this is
+  about 50 times faster than running them one after the other.
+- **Batch kernels** (1D and 2D, batch dimensions only before `dims`): the grid stores the ``L``
+  values of each grid point next to each other. The window weights of a node are evaluated once and
+  applied to all ``L`` values with SIMD instructions.
+- **Transposition** (1D and 2D, batch dimensions only after `dims`): the data are transposed into
+  the layout of the batch kernels and back.
+- **A loop** over the slices with the threaded transform (3D and higher, or batch dimensions on both
+  sides of `dims`).
+
+RNFFT, NFCT and NFST plans run slices in parallel or loop over them. On a GPU, every kernel
+processes all slices in one launch.
 
 ## Real-valued transforms
 
@@ -106,8 +113,8 @@ the transformed ones. The plan chooses one of four strategies at plan time:
 
 - **RNFFT.** The values at the nodes are real exactly when the oversampled grid is real. The plan
   stores the half spectrum (``n_1 \ge 0``), runs complex backward FFTs along dimensions
-  ``2, \dots, D`` on it and a complex-to-real FFT along dimension 1 into a real grid. Resampling and
-  adjoint resampling then work on real numbers, which halves their memory traffic.
+  ``2, \dots, D`` on it and a complex-to-real FFT along dimension 1 into a real grid. The FFT and
+  the adjoint resampling then cost about half of those of the complex NFFT.
 - **NFCT and NFST** are NFFTs of the even and odd extension of the data on ``2\tilde{\bm N}``
   points. Only the points ``0, \dots, \tilde N`` of each dimension are stored; the halo holds their
   mirror images, with a sign change for the NFST, so the resampling loops of the NFFT run
@@ -123,7 +130,10 @@ The NNFFT spreads the sources with an outer window onto an equidistant grid, eva
 series of that grid at the scaled targets with an ordinary NFFT, and divides by the Fourier
 transform of the outer window. Both node sets are first centred, which turns into phase factors.
 The spacing ``h = 1/(2\sigma_1 K)`` keeps the targets inside the band where the division is well
-conditioned; the grid is large enough that the spreading never wraps around. The error of the inner
+conditioned; the grid is large enough that the spreading never wraps around. With ``Y_d`` and
+``K_d`` the half-widths of sources and targets, the inner NFFT has about ``4\sigma_1 Y_d K_d`` modes
+per dimension (``\sigma_1`` between 1.2 and 2.5): the cost follows the extent of the data, not the
+number of points. The error of the inner
 NFFT is amplified by at most ``A = \hat\varphi(0)/\hat\varphi(1/(2\sigma_1))``, so the plan chooses
 the outer window and the inner NFFT together, at the lowest predicted cost for the requested
 error.
@@ -132,7 +142,8 @@ error.
 
 ![GPU kernels](./assets/nfft_gpu.svg)
 
-The GPU path reuses the setup on the CPU (parameters, binning, window polynomial). The GPU holds,
+The plan is set up on the CPU, with the same parameter choice and window polynomial; the nodes are
+binned on the CPU by the start of their support (below). The GPU holds,
 for each node, the offset of its support in the grid and its fractional position, in the working
 precision; the grid positions themselves were computed in double precision. Each stage is a
 [KernelAbstractions.jl](https://github.com/JuliaGPU/KernelAbstractions.jl) kernel:
@@ -142,8 +153,10 @@ precision; the grid positions themselves were computed in double precision. Each
   the start of their support, so only the nodes of ``2^D`` bins can reach a tile. The workgroup
   loads them in chunks into local memory; for each node the work-items split the intersection of its
   support with the tile, and a barrier separates the nodes. The tile is written once. There are no
-  atomic operations, and the result is the same in every call. In 1D, and for tiles that do not fit
-  into local memory, the work-items add with atomic operations.
+  atomic operations, and the result is the same in every call. The nodes of a tile are processed
+  one after the other, which limits the speed on GPUs with little local memory per workgroup (32 KB
+  on Apple GPUs). In 1D, and for tiles that do not fit into local memory, the work-items add with
+  atomic operations.
 - **Halo**: filling and folding are gathers, again without atomics.
 - **FFT**: through AbstractFFTs, so the GPU package provides it (cuFFT, rocFFT, Metal).
 

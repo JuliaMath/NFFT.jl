@@ -98,7 +98,8 @@ NFFTPlan(k::AbstractMatrix, N::Dims; kwargs...) = plan_nfft(NFFTBackend(), k, N;
 NFFTPlan(k::AbstractVector, N; kwargs...) = plan_nfft(NFFTBackend(), k, N; kwargs...)
 
 function NFFTPlan(k::AbstractMatrix, N::NTuple{D,Int}, g::GenericOptions{T}; window=:auto, W=nothing,
-                  σ=nothing, fft=FFTWBackend(), tilesize=nothing) where {D,T}
+                  σ=nothing, fft=nothing, tilesize=nothing) where {D,T}
+  fft = cpu_options(g.storage, fft, tilesize)
   dims = g.dims
   Nd = N[dims]
   J = size(k, 2)
@@ -142,6 +143,14 @@ function make_engine(k, N, dims, kernel::KernelEntry, ::Type{T}, fft, tilesize, 
   else
     :loop, NFFTCore(k, Nd, Ñ, kernel.W, φ, T, fft, tilesize, nthreads), nothing, nothing
   end
+end
+
+# The FFT backend and the tile size are options of the CPU code; plans on a device reject them
+# instead of ignoring them.
+function cpu_options(storage, fft, tilesize)
+  storage <: Array || (fft === nothing && tilesize === nothing) ||
+    throw(ArgumentError("the options fft and tilesize are not supported with storage = $storage"))
+  something(fft, FFTWBackend())
 end
 
 # Core of a plan whose data live on a device (GPU array types); implemented by the GPU extension.

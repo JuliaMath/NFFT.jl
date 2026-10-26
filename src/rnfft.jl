@@ -158,7 +158,8 @@ end
 RNFFTPlan(k::AbstractVecOrMat, N; kwargs...) = plan_rnfft(NFFTBackend(), k, N; kwargs...)
 
 function RNFFTPlan(k::AbstractMatrix, N::NTuple{D,Int}, g::GenericOptions{T}; window=:auto, W=nothing,
-                   σ=nothing, fft=FFTWBackend(), tilesize=nothing) where {D,T}
+                   σ=nothing, fft=nothing, tilesize=nothing) where {D,T}
+  fft = cpu_options(g.storage, fft, tilesize)
   dims = g.dims
   J = size(k, 2)
   if window isa CustomWindow

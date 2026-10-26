@@ -39,6 +39,10 @@ relerr(a, b) = norm(a - b) / norm(b)
       @test Array(adjoint(p) * arrayType(fHat)) == x
     end
 
+    # options of the CPU code are rejected, not ignored
+    @test_throws ArgumentError plan_nfft(k, N; reltol, storage=arrayType, tilesize=8)
+    @test_throws ArgumentError plan_nfft(k, N; reltol, storage=arrayType, fft=NFFT.FFTWBackend())
+
     # storage defaults to the array type of the nodes
     q = plan_nfft(arrayType(k), N; reltol)
     @test relerr(Array(q * arrayType(f)), y) < 100 * eps(T)

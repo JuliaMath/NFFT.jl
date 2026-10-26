@@ -46,8 +46,9 @@ size(data)
 
 size(adjoint(p) * data)
 
-# One plan for all coils is faster than a loop over the coils with a plan for one image, because
-# the window weights of a node are computed once for all coils:
+# One plan for all coils is faster than a loop over the coils with a plan for one image: depending
+# on the number of threads it computes the window weights of a node once for all coils, or runs
+# the coils in parallel:
 
 single = plan_nfft(k, N)
 out = similar(data)
@@ -62,7 +63,8 @@ t_batch = minimum(@elapsed(mul!(data, p, coils)) for _ in 1:5)
 # ## Transform many short signals
 #
 # For many small transforms, such as the 512 A-scans of an OCT B-scan, the plan runs whole slices
-# in parallel, one per thread. Again a single plan with `dims` does it:
+# in parallel, one per thread (with several threads, e.g. `julia -t auto`). Again a single plan
+# with `dims` does it:
 
 k1 = rand(1, 2048) .- 0.5
 pm = plan_nfft(k1, (2048, 512); dims=1)

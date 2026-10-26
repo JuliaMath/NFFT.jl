@@ -333,7 +333,8 @@ NFCTPlan(k::AbstractVecOrMat, N; kwargs...) = plan_nfct(NFFTBackend(), k, N; kwa
 NFSTPlan(k::AbstractVecOrMat, N; kwargs...) = plan_nfst(NFFTBackend(), k, N; kwargs...)
 
 function RealPlan(P::Type, k::AbstractMatrix, N::NTuple{D,Int}, g::GenericOptions{T}; window=:auto,
-                  W=nothing, σ=nothing, fft=FFTWBackend(), tilesize=nothing) where {D,T}
+                  W=nothing, σ=nothing, fft=nothing, tilesize=nothing) where {D,T}
+  fft = cpu_options(g.storage, fft, tilesize)
   dims = g.dims
   Nv = virtual_size(kind(P), N[dims])
   J = size(k, 2)

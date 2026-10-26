@@ -35,12 +35,8 @@ plan_nfft(k, (256, 256, 16); dims=1:2, storage=CuArray)   # 16 coils in one call
 `sdc` from NFFTTools.jl and the stage interface work with GPU plans as well. Data on the CPU passed
 to a GPU plan raise an error instead of being copied.
 
-## How fast
-
-On GPUs with slow floating point atomics and little local memory, such as Apple GPUs, the direct
-transforms are faster than on the CPU and the adjoint transforms slower; see
-[Performance](@ref "On GPUs"). How the kernels work, and why the adjoint needs no atomic operations, is
-explained in [How NFFT.jl Works](@ref "GPUs").
+The options `fft` and `tilesize` belong to the CPU code; GPU plans reject them. Timings are on the
+[Performance](@ref "On GPUs") page, the kernels are explained in [How NFFT.jl Works](@ref "GPUs").
 
 ## Run the GPU tests
 

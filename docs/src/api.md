@@ -22,7 +22,8 @@ them without `dims` and `tilesize`, and its `window`, `W` and `σ` apply to its 
 | `tilesize` | edge length of the tiles the nodes are sorted into (expert option) |
 
 The first five are part of the [Abstract Interface](@ref) and mean the same for every
-implementation; the others are specific to NFFT.jl. An unknown option is an error. How to use
+implementation; the others are specific to NFFT.jl. An unknown option is an error, and so are
+`fft` and `tilesize` for plans on a GPU. How to use
 `window`, `W`, `σ` and `fft` is shown in [Choosing Parameters](@ref).
 
 ## Plans and transforms

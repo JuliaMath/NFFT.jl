@@ -63,13 +63,7 @@ fig
 # - [`ExpSemicircle`](@ref): the "exponential of semicircle" window
 #   ``\exp(\beta((1-(2z/W)^2)^{e_0} - 1))``.
 #
-# The default `window = :auto` lets both compete. A fixed family restricts the search:
-
-pkb = plan_nfft(k, N; window=KaiserBessel())
-pes = plan_nfft(k, N; window=ExpSemicircle())
-NFFT.parameters(pkb), NFFT.parameters(pes)
-
-# How the error falls with the width, at ``\sigma = 2`` and ``\sigma = 1.25``:
+# The default `window = :auto` lets both compete. How the error falls with the width, at ``\sigma = 2`` and ``\sigma = 1.25``:
 
 Ws = 4:14
 fig = Figure(size=(640, 380))

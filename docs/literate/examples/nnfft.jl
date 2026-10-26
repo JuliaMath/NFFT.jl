@@ -1,22 +1,18 @@
 # # Non-equidistant in Both Domains
 #
 # This guide shows how to compute the NNFFT (type 3 in the terminology of FINUFFT), which has
-# arbitrary real points in both domains: values ``f_l`` at sources ``\bm{y}_l \in \mathbb{R}^D``
-# are transformed to targets ``\bm{k}_j \in \mathbb{R}^D``,
+# arbitrary real points in both domains: values ``f_l`` at ``M`` sources
+# ``\bm{y}_l \in \mathbb{R}^D`` are transformed to ``J`` targets ``\bm{k}_j \in \mathbb{R}^D``,
 # ```math
-# \hat{f}_j = \sum_{l=1}^{L} f_l \, \mathrm{e}^{-2\pi\mathrm{i}\,\bm{k}_j\cdot\bm{y}_l},
+# \hat{f}_j = \sum_{l=1}^{M} f_l \, \mathrm{e}^{-2\pi\mathrm{i}\,\bm{k}_j\cdot\bm{y}_l},
 # \qquad
 # f_l = \sum_{j=1}^{J} \hat{f}_j \, \mathrm{e}^{2\pi\mathrm{i}\,\bm{k}_j\cdot\bm{y}_l} \quad \text{(adjoint)}.
 # ```
 # Neither the sources nor the targets need to lie in a fixed interval. `plan_nnfft(k, y)` takes the
-# targets `k` (``D \times J``) and the sources `y` (``D \times L``) and the options `reltol`,
-# `eltype`, `storage` and `nthreads`.
-#
-# The cost grows with the product of the extents of sources and targets, not with their number: the
-# plan contains an NFFT of about ``4\sigma_1 Y_d K_d`` modes per dimension, where ``Y_d`` and ``K_d``
-# are the half-widths of the two point sets and ``\sigma_1`` (between 1.2 and 2.5) is the
-# oversampling factor of the spreading. How the transform is assembled from spreading, an NFFT
-# and a division is explained in [How NFFT.jl Works](@ref "Non-equidistant on both sides").
+# targets `k` (``D \times J``) and the sources `y` (``D \times M``) and the options listed in the
+# [API](@ref "Options"). The cost grows with the extent of the two point sets, not with their number
+# (see [How NFFT.jl Works](@ref "Non-equidistant on both sides")): wide spreads in both domains make
+# the transform expensive.
 #
 # ## Fourier transform of a function sampled at random points
 #

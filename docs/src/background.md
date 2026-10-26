@@ -111,7 +111,7 @@ Hermitian, ``f_{-\bm{n}} = \overline{f_{\bm{n}}}``, and the half ``\bm{h}`` with
 h_{\bm{n}} = \sum_{j=1}^J y_j \, \mathrm{e}^{2\pi\mathrm{i}\,\bm{n}\cdot\bm{k}_j} \quad \text{(adjoint)},
 ```
 adjoint to each other with respect to the real inner product. It computes on a real oversampled
-grid, which saves half of the FFT and of the adjoint resampling; see [Real Data](@ref).
+grid, which saves about half of the FFT and of the adjoint resampling; see [Real Data](@ref).
 
 **Cosine and sine transforms (NFCT, NFST).** The non-equidistant fast cosine and sine transforms
 of NFFT3 use real data and nodes in ``[0, 1/2]^D``:
