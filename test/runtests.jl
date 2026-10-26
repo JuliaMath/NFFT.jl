@@ -3,10 +3,11 @@ using NFFT
 using Random
 using LinearAlgebra
 using Zygote
+using NFFTTools
 
 # Contract tests of the AbstractNFFTs interface (implementation-independent), then NFFT.jl's own
-# behaviour. Not run until migrated to the 1.0 interface: samplingDensity.jl and testToeplitz.jl
-# (need NFFTTools), gpu.jl (GPU path), wrappers.jl (wrappers in Wrappers/).
+# behaviour, then NFFTTools. Not run until migrated to the 1.0 interface: gpu.jl (GPU path),
+# wrappers.jl (wrappers in Wrappers/).
 include("contract.jl")
 
 nfft_plan(k, N; kwargs...) = plan_nfft(NFFT.backend(), k, N; kwargs...)
@@ -19,4 +20,6 @@ nfft_plan(k, N; kwargs...) = plan_nfft(NFFT.backend(), k, N; kwargs...)
   include("stages.jl")
   include("issues.jl")
   include("chainrules.jl")
+  include("samplingDensity.jl")
+  include("testToeplitz.jl")
 end

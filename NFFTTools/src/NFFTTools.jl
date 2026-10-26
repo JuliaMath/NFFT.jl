@@ -1,11 +1,10 @@
 module NFFTTools
 
-export sdc
+export sdc, sdc!
 export calculateToeplitzKernel, calculateToeplitzKernel!, convolveToeplitzKernel!
 
 using AbstractNFFTs: AbstractNFFTPlan, plan_nfft, nodes!, size_in, size_out
-using AbstractNFFTs: convolve!, convolve_transpose!
-#using NFFT: NFFTPlan
+using AbstractNFFTs: oversampled_size, resampling!, resampling_adjoint!
 using FFTW: fftshift, plan_fft, plan_ifft
 using LinearAlgebra: adjoint, mul!
 import FFTW # ESTIMATE

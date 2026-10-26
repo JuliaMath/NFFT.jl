@@ -18,12 +18,14 @@ StaticArrays = "1.4"
 julia = "1.10"
 
 [extras]
+NFFTTools = "7424e34d-94f7-41d6-98a0-85abaf1b6c91"
 Random = "9a3f8284-a2c9-5f02-9a11-845980a1fd5c"
 Test = "8dfed614-e22c-5e08-85e1-65c5234f0b40"
 Zygote = "e88e6eb3-aa80-5325-afca-941959d7151f"
 
 [targets]
-test = ["Random", "Test", "Zygote"]
+test = ["NFFTTools", "Random", "Test", "Zygote"]
 
 [sources]
 AbstractNFFTs = {path = "AbstractNFFTs"}
+NFFTTools = {path = "NFFTTools"}

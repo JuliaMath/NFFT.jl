@@ -1,155 +1,50 @@
-#=
-using AbstractNFFTs: AbstractNFFTPlan, convolve!, convolve_transpose!
-using AbstractNFFTs: size_in, size_out
-using LinearAlgebra: mul!
-=#
-
 """
-    out = _fill_similar(array, v::T, dims) where T
-Return an allocated array similar to `array` filled with value `v`.
+    weights = sdc(p::AbstractNFFTPlan; iters = 20)
 
-This 2-step initialization helper function
-is needed to accommodate GPU array types.
-The more obvious statement `weights = fill(v, dims)`
-can lead to the wrong array type and cause GPU tests to fail.
+Sampling density compensation weights for the nodes of the NFFT plan `p`, computed with
+`iters` iterations of the method of Pipe and Menon (Magn Reson Med 41(1):179–186, 1999,
+doi:10.1002/(SICI)1522-2594(199901)41:1<179::AID-MRM25>3.0.CO;2-V). The iteration uses the
+resampling stage of the plan, i.e. the window function on the oversampled grid, as its kernel.
+
+The weights are real, positive and scaled such that ``A^{\\mathsf{H}} \\operatorname{diag}(w) A
+\\bm{1} ≈ \\bm{1}``. For nodes on the equidistant grid of an array of size `N` they are
+≈ `1/prod(N)`.
+
+`p` must be a plan without batch dimensions that implements the stage interface of
+AbstractNFFTs (`oversampled_size`, `resampling!`, `resampling_adjoint!`).
 """
-function _fill_similar(array::AbstractArray, v::T, dims::Union{Integer,Dims}) where T
-    weights = similar(array, T, dims)
-    fill!(weights, v)
-    return weights
+function sdc(p::AbstractNFFTPlan{T,D,1}; iters::Int = 20) where {T<:Real,D}
+  weights = Vector{T}(undef, only(size_out(p)))
+  return sdc!(weights, p; iters)
 end
 
-#=
-It would be desirable to use the memory pointed to by p.tmpVec
-as working buffer for sdc iterations,
-but this attempt led to intermittent corrupted outputs and errors.
-So it is left commented out for now.
-=#
-#=
-function _reinterpret_real(g::StridedArray{Complex{T}}) where {T <: Real}
-    r1 = reinterpret(T, g)
-    r2 = @view r1[1:2:end,:]
-    return r2
-end
-=#
-
 """
-   weights = sdc(plan::{Abstract}NFFTPlan; iters=20, ...)
+    sdc!(weights, p::AbstractNFFTPlan; iters = 20, workg, workf, workv)
 
-Compute weights for sample density compensation for given NFFT `plan`
-Uses method of Pipe & Menon, Mag Reson Med, 44(1):179-186, Jan. 1999.
-DOI: 10.1002/(SICI)1522-2594(199901)41:1<179::AID-MRM25>3.0.CO;2-V
-The function applies `iters` iterations of that method.
-
-The scaling here such that if the plan were 1D with N nodes equispaced
-from -0.5 to 0.5-1/N, then the returned weights are ≈ 1/N.
-
-The weights are scaled such that ``A' diag(w) A 1_N ≈ 1_N``.
-
-The returned vector is real, positive values of length `plan.J`.
-
-This method _almost_ conforms to the `AbstractNFFT` interface
-except that it uses `p.Ñ` and `p.tmpVec` that are not part of that interface.
-
-There are several named keyword arguments that are work buffers
-that are all mutated: `weights weights_tmp workg workf workv`.
-If the caller provides all of those,
-then this function should make only small allocations.
+In-place version of [`sdc`](@ref). The work arrays (complex, of sizes `oversampled_size(p)`,
+`size_out(p)` and `size_in(p)`) can be passed to avoid allocations.
 """
-function sdc(
-    p::AbstractNFFTPlan{T,D,1};
-    iters::Int = 20,
-    # the type of p.tmpVec (if present) is needed for GPU arrays (JLArray):
-    _array::AbstractArray = hasfield(typeof(p), :tmpVec) ?
-        p.tmpVec : Array{T,D}(undef, zeros(Int, D)...),
-    # the following are working buffers that are all mutated:
-    weights::AbstractVector{T} = _fill_similar(_array, one(T), only(size_out(p))),
-    weights_tmp::AbstractVector = similar(weights),
-#   workg::AbstractArray = _reinterpret_real(p.tmpVec), # todo
-    workg::AbstractArray = similar(_array, T, p.Ñ),
-    workf::AbstractVector = similar(_array, Complex{T}, only(size_out(p))),
-    workv::AbstractArray = similar(_array, Complex{T}, size_in(p)),
-) where {T <: Real, D}
+function sdc!(weights::AbstractVector{T}, p::AbstractNFFTPlan{T,D,1}; iters::Int = 20,
+              workg::AbstractArray{Complex{T}} = similar(weights, Complex{T}, oversampled_size(p)),
+              workf::AbstractVector{Complex{T}} = similar(weights, Complex{T}, only(size_out(p))),
+              workv::AbstractArray{Complex{T}} = similar(weights, Complex{T}, size_in(p))) where {T<:Real,D}
+  fill!(weights, one(T))
+  scale = one(T)
+  for i in 1:iters
+    # w ← w / (B Bᴴ w), with B Bᴴ normalised by its value in the first iteration
+    workf .= weights
+    resampling_adjoint!(p, workf, workg)
+    i == 1 && (scale = maximum(real, workg))
+    resampling!(p, workg, workf)
+    any(x -> real(x) <= 0, workf) && throw(ErrorException("non-positive weights in iteration $i"))
+    weights .*= scale ./ real.(workf)
+  end
 
-  return sdc!(
-    p,
-    iters,
-    weights,
-    weights_tmp,
-    workg,
-    workf,
-    workv,
-  )
-end
-
-
-"""
-   weights = sdc!( p::AbstractNFFTPlan, iters, weights, weights_tmp, workg)
-Compute sampling density compensation `weights`
-without performing any final scaling step.
-
-Ideally this function should be (nearly) non-allocating.
-"""
-function sdc!(
-    p::AbstractNFFTPlan{T,D,1},
-    iters::Int,
-    # the following are working buffers that are all mutated:
-    weights::AbstractVector{T},
-    weights_tmp::AbstractVector,
-    workg::AbstractArray,
-) where {T <: Real, D}
-
-    scaling_factor = missing # will be set below
-
-    # Pre-weighting to correct non-uniform sample density
-    for i in 1:iters
-        convolve_transpose!(p, weights, workg)
-        if i == 1
-            scaling_factor = maximum(workg)
-        end
-
-        workg ./= scaling_factor
-        convolve!(p, workg, weights_tmp)
-        weights_tmp ./= scaling_factor
-        any(≤(0), weights_tmp) && throw("non-positive weights")
-        weights ./= weights_tmp
-    end
-    return weights
-end
-
-
-"""
-    sdc!( ... )
-
-This version scales the weights such that
-``A' D(w) A 1_N ≈ 1_N``.
-Find ``c ∈ ℝ`` that minimizes ``‖u - c * v‖₂``
-where ``u ≜ 1_N`` (vector of ones)
-and ``v ≜ A' D(w) A 1_N``, and then scale `w` by that `c`.
-The analytical solution is
-``c = real(u'v) / ‖v‖² = real(sum(v)) / ‖v‖².``
-
-Ideally this function should be (nearly) non-allocating.
-"""
-function sdc!(
-    p::AbstractNFFTPlan{T,D,1},
-    iters::Int,
-    # the following are working buffers that are all mutated:
-    weights::AbstractVector{T},
-    weights_tmp::AbstractVector,
-    workg::AbstractArray,
-    workf::AbstractVector,
-    workv::AbstractArray,
-) where {T <: Real, D}
-
-    sdc!(p, iters, weights, weights_tmp, workg)
-
-    u = workv # trick to save memory
-    fill!(u, one(T))
-    mul!(workf, p, u)
-    workf .*= weights # apply weights from above
-    mul!(workv, adjoint(p), workf)
-    c = real(sum(workv)) / sum(abs2, workv)
-    weights .*= c
-    return weights
+  # scale w by the c that minimises ‖1 - c v‖₂ with v = Aᴴ diag(w) A 1
+  fill!(workv, one(T))
+  mul!(workf, p, workv)
+  workf .*= weights
+  mul!(workv, adjoint(p), workf)
+  weights .*= real(sum(workv)) / sum(abs2, workv)
+  return weights
 end
