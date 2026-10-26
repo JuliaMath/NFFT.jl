@@ -38,4 +38,4 @@ makedocs(;
   ],
 )
 
-deploydocs(repo="github.com/JuliaMath/NFFT.jl.git", push_preview=true)
+deploydocs(repo="github.com/JuliaMath/NFFT.jl.git", devbranch="main", push_preview=true)

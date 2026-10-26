@@ -3,7 +3,7 @@
 *Fast Fourier transforms at non-equidistant nodes, in pure Julia.*
 
 !!! warning "Development version"
-    This documentation describes NFFT.jl 1.0, which is under development on the master branch
+    This documentation describes NFFT.jl 1.0, which is under development on the main branch
     and not released yet. `Pkg.add("NFFT")` installs version 0.14, documented
     [here](https://JuliaMath.github.io/NFFT.jl/stable). See [Migrating from NFFT.jl 0.x](@ref).
 

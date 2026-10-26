@@ -5,12 +5,12 @@ This package provides a Julia implementation of the Non-equidistant Fast Fourier
 [![](https://img.shields.io/badge/docs-stable%20(0.14)-blue.svg)](https://JuliaMath.github.io/NFFT.jl/stable)
 [![](https://img.shields.io/badge/docs-dev%20(1.0)-blue.svg)](https://JuliaMath.github.io/NFFT.jl/dev)
 [![Build status](https://github.com/JuliaMath/NFFT.jl/workflows/CI/badge.svg)](https://github.com/JuliaMath/NFFT.jl/actions)
-[![codecov.io](http://codecov.io/github/JuliaMath/NFFT.jl/coverage.svg?branch=master)](http://codecov.io/github/JuliaMath/NFFT.jl?branch=master)
+[![codecov.io](http://codecov.io/github/JuliaMath/NFFT.jl/coverage.svg?branch=main)](http://codecov.io/github/JuliaMath/NFFT.jl?branch=main)
 
 > [!IMPORTANT]
-> **The master branch is the development version of NFFT.jl 1.0**, a new implementation with a
+> **The main branch is the development version of NFFT.jl 1.0**, a new implementation with a
 > new interface (AbstractNFFTs 1.0). It is not released yet and its interface may still change.
-> Feedback and discussion: [issue #ISSUE](https://github.com/JuliaMath/NFFT.jl/issues/ISSUE).
+> Feedback and discussion: [issues](https://github.com/JuliaMath/NFFT.jl/issues).
 >
 > - `Pkg.add("NFFT")` installs the released version 0.14. Its documentation is
 >   [stable](https://JuliaMath.github.io/NFFT.jl/stable), its code on the branch
@@ -23,8 +23,8 @@ This package provides a Julia implementation of the Non-equidistant Fast Fourier
 >
 > To try the development version (AbstractNFFTs 1.0 is not registered yet, so it comes first):
 > ```
-> pkg> add https://github.com/JuliaMath/NFFT.jl:AbstractNFFTs#master
-> pkg> add NFFT#master
+> pkg> add https://github.com/JuliaMath/NFFT.jl:AbstractNFFTs#main
+> pkg> add NFFT#main
 > ```
 
 ## What is new in 1.0
