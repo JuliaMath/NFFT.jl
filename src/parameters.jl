@@ -56,6 +56,8 @@ predicted_error(e::KernelEntry, N::NTuple{D,Int}, T) where {D} =
   window_error(e, D) + error_floor(N, T) + 10 * eps(T) * e.amp
 
 grid_size(σ, N) = map(n -> smooth_size(ceil(Int, σ * n)), N)
+# The grid of a plan has at least W points, so that the halo (W points) wraps around it once.
+grid_size(σ, N, W) = map(n -> smooth_size(max(ceil(Int, σ * n), W)), N)
 
 function kernel_cost(e::KernelEntry, N::NTuple{D,Int}, J) where {D}
   a, a1, b, c = COST_COEF[min(D, 3)]

@@ -28,15 +28,19 @@ struct PassFFT{D}
   boxes::Vector{Vector{NTuple{D,UnitRange{Int}}}}
 end
 
-function PassFFT(fft::FFTWBackend, x::AbstractArray{T,D}, N::NTuple{D,Int}; dir=:fwd, prune=true,
-                 nthreads=Threads.nthreads(), tdims=1:D) where {T,D}
+# `dir` selects the transform (:fwd forward, :bwd unnormalised backward), `pattern` the pruning
+# (:fwd zero input outside the kept modes, :bwd only the kept outputs needed); they differ for the
+# RNFFT. With `fftw_threads`, a single pass is threaded by FFTW instead of split into boxes.
+function PassFFT(fft::FFTWBackend, x::AbstractArray{T,D}, N::NTuple{D,Int}; dir=:fwd, pattern=dir,
+                 prune=true, nthreads=Threads.nthreads(), tdims=1:D,
+                 fftw_threads=length(tdims) == 1) where {T,D}
   Ñ = size(x)
-  onepass = length(tdims) == 1
+  onepass = fftw_threads
   FFTW.set_num_threads(onepass ? nthreads : 1)
-  order = dir == :fwd ? reverse(tdims) : tdims
+  order = pattern == :fwd ? reverse(tdims) : tdims
   plans, boxes = Vector{Any}[], Vector{NTuple{D,UnitRange{Int}}}[]
   for d in order
-    sets = ntuple(k -> (prune && k < d && k in tdims) ? keptranges(N[k], Ñ[k]) : (1:Ñ[k],), D)
+    sets = ntuple(k -> (prune && k < d && k in tdims) ? filter(!isempty, keptranges(N[k], Ñ[k])) : (1:Ñ[k],), D)
     bxs = vec(collect(Iterators.product(sets...)))
     # split each box along the outermost dimension other than d
     s = onepass ? 0 : d == D ? D - 1 : D
@@ -53,7 +57,7 @@ end
 
 function apply!(P::PassFFT, x)
   for (ps, bs) in zip(P.plans, P.boxes)
-    Threads.@threads :dynamic for i in eachindex(ps)
+    @maybe_threads length(ps) :dynamic for i in eachindex(ps)
       ps[i] * view(x, bs[i]...)
     end
   end

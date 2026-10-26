@@ -77,7 +77,8 @@ mutable struct NFFTPlan{T,D,R} <: AbstractNFFTPlan{T,D,R}
   fft::AbstractFFTBackend
   tilesize::Union{Nothing,Int}
   # how batch dimensions are handled: :single (none), :lead (batch dims before dims: batch-first
-  # kernels), :trail (after dims: transposes into batch-first kernels), :loop (one transform per
+  # kernels), :trail (after dims: transposes into batch-first kernels), :slices (many slices in
+  # parallel on single-threaded cores, `core` is the vector of cores), :loop (one transform per
   # slice; 3D, or batch dims on both sides)
   strategy::Symbol
   core::Any
@@ -121,10 +122,12 @@ function make_engine(k, N, dims, kernel::KernelEntry, ::Type{T}, fft, tilesize, 
   Nd = N[dims]; Dd = length(dims); J = size(k, 2)
   L1, L3 = batch_sizes(N, dims)
   check_nodes(k)
-  Ñ = grid_size(kernel.σ, Nd)
+  Ñ = grid_size(kernel.σ, Nd, kernel.W)
   φ = window_function(kernel.window, kernel.W, kernel.β, kernel.e0)
   if L1 == 1 && L3 == 1
     :single, NFFTCore(k, Nd, Ñ, kernel.W, φ, T, fft, tilesize, nthreads), nothing, nothing
+  elseif use_slices(L1 * L3, J + prod(Nd), nthreads)
+    :slices, single_cores(NFFTCore(k, Nd, Ñ, kernel.W, φ, T, fft, tilesize, nthreads), L1 * L3), nothing, nothing
   elseif Dd <= 2 && L1 > 1 && L3 == 1
     :lead, BatchCore(k, Nd, Ñ, kernel.W, φ, T, fft, L1, tilesize, nthreads), nothing, nothing
   elseif Dd <= 2 && L1 == 1
@@ -144,6 +147,16 @@ function check_nodes(k)
   end
 end
 
+# Single-threaded copy of a core, sharing kernel, correction factors and binned nodes.
+function single_core(c::NFFTCore{D,K,T}) where {D,K,T}
+  gp = similar(c.gp)
+  g = interior(gp, halo(c.W))
+  fft = FFTWBackend()
+  NFFTCore(c.N, c.Ñ, c.W, c.B, c.kernel, c.invphi, c.binned, gp,
+           PassFFT(fft, g, c.N; dir=:fwd, nthreads=1), PassFFT(fft, g, c.N; dir=:bwd, nthreads=1),
+           TileLocks(size(gp), c.B), task_buffers(Complex{T}, size(c.bufs[1]), 1), 1)
+end
+
 # A copy shares the read-only parts (kernel, correction factors, binned nodes) and gets its own
 # grid, FFT plans and locks, so that copies can run concurrently.
 function Base.copy(c::NFFTCore{D}) where {D}
@@ -157,6 +170,7 @@ end
 
 function Base.copy(p::NFFTPlan{T,D,R}) where {T,D,R}
   strategy, core, fbuf, gbuf = p.strategy in (:single, :loop) ? (p.strategy, copy(p.core), nothing, nothing) :
+    p.strategy === :slices ? (:slices, single_cores(p.core[1], length(p.core)), nothing, nothing) :
     make_engine(p.k, p.N, p.dims, p.kernel, T, p.fft, p.tilesize, p.options.nthreads)
   NFFTPlan{T,D,R}(p.N, p.NOut, p.dims, p.k, p.kernel, p.accuracy, p.options, p.fft, p.tilesize,
                   strategy, core, fbuf, gbuf)
@@ -217,6 +231,19 @@ end
 # The core argument makes these the function barrier into code specialised on the kernel.
 transform!(::Val{:single}, p, c, fHat, f) = trafo_core!(vec(fHat), c, f)
 transform_adjoint!(::Val{:single}, p, c, f, fHat) = adjoint_core!(f, c, vec(fHat))
+
+function transform!(::Val{:slices}, p, cores, fHat, f)
+  fr, gr, L1, L3, Dd = batch_views(p, f, fHat)
+  slices_parallel(cores, L1, L3) do c, a, b
+    trafo_core!(view(gr, a, :, b), c, view(fr, a, ntuple(_ -> Colon(), Dd)..., b))
+  end
+end
+function transform_adjoint!(::Val{:slices}, p, cores, f, fHat)
+  fr, gr, L1, L3, Dd = batch_views(p, f, fHat)
+  slices_parallel(cores, L1, L3) do c, a, b
+    adjoint_core!(view(fr, a, ntuple(_ -> Colon(), Dd)..., b), c, view(gr, a, :, b))
+  end
+end
 
 function transform!(::Val{:loop}, p, c, fHat, f)
   fr, gr, L1, L3, Dd = batch_views(p, f, fHat)

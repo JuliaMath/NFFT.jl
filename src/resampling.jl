@@ -37,22 +37,20 @@ end
 function resample!(out, gp, K::SymKernel{W}, b::Binned{D}, Ñ, bufs) where {W,D}
   ntile = length(b.tileptr) - 1
   next = Threads.Atomic{Int}(1)
-  @sync for it in 1:min(length(bufs), ntile)
-    Threads.@spawn begin
-      buf = bufs[it]
-      fill!(buf, 0)
-      while (i = Threads.atomic_add!(next, 1)) <= ntile
-        t = b.order1[i]
-        r = b.tileptr[t]:b.tileptr[t+1]-1
-        isempty(r) && continue
-        o = b.origins[t]
-        hi = min.(o .+ size(buf), size(gp))
-        src = view(gp, map((a, z) -> a+1:z, o, hi)...)
-        copyto!(view(buf, map(s -> 1:s, size(src))...), src)
-        @inbounds for q in r
-          sw = map(@inline((x, n) -> support(K, x, n)), b.xs[q], Ñ)
-          out[b.perm[q]] = resample_node(buf, map(first, sw) .- o, map(last, sw))
-        end
+  tasks(min(length(bufs), ntile)) do it
+    buf = bufs[it]
+    fill!(buf, 0)
+    while (i = Threads.atomic_add!(next, 1)) <= ntile
+      t = b.order1[i]
+      r = b.tileptr[t]:b.tileptr[t+1]-1
+      isempty(r) && continue
+      o = b.origins[t]
+      hi = min.(o .+ size(buf), size(gp))
+      src = view(gp, map((a, z) -> a+1:z, o, hi)...)
+      copyto!(view(buf, map(s -> 1:s, size(src))...), src)
+      @inbounds for q in r
+        sw = map(@inline((x, n) -> support(K, x, n)), b.xs[q], Ñ)
+        out[b.perm[q]] = resample_node(buf, map(first, sw) .- o, map(last, sw))
       end
     end
   end
@@ -85,20 +83,18 @@ end
 function resample_adjoint_tiles!(gp, K::SymKernel{W}, b::Binned{D}, vals, Ñ, L::TileLocks{D}, bufs) where {W,D}
   ntile = length(b.tileptr) - 1
   next = Threads.Atomic{Int}(1)
-  @sync for it in 1:min(length(bufs), ntile)
-    Threads.@spawn begin
-      buf = bufs[it]
-      while (t = Threads.atomic_add!(next, 1)) <= ntile
-        r = b.tileptr[t]:b.tileptr[t+1]-1
-        isempty(r) && continue
-        o = b.origins[t]
-        fill!(buf, 0)
-        @inbounds for q in r
-          sw = map(@inline((x, n) -> support(K, x, n)), b.xs[q], Ñ)
-          resample_adjoint_node!(buf, map(first, sw) .- o, map(last, sw), vals[b.perm[q]])
-        end
-        flush!(gp, buf, o, L)
+  tasks(min(length(bufs), ntile)) do it
+    buf = bufs[it]
+    while (t = Threads.atomic_add!(next, 1)) <= ntile
+      r = b.tileptr[t]:b.tileptr[t+1]-1
+      isempty(r) && continue
+      o = b.origins[t]
+      fill!(buf, 0)
+      @inbounds for q in r
+        sw = map(@inline((x, n) -> support(K, x, n)), b.xs[q], Ñ)
+        resample_adjoint_node!(buf, map(first, sw) .- o, map(last, sw), vals[b.perm[q]])
       end
+      flush!(gp, buf, o, L)
     end
   end
   gp
@@ -115,31 +111,29 @@ function resample_adjoint_slide!(gp, K::SymKernel{W}, b::Binned{D}, vals, Ñ, L:
   segs = [(c - 1) * ntD .+ (s:min(s + seglen - 1, ntD)) for c in 1:ncol for s in 1:seglen:ntD]
   E = size(bufs[1], 1)
   next = Threads.Atomic{Int}(1)
-  @sync for it in 1:min(ntasks, length(segs))
-    Threads.@spawn begin
-      buf = bufs[it]
-      S = E^(D - 1)
-      while (si = Threads.atomic_add!(next, 1)) <= length(segs)
-        tiles = segs[si]
-        b.tileptr[last(tiles)+1] > b.tileptr[first(tiles)] || continue
-        fill!(buf, 0)
-        for t in tiles
-          o = b.origins[t]
-          @inbounds for q in b.tileptr[t]:b.tileptr[t+1]-1
-            sw = map(@inline((x, n) -> support(K, x, n)), b.xs[q], Ñ)
-            resample_adjoint_node!(buf, map(first, sw) .- o, map(last, sw), vals[b.perm[q]])
+  tasks(min(ntasks, length(segs))) do it
+    buf = bufs[it]
+    S = E^(D - 1)
+    while (si = Threads.atomic_add!(next, 1)) <= length(segs)
+      tiles = segs[si]
+      b.tileptr[last(tiles)+1] > b.tileptr[first(tiles)] || continue
+      fill!(buf, 0)
+      for t in tiles
+        o = b.origins[t]
+        @inbounds for q in b.tileptr[t]:b.tileptr[t+1]-1
+          sw = map(@inline((x, n) -> support(K, x, n)), b.xs[q], Ñ)
+          resample_adjoint_node!(buf, map(first, sw) .- o, map(last, sw), vals[b.perm[q]])
+        end
+        if t == last(tiles)
+          flush!(gp, buf, o, L)
+        else
+          flush!(gp, selectdim(buf, D, 1:B), o, L)
+          # forward copy is safe: the destination starts before the source
+          @inbounds for i in 1:(E-B)*S
+            buf[i] = buf[i+B*S]
           end
-          if t == last(tiles)
-            flush!(gp, buf, o, L)
-          else
-            flush!(gp, selectdim(buf, D, 1:B), o, L)
-            # forward copy is safe: the destination starts before the source
-            @inbounds for i in 1:(E-B)*S
-              buf[i] = buf[i+B*S]
-            end
-            @inbounds for i in (E-B)*S+1:E*S
-              buf[i] = zero(eltype(buf))
-            end
+          @inbounds for i in (E-B)*S+1:E*S
+            buf[i] = zero(eltype(buf))
           end
         end
       end
@@ -168,7 +162,7 @@ function fill_halo!(gp, h::Tuple, nthreads)
       continue
     end
     e, cs = halo_chunks(gp, d, nthreads)
-    Threads.@threads for c in cs
+    @maybe_threads length(cs) for c in cs
       g = selectdim(gp, e, c)
       copyto!(selectdim(g, d, 1:h[1]), selectdim(g, d, Ñ+1:Ñ+h[1]))
       copyto!(selectdim(g, d, Ñ+h[1]+1:Ñ+h[1]+h[2]), selectdim(g, d, h[1]+1:h[1]+h[2]))
@@ -185,7 +179,7 @@ function fold_halo!(gp, h::Tuple, nthreads)
       continue
     end
     e, cs = halo_chunks(gp, d, nthreads)
-    Threads.@threads for c in cs
+    @maybe_threads length(cs) for c in cs
       g = selectdim(gp, e, c)
       selectdim(g, d, Ñ+1:Ñ+h[1]) .+= selectdim(g, d, 1:h[1])
       selectdim(g, d, h[1]+1:h[1]+h[2]) .+= selectdim(g, d, Ñ+h[1]+1:Ñ+h[1]+h[2])

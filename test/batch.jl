@@ -1,16 +1,17 @@
-# Batch dimensions (`dims`): every strategy (batch first, batch last, loop over slices) has to agree
-# with one plan per slice.
+# Batch dimensions (`dims`): every strategy (batch first, batch last, slices in parallel, loop over
+# slices) has to agree with one plan per slice. nthreads = 8 fixes the strategy independently of
+# the threads of the test process.
 
 @testset "Batch dimensions" begin
   rng = Xoshiro(5)
   J = 200
   cases = [((6, 40), 2, :lead), ((40, 5), 1, :trail), ((3, 18, 20), 2:3, :lead),
            ((18, 20, 4), 1:2, :trail), ((3, 30, 2), 2, :loop), ((10, 8, 9, 2), 1:3, :loop),
-           ((1, 32), 2, :single)]
+           ((1, 32), 2, :single), ((40, 64), 1, :slices), ((5, 12, 10, 40), 2:3, :slices)]
   for (N, dims, strategy) in cases
     Dd = length(dims)
     k = rand(rng, Dd, J) .- 0.5
-    p = plan_nfft(k, N; dims, reltol=1e-9)
+    p = plan_nfft(k, N; dims, reltol=1e-9, nthreads=8)
     @test p.strategy == strategy
     q = plan_nfft(k, N[dims]; reltol=1e-9)
     f = randn(rng, ComplexF64, N)

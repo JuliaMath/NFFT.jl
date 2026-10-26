@@ -3,7 +3,7 @@
 # (crop and divide). `invphi[d]` holds 1/φ̂ for the N[d] kept modes of dimension d.
 
 function resampling_correction_core!(g, f, invphi, N::NTuple{D,Int}, Ñ::NTuple{D,Int}, nthreads) where {D}
-  Threads.@threads for r in chunks(1:N[D], nthreads)
+  @maybe_threads nthreads for r in chunks(1:N[D], nthreads)
     @inbounds for il in r
       jl = gridindex(il, N[D], Ñ[D]); cl = invphi[D][il]
       for I in CartesianIndices(Base.front(N))
@@ -19,7 +19,7 @@ function resampling_correction_core!(g, f, invphi, N::NTuple{D,Int}, Ñ::NTuple{
 end
 
 function resampling_correction_adjoint_core!(f, g, invphi, N::NTuple{D,Int}, Ñ::NTuple{D,Int}, nthreads) where {D}
-  Threads.@threads for r in chunks(1:N[D], nthreads)
+  @maybe_threads nthreads for r in chunks(1:N[D], nthreads)
     @inbounds for il in r
       jl = gridindex(il, N[D], Ñ[D]); cl = invphi[D][il]
       for I in CartesianIndices(Base.front(N))

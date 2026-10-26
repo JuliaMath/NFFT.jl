@@ -52,14 +52,12 @@ end
 
 function apply_r2r!(P::R2RPass, F, ::Val{S}) where {S}
   F3 = reshape(F, P.A, size(F, P.d), P.C)
-  ntasks = length(P.bufs)
-  @sync for (t, r) in enumerate(chunks(eachindex(P.items), ntasks))
-    Threads.@spawn begin
-      buf, out, plan = P.bufs[t], P.outs[t], P.plans[t]
-      for i in r
-        x0, nb, c = P.items[i]
-        r2r_lines!(F3, buf, out, plan, P.Ñ, x0, nb, c, Val(S))
-      end
+  rs = chunks(eachindex(P.items), length(P.bufs))
+  tasks(length(rs)) do t
+    buf, out, plan = P.bufs[t], P.outs[t], P.plans[t]
+    for i in rs[t]
+      x0, nb, c = P.items[i]
+      r2r_lines!(F3, buf, out, plan, P.Ñ, x0, nb, c, Val(S))
     end
   end
   F
@@ -190,7 +188,7 @@ end
 # Correction: mode n (index i = 1…N) sits at stored DCT position i, DST position i (point l = i − 1
 # resp. l = i); `c[d]` holds the factors per mode.
 function real_correction!(g, f, c, N::NTuple{D,Int}, nthreads) where {D}
-  Threads.@threads for r in chunks(1:N[D], nthreads)
+  @maybe_threads nthreads for r in chunks(1:N[D], nthreads)
     @inbounds for il in r
       cl = c[D][il]
       for I in CartesianIndices(Base.front(N))
@@ -205,7 +203,7 @@ function real_correction!(g, f, c, N::NTuple{D,Int}, nthreads) where {D}
   g
 end
 function real_correction_adjoint!(f, g, c, N::NTuple{D,Int}, nthreads) where {D}
-  Threads.@threads for r in chunks(1:N[D], nthreads)
+  @maybe_threads nthreads for r in chunks(1:N[D], nthreads)
     @inbounds for il in r
       cl = c[D][il]
       for I in CartesianIndices(Base.front(N))
@@ -259,12 +257,17 @@ function adjoint_core!(f, c::RealCore{S}, vals) where {S}
   f
 end
 
-function Base.copy(c::RealCore{S,D,K,T,Tk}) where {S,D,K,T,Tk}
+Base.copy(c::RealCore) = real_copy(c, c.nthreads)
+single_core(c::RealCore) = real_copy(c, 1)
+
+function real_copy(c::RealCore{S,D,K,T,Tk}, nthreads) where {S,D,K,T,Tk}
   F = zero(c.F)
-  fwd, adj = r2r_passes(T, F, c.Ñ, c.N, c.flags, c.nthreads)
+  fwd, adj = r2r_passes(T, F, c.Ñ, c.N, c.flags, nthreads)
   RealCore{S,D,K,T,Tk}(c.N, c.Ñ, c.W, c.B, c.kernel, c.cfwd, c.cadj, c.binned, zero(c.gp), F, fwd, adj,
-                       TileLocks(size(c.gp), c.B), [zero(b) for b in c.bufs], c.flags, c.nthreads)
+                       TileLocks(size(c.gp), c.B), task_buffers(T, size(c.bufs[1]), nthreads), c.flags, nthreads)
 end
+
+slice_cores(c::RealCore, Nd, J, L) = use_slices(L, J + prod(Nd), c.nthreads) ? single_cores(c, L) : Any[]
 
 """
     NFCTPlan{T,D,R}
@@ -291,6 +294,7 @@ mutable struct NFCTPlan{T,D,R} <: AbstractNFCTPlan{T,D,R}
   fft::AbstractFFTBackend
   tilesize::Union{Nothing,Int}
   core::Any
+  slicecores::Vector{Any}              # single-threaded cores for many slices (`use_slices`)
 end
 
 @doc (@doc NFCTPlan)
@@ -305,6 +309,7 @@ mutable struct NFSTPlan{T,D,R} <: AbstractNFSTPlan{T,D,R}
   fft::AbstractFFTBackend
   tilesize::Union{Nothing,Int}
   core::Any
+  slicecores::Vector{Any}              # single-threaded cores for many slices (`use_slices`)
 end
 
 const RealPlan{T,D,R} = Union{NFCTPlan{T,D,R},NFSTPlan{T,D,R}}
@@ -344,7 +349,8 @@ function RealPlan(P::Type, k::AbstractMatrix, N::NTuple{D,Int}, g::GenericOption
   end
   NOut = (N[1:first(dims)-1]..., J, N[last(dims)+1:end]...)
   core = real_core(kind(P), k, N[dims], kernel, T, fft, tilesize, g.nthreads)
-  P{T,D,length(NOut)}(N, NOut, dims, k, kernel, acc, g, fft, tilesize, core)
+  P{T,D,length(NOut)}(N, NOut, dims, k, kernel, acc, g, fft, tilesize, core,
+                      slice_cores(core, N[dims], J, prod(batch_sizes(N, dims))))
 end
 
 function real_core(S, k, Nd, kernel::KernelEntry, ::Type{T}, fft, tilesize, nthreads) where {T}
@@ -352,7 +358,7 @@ function real_core(S, k, Nd, kernel::KernelEntry, ::Type{T}, fft, tilesize, nthr
     (isfinite(x) && 0 <= x <= 0.5) ||
       throw(ArgumentError("nodes of an NFCT/NFST must be in [0, 1/2], found $x"))
   end
-  Ñv = grid_size(kernel.σ, virtual_size(S, Nd))
+  Ñv = grid_size(kernel.σ, virtual_size(S, Nd), kernel.W)
   φ = window_function(kernel.window, kernel.W, kernel.β, kernel.e0)
   RealCore{S}(k, Nd, Ñv, kernel.W, φ, T, fft, tilesize, nthreads)
 end
@@ -364,12 +370,15 @@ AbstractNFFTs.accuracy(p::RealPlan) = p.accuracy
 parameters(p::RealPlan) = (window=p.kernel.window, W=p.kernel.W, σ=p.kernel.σ)
 
 function Base.copy(p::P) where {T,D,R,P<:RealPlan{T,D,R}}
-  P(p.N, p.NOut, p.dims, p.k, p.kernel, p.accuracy, p.options, p.fft, p.tilesize, copy(p.core))
+  core = copy(p.core)
+  P(p.N, p.NOut, p.dims, p.k, p.kernel, p.accuracy, p.options, p.fft, p.tilesize, core,
+    slice_cores(core, p.N[p.dims], size(p.k, 2), prod(batch_sizes(p.N, p.dims))))
 end
 
 function AbstractNFFTs.nodes!(p::RealPlan{T}, k::AbstractMatrix) where {T}
   size(k, 1) == length(p.dims) || throw(DimensionMismatch("nodes must have $(length(p.dims)) rows"))
   p.core = real_core(kind(p), k, p.N[p.dims], p.kernel, T, p.fft, p.tilesize, p.options.nthreads)
+  p.slicecores = slice_cores(p.core, p.N[p.dims], size(k, 2), prod(batch_sizes(p.N, p.dims)))
   p.k = k
   p.NOut = (p.N[1:first(p.dims)-1]..., size(k, 2), p.N[last(p.dims)+1:end]...)
   p
@@ -383,14 +392,28 @@ end
 
 function LinearAlgebra.mul!(fHat::AbstractArray, p::RealPlan, f::AbstractArray)
   check_sizes(p, f, fHat)
-  real_transform!(p, p.core, fHat, f)
+  if isempty(p.slicecores)
+    real_transform!(p, p.core, fHat, f)
+  else
+    fr, gr, L1, L3, Dd = batch_views(p, f, fHat)
+    slices_parallel(p.slicecores, L1, L3) do c, a, b
+      trafo_core!(view(gr, a, :, b), c, view(fr, a, ntuple(_ -> Colon(), Dd)..., b))
+    end
+  end
   fHat
 end
 
 function LinearAlgebra.mul!(f::AbstractArray, pl::Transpose{T,<:RealPlan{T}}, fHat::AbstractArray) where {T}
   p = pl.parent
   check_sizes(p, f, fHat)
-  real_transform_adjoint!(p, p.core, f, fHat)
+  if isempty(p.slicecores)
+    real_transform_adjoint!(p, p.core, f, fHat)
+  else
+    fr, gr, L1, L3, Dd = batch_views(p, f, fHat)
+    slices_parallel(p.slicecores, L1, L3) do c, a, b
+      adjoint_core!(view(fr, a, ntuple(_ -> Colon(), Dd)..., b), c, view(gr, a, :, b))
+    end
+  end
   f
 end
 

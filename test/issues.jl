@@ -20,4 +20,18 @@
     q = plan_nfft(k, 16; W, σ=2.0, window=KaiserBessel())
     @test all(isfinite, adjoint(q) * ones(ComplexF64, 4))
   end
+
+  # arrays smaller than the window: the grid must hold the halo (a grid of 2 points with W = 10
+  # gave errors of 1e-2)
+  @testset "tiny arrays" begin
+    rng = Xoshiro(3)
+    for N in (1, 2, 3), D in 1:3
+      NN = ntuple(_ -> N, D)
+      k = rand(rng, D, 50) .- 0.5
+      p = plan_nfft(k, NN; reltol=1e-9); q = NDFTPlan(k, NN)
+      f = randn(rng, ComplexF64, NN); y = randn(rng, ComplexF64, 50)
+      @test norm(p * f - q * f) < 1e-8 * norm(q * f)
+      @test norm(adjoint(p) * y - adjoint(q) * y) < 1e-8 * norm(adjoint(q) * y)
+    end
+  end
 end
