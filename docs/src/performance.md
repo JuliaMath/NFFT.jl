@@ -104,8 +104,9 @@ hovering a point shows the details (including the window width ``W`` and oversam
 ## Reproducing
 
 ```
+julia benchmark/bench.jl run fast                  # ≈ 15 s, NFFT.jl alone
 julia benchmark/bench.jl run quick                 # ≈ 1 min, NFFT.jl, FINUFFT and ducc
-julia benchmark/bench.jl run all --save            # all suites of this page, ≈ 30 min
+julia benchmark/bench.jl run all --save            # all suites of this page, ≈ 15 min
 julia benchmark/bench.jl report                    # figures and explorer data
 julia benchmark/bench.jl ab v1.0.0                 # the working tree against a release
 ```
