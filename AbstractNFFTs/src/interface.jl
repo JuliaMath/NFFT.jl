@@ -99,6 +99,18 @@ Abstract type for an NNFFT plan.
 """
 abstract type AbstractNNFFTPlan{T,D,R} <: AbstractComplexFTPlan{T,D,R} end
 
+"""
+  AbstractRNFFTPlan{T,D,R}
+
+Abstract type for an NFFT plan with real values at the nodes (the NFFT counterpart of FFTW's
+`brfft`/`rfft`): the direct transform maps the half `n₁ ≥ 0` of the complex coefficients to
+real values at the nodes, the adjoint maps real values at the nodes to that half.
+* T is the real element type (Float32/Float64)
+* D is the number of dimensions of the input array.
+* R is the number of dimensions of the output array.
+"""
+abstract type AbstractRNFFTPlan{T,D,R} <: AbstractFTPlan{T,D,R} end
+
 #####################
 # Function needed to make AbstractFTPlan an operator 
 #####################
@@ -120,6 +132,18 @@ LinearAlgebra.adjoint(p::AbstractComplexFTPlan{T,D,R}) where {T,D,R} =
 
 LinearAlgebra.transpose(p::AbstractRealFTPlan{T,D,R}) where {T,D,R} = 
   Transpose{T, typeof(p)}(p)
+
+# The direct RNFFT takes the real part, so it is linear over the reals only; its adjoint is
+# taken with respect to the real inner product Re⟨x, y⟩.
+LinearAlgebra.adjoint(p::AbstractRNFFTPlan{T,D,R}) where {T,D,R} =
+  Adjoint{Complex{T}, typeof(p)}(p)
+Base.size(p::Adjoint{Complex{T}, U}) where {T, U<:AbstractRNFFTPlan{T}} =
+  (prod(size_in(p.parent)), prod(size_out(p.parent)))
+size_in(p::Adjoint{Complex{T},<:AbstractRNFFTPlan{T,D,R}}) where {T,D,R} = size_out(p.parent)
+size_out(p::Adjoint{Complex{T},<:AbstractRNFFTPlan{T,D,R}}) where {T,D,R} = size_in(p.parent)
+Base.copy(p::Adjoint{Complex{T},<:AbstractRNFFTPlan{T,D,R}}) where {T,D,R} = adjoint(copy(p.parent))
+Base.show(io::IO, p::Adjoint{Complex{T},<:AbstractRNFFTPlan{T,D,R}}) where {T,D,R} =
+  (print(io, "Adjoint "); print(io, p.parent))
 
 size_in(p::Adjoint{Complex{T},<:AbstractComplexFTPlan{T,D,R}}) where {T,D,R} = size_out(p.parent)
 size_out(p::Adjoint{Complex{T},<:AbstractComplexFTPlan{T,D,R}}) where {T,D,R} = size_in(p.parent)

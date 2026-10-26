@@ -8,7 +8,7 @@
 # and resolve the generic keywords with `generic_options(k, N; kwargs...)`. The methods below
 # select the active backend and bring nodes and sizes into that form.
 
-for op in [:nfft, :nfct, :nfst]
+for op in [:nfft, :nfct, :nfst, :rnfft]
 planfunc = Symbol("plan_"*"$op")
 @eval begin
 
@@ -61,6 +61,22 @@ Plan a non-equidistant fast sine transform (NFST) for nodes `k` in [0, 1/2] and 
 size `N`. Keyword arguments as for [`plan_nfft`](@ref).
 """
 plan_nfst
+
+"""
+    plan_rnfft([backend,] k, N; kwargs...)
+
+Plan an NFFT with real values at the nodes `k` (in [-1/2, 1/2)) for an array of logical size `N`
+(the NFFT counterpart of FFTW's `brfft`/`rfft`). The input of the direct transform is the half
+`h` of the coefficients with `n₁ = 0 … N₁÷2`, an array of size `(N₁÷2+1, N₂, …)` whose other
+dimensions are indexed as in [`plan_nfft`](@ref); the direct transform is
+
+    f̂_j = Re Σ_n h_n exp(-2πi n·k_j),
+
+the adjoint maps real values `y` at the nodes to `h_n = Σ_j y_j exp(2πi n·k_j)`. The two are
+adjoint with respect to the real inner product. With `dims`, the first of the transformed
+dimensions is the halved one. Keyword arguments as for [`plan_nfft`](@ref).
+"""
+plan_rnfft
 
 """
     plan_nnfft([backend,] k, y; kwargs...)
@@ -210,6 +226,27 @@ function Base.:*(p::AbstractComplexFTPlan{T}, f::AbstractArray{Complex{U},D}) wh
   fHat = similar(f, Complex{T}, size_out(p))
   mul!(fHat, p, f)
   return fHat
+end
+
+function Base.:*(p::AbstractRNFFTPlan{T}, h::AbstractArray) where {T}
+  fHat = similar(h, T, size_out(p))
+  mul!(fHat, p, h)
+  return fHat
+end
+function Base.:*(p::Adjoint{Complex{T},<:AbstractRNFFTPlan{T}}, fHat::AbstractArray) where {T}
+  h = similar(fHat, Complex{T}, size_out(p))
+  mul!(h, p, fHat)
+  return h
+end
+function Base.:*(p::Adjoint{Complex{T},<:AbstractRNFFTPlan{T}}, fHat::AbstractVector) where {T}
+  h = similar(fHat, Complex{T}, size_out(p))
+  mul!(h, p, fHat)
+  return h
+end
+function Base.:*(p::Adjoint{Complex{T},<:AbstractRNFFTPlan{T}}, fHat::AbstractMatrix) where {T}
+  h = similar(fHat, Complex{T}, size_out(p))
+  mul!(h, p, fHat)
+  return h
 end
 
 """

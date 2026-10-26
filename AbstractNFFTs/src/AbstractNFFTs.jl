@@ -14,8 +14,8 @@ end
 # interface
 export AbstractNFFTBackend, nfft_backend, with
 export AbstractFTPlan, AbstractRealFTPlan, AbstractComplexFTPlan,
-       AbstractNFFTPlan, AbstractNFCTPlan, AbstractNFSTPlan, AbstractNNFFTPlan,
-       plan_nfft, plan_nfct, plan_nfst, plan_nnfft, mul!, size_in, size_out, nodes!, nodes,
+       AbstractNFFTPlan, AbstractNFCTPlan, AbstractNFSTPlan, AbstractNNFFTPlan, AbstractRNFFTPlan,
+       plan_nfft, plan_nfct, plan_nfst, plan_nnfft, plan_rnfft, mul!, size_in, size_out, nodes!, nodes,
        accuracy
 
 # optional stage interface (terms of Knopp et al. 2023)
