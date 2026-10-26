@@ -65,8 +65,9 @@ end
 
 # Choose the kernel for requested `reltol` from the table, restricted by the user's `window`
 # (`:auto` or a family), `W` and `σ`. Returns the table entry (with σ replaced by the user's σ when
-# given) and the predicted error.
-function choose_kernel(reltol, N::NTuple{D,Int}, J, T; window=:auto, W=nothing, σ=nothing) where {D}
+# given) and the predicted error. `Ncost` is the size whose oversampled grid the cost model sees
+# (NFCT/NFST: the error is that of an NFFT of twice the size on half its grid).
+function choose_kernel(reltol, N::NTuple{D,Int}, J, T; window=:auto, W=nothing, σ=nothing, Ncost=N) where {D}
   cands = filter(KERNEL_TABLE) do e
     (window === :auto || e.window == window) && (W === nothing || e.W == W)
   end
@@ -77,7 +78,7 @@ function choose_kernel(reltol, N::NTuple{D,Int}, J, T; window=:auto, W=nothing, 
   isempty(cands) && throw(ArgumentError("no table entry for window = $window, W = $W, σ = $σ"))
   # below what any candidate reaches: take the most accurate
   tol = max(reltol, minimum(e -> predicted_error(e, N, T), cands))
-  best = argmin(e -> kernel_cost(e, N, J), filter(e -> predicted_error(e, N, T) <= tol, cands))
+  best = argmin(e -> kernel_cost(e, Ncost, J), filter(e -> predicted_error(e, N, T) <= tol, cands))
   if σ !== nothing
     best = KernelEntry(best.window, best.W, Float64(σ), best.β, best.e0, best.est_rms, best.amp)
   end

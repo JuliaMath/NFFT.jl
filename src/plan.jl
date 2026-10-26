@@ -189,14 +189,14 @@ function Base.show(io::IO, p::NFFTPlan{T}) where {T}
         "$(nameof(typeof(e.window))) window, W = $(e.W), σ = $(e.σ), predicted error $(p.accuracy)")
 end
 
-function check_sizes(p::NFFTPlan, f, fHat)
+function check_sizes(p, f, fHat)
   size(f) == p.N || throw(DimensionMismatch("input has size $(size(f)), the plan expects $(p.N)"))
   size(fHat) == p.NOut || throw(DimensionMismatch("output has size $(size(fHat)), the plan expects $(p.NOut)"))
 end
 
 # Batch dimensions before and after `dims`: the arrays are viewed as (L1, N[dims]..., L3) and
 # (L1, J, L3).
-function batch_views(p::NFFTPlan, f, fHat)
+function batch_views(p, f, fHat)
   L1, L3 = batch_sizes(p.N, p.dims)
   reshape(f, L1, p.N[p.dims]..., L3), reshape(fHat, L1, size(p.k, 2), L3), L1, L3, length(p.dims)
 end

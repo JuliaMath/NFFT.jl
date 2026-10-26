@@ -22,6 +22,14 @@ end
 # with the plan so that transforms do not allocate them.
 task_buffers(::Type{C}, sz, nthreads) where {C} = [zeros(C, sz) for _ in 1:4nthreads]
 
+function threaded_copy!(dst, src, nthreads)
+  D = ndims(dst)
+  Threads.@threads for r in chunks(axes(dst, D), nthreads)
+    copyto!(selectdim(dst, D, r), selectdim(src, D, r))
+  end
+  dst
+end
+
 function threaded_fill!(a, v, nthreads)
   Threads.@threads for s in chunks(eachindex(a), 4nthreads)
     @inbounds for i in s

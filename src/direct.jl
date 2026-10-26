@@ -1,4 +1,13 @@
 
+"""
+    NDFTPlan(k, N)
+    NDCTPlan(k, N)
+    NDSTPlan(k, N)
+    NNDFTPlan(k, y)
+
+Direct evaluation of the NDFT, NDCT, NDST and NNDFT with the definitions of the fast plans
+(`O(J·prod(N))` operations), as a reference for tests and small problems.
+"""
 mutable struct NDFTPlan{T,D} <: AbstractNFFTPlan{T,D,1}
   N::NTuple{D,Int64}
   J::Int64
@@ -8,6 +17,7 @@ end
 AbstractNFFTs.size_in(p::NDFTPlan) = p.N
 AbstractNFFTs.size_out(p::NDFTPlan) = (p.J,)
 
+@doc (@doc NDFTPlan)
 mutable struct NDCTPlan{T,D} <: AbstractNFCTPlan{T,D,1}
   N::NTuple{D,Int64}
   J::Int64
@@ -17,15 +27,17 @@ end
 AbstractNFFTs.size_in(p::NDCTPlan) = p.N
 AbstractNFFTs.size_out(p::NDCTPlan) = (p.J,)
 
+@doc (@doc NDFTPlan)
 mutable struct NDSTPlan{T,D} <: AbstractNFSTPlan{T,D,1}
   N::NTuple{D,Int64}
   J::Int64
   k::Matrix{T}
 end
 
-AbstractNFFTs.size_in(p::NDSTPlan) = p.N .- 1
+AbstractNFFTs.size_in(p::NDSTPlan) = p.N
 AbstractNFFTs.size_out(p::NDSTPlan) = (p.J,)
 
+@doc (@doc NDFTPlan)
 mutable struct NNDFTPlan{T} <: AbstractNNFFTPlan{T,1,1}
   N::Int64
   J::Int64
@@ -203,15 +215,15 @@ end
 
 function LinearAlgebra.mul!(g::AbstractArray{Tg}, p::NDSTPlan{Tp,D}, f::AbstractArray{T,D}) where {D,Tp,T,Tg}
 
-    p.N == size(f) .+ 1 ||
+    p.N == size(f) ||
         throw(DimensionMismatch("Data f is not consistent with NDSTPlan"))
     p.J== length(g) ||
         throw(DimensionMismatch("Output g is inconsistent with NDSTPlan"))
 
     g .= zero(Tg)
 
-    for l=1:prod(p.N .- 1)
-        idx = CartesianIndices(p.N .- 1)[l]
+    for l=1:prod(p.N)
+        idx = CartesianIndices(p.N)[l]
 
         for j=1:p.J
             arg = one(T)
@@ -231,13 +243,13 @@ function LinearAlgebra.mul!(g::AbstractArray{Tg,D}, pl::Transpose{Tp,<:NDSTPlan{
 
   p.J== length(fHat) ||
       throw(DimensionMismatch("Data f inconsistent with NDSTPlan"))
-  p.N == size(g) .+ 1 ||
+  p.N == size(g) ||
       throw(DimensionMismatch("Output g inconsistent with NDSTPlan"))
 
   g .= zero(Tg)
 
-  for l=1:prod(p.N .- 1)
-      idx = CartesianIndices(p.N .- 1)[l]
+  for l=1:prod(p.N)
+      idx = CartesianIndices(p.N)[l]
 
       for j=1:p.J
           arg = one(T)
