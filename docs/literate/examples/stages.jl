@@ -68,6 +68,23 @@ fig
 # NFST plans have it as well: their oversampled array holds the stored grid points, and the FFT
 # stages are the DCT-I/DST-I and its transpose.
 #
+# ## Real values at the nodes
+#
+# For an RNFFT plan the oversampled array is real, and the resampling correction writes the complex
+# half spectrum of size `spectrum_size(p)`. The FFT stages map one into the other and therefore only
+# exist out of place: `oversampled_fft!(p, ĝ, g)` and `oversampled_bfft!(p, g, ĝ)`. The other plans
+# accept this form as well.
+
+pr = plan_rnfft(k, N)
+h = randn(ComplexF64, size_in(pr))
+ĝ = zeros(ComplexF64, spectrum_size(pr))
+gr = zeros(oversampled_size(pr))
+y = zeros(size(k, 2))
+resampling_correction!(pr, h, ĝ)
+oversampled_fft!(pr, ĝ, gr)
+resampling!(pr, gr, y)
+y ≈ pr * h
+#
 # ## The resampling as a matrix
 #
 # For analysis and teaching, `sparse(p)` (with `using SparseArrays`) returns the resampling stage

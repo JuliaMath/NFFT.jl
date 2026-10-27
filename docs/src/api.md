@@ -73,6 +73,7 @@ FFTWBackend
 
 ```@docs
 oversampled_size
+spectrum_size
 resampling_correction!
 oversampled_fft!
 resampling!

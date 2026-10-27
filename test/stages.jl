@@ -59,6 +59,42 @@
     @test_throws DimensionMismatch resampling!(p, zeros(N), out)
   end
 
+  # RNFFT: the correction writes the complex half spectrum, the FFT stages only exist out of place
+  for N in ((40,), (17, 22), (9, 10, 8))
+    D = length(N); J = 120
+    k = rand(rng, D, J) .- 0.5
+    p = plan_rnfft(k, N; reltol=1e-9)
+    Ñ = oversampled_size(p); S = spectrum_size(p)
+    @test S == (Ñ[1] ÷ 2 + 1, Ñ[2:end]...)
+    h = randn(rng, ComplexF64, size_in(p)); y = randn(rng, J)
+    ĝ = zeros(ComplexF64, S); g = zeros(Ñ); out = zeros(J)
+    resampling_correction!(p, h, ĝ)
+    oversampled_fft!(p, ĝ, g)
+    resampling!(p, g, out)
+    @test out ≈ p * h
+    back = zeros(ComplexF64, size_in(p))
+    resampling_adjoint!(p, y, g)
+    oversampled_bfft!(p, g, ĝ)
+    resampling_correction_adjoint!(p, ĝ, back)
+    @test back ≈ adjoint(p) * y
+    # g = Re Σ ĝ_n exp(−2πi n·l/Ñ) over the half spectrum, transposed for the real inner product
+    x = randn(rng, ComplexF64, S); z = randn(rng, Ñ)
+    fx = oversampled_fft!(p, x, zeros(Ñ))
+    @test dot(z, fx) ≈ real(dot(oversampled_bfft!(p, z, zeros(ComplexF64, S)), x))
+    if D == 1
+      @test fx ≈ [real(sum(x[n] * cispi(-2 * (n - 1) * (l - 1) / Ñ[1]) for n in 1:S[1])) for l in 1:Ñ[1]]
+    end
+    @test_throws ArgumentError oversampled_fft!(p, g)
+    @test_throws DimensionMismatch oversampled_fft!(p, g, g)
+  end
+
+  # the out-of-place FFT stages of the other plans
+  p = plan_nfft(rand(rng, 2, 50) .- 0.5, (12, 10))
+  x = randn(rng, ComplexF64, oversampled_size(p))
+  @test spectrum_size(p) == oversampled_size(p)
+  @test oversampled_fft!(p, x, similar(x)) ≈ oversampled_fft!(p, copy(x))
+  @test oversampled_bfft!(p, x, similar(x)) ≈ oversampled_bfft!(p, copy(x))
+
   # the stage interface needs a plan without batch dimensions
   p = plan_nfft(rand(rng, 1, 20) .- 0.5, (3, 16); dims=2)
   @test_throws ArgumentError oversampled_size(p)

@@ -250,8 +250,12 @@ requested `reltol` turned into.
 ## Optional interface ##
 # Stage interface for implementations built from the three steps of Knopp et al. 2023:
 # resampling correction → FFT → resampling (direct), and the adjoint steps in reverse order.
-# The equidistant oversampled array `g` has size `oversampled_size(p)`. For NFCT and NFST plans
-# the FFT stages are the DCT-I/DST-I and its transpose, and the adjoint steps are transposes.
+# The resampling correction writes the oversampled spectrum `ĝ` of size `spectrum_size(p)`, the FFT
+# turns it into the equidistant oversampled array `g` of size `oversampled_size(p)`. For NFFT, NFCT
+# and NFST plans both have the same size and the FFT stages also work in place; for NFCT and NFST
+# plans they are the DCT-I/DST-I and its transpose, and the adjoint steps are transposes. For RNFFT
+# plans `ĝ` is the complex half spectrum of the real array `g`, and the FFT stages only exist out of
+# place.
 
 """
     oversampled_size(p) -> NTuple
@@ -259,29 +263,40 @@ requested `reltol` turned into.
 Size of the oversampled equidistant array the FFT of plan `p` acts on. The stage interface is
 defined for plans without batch dimensions; an implementation throws an `ArgumentError` for others.
 """
-@mustimplement oversampled_size(p::AbstractNFFTPlan)
+@mustimplement oversampled_size(p::AbstractFTPlan)
 
 """
-    resampling_correction!(p, f, g) -> g
+    spectrum_size(p) -> NTuple
+
+Size of the oversampled spectrum `ĝ` that the resampling correction writes and the FFT stage
+reads: `oversampled_size(p)`, except for RNFFT plans (the half spectrum `(Ñ₁÷2+1, Ñ₂, …)`).
+"""
+spectrum_size(p::AbstractFTPlan) = oversampled_size(p)
+
+"""
+    resampling_correction!(p, f, ĝ) -> ĝ
 
 First step of the direct NFFT: divide `f` by the Fourier transform of the window function and
-place it into the zero-padded oversampled array `g`.
+place it into the zero-padded oversampled spectrum `ĝ`.
 """
-@mustimplement resampling_correction!(p::AbstractNFFTPlan, f::AbstractArray, g::AbstractArray)
+@mustimplement resampling_correction!(p::AbstractFTPlan, f::AbstractArray, ĝ::AbstractArray)
 
 """
     oversampled_fft!(p, g) -> g
+    oversampled_fft!(p, ĝ, g) -> g
 
-Second step of the direct NFFT: the FFT on the oversampled array `g`, in place.
+Second step of the direct NFFT: the FFT of the oversampled spectrum, in place on `g` or from `ĝ`
+into `g`. The out-of-place form leaves `ĝ` unchanged.
 """
-@mustimplement oversampled_fft!(p::AbstractNFFTPlan, g::AbstractArray)
+@mustimplement oversampled_fft!(p::AbstractFTPlan, g::AbstractArray)
+oversampled_fft!(p::AbstractFTPlan, ĝ::AbstractArray, g::AbstractArray) = oversampled_fft!(p, copyto!(g, ĝ))
 
 """
     resampling!(p, g, fHat) -> fHat
 
 Third step of the direct NFFT: resample the oversampled equidistant array `g` at the nodes.
 """
-@mustimplement resampling!(p::AbstractNFFTPlan, g::AbstractArray, fHat::AbstractArray)
+@mustimplement resampling!(p::AbstractFTPlan, g::AbstractArray, fHat::AbstractArray)
 
 """
     resampling_adjoint!(p, fHat, g) -> g
@@ -289,19 +304,22 @@ Third step of the direct NFFT: resample the oversampled equidistant array `g` at
 First step of the adjoint NFFT: the adjoint resampling of the values `fHat` at the nodes onto
 the oversampled equidistant array `g` (overwritten).
 """
-@mustimplement resampling_adjoint!(p::AbstractNFFTPlan, fHat::AbstractArray, g::AbstractArray)
+@mustimplement resampling_adjoint!(p::AbstractFTPlan, fHat::AbstractArray, g::AbstractArray)
 
 """
     oversampled_bfft!(p, g) -> g
+    oversampled_bfft!(p, g, ĝ) -> ĝ
 
-Second step of the adjoint NFFT: the adjoint (unnormalised backward) FFT on `g`, in place.
+Second step of the adjoint NFFT: the adjoint (unnormalised backward) FFT, in place on `g` or from
+`g` into `ĝ`. The out-of-place form leaves `g` unchanged.
 """
-@mustimplement oversampled_bfft!(p::AbstractNFFTPlan, g::AbstractArray)
+@mustimplement oversampled_bfft!(p::AbstractFTPlan, g::AbstractArray)
+oversampled_bfft!(p::AbstractFTPlan, g::AbstractArray, ĝ::AbstractArray) = oversampled_bfft!(p, copyto!(ĝ, g))
 
 """
-    resampling_correction_adjoint!(p, g, f) -> f
+    resampling_correction_adjoint!(p, ĝ, f) -> f
 
-Third step of the adjoint NFFT: crop the oversampled array `g` and divide by the Fourier
+Third step of the adjoint NFFT: crop the oversampled spectrum `ĝ` and divide by the Fourier
 transform of the window function.
 """
-@mustimplement resampling_correction_adjoint!(p::AbstractNFFTPlan, g::AbstractArray, f::AbstractArray)
+@mustimplement resampling_correction_adjoint!(p::AbstractFTPlan, ĝ::AbstractArray, f::AbstractArray)

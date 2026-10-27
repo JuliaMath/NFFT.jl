@@ -18,7 +18,7 @@ export AbstractFTPlan, AbstractRealFTPlan, AbstractComplexFTPlan,
        accuracy
 
 # optional stage interface (terms of Knopp et al. 2023)
-export oversampled_size, resampling_correction!, oversampled_fft!, resampling!,
+export oversampled_size, spectrum_size, resampling_correction!, oversampled_fft!, resampling!,
        resampling_adjoint!, oversampled_bfft!, resampling_correction_adjoint!
 
 # derived

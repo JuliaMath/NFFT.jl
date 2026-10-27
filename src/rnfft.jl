@@ -84,21 +84,23 @@ function c2r_boxes!(c::RNFFTCore{D}, plans, forward::Bool) where {D}
   end
 end
 
-# h (Nh, N₂, …) ↔ half spectrum; mode n₁ = i₁ − 1 sits at H[i₁, …], the other dimensions as in the NFFT
-function rnfft_correction!(H, h, c::RNFFTCore{D,K,T}) where {D,K,T}
+# h (Nh, N₂, …) ↔ half spectrum; mode n₁ = i₁ − 1 sits at H[i₁, …], the other dimensions as in the NFFT.
+# The transforms store conj(h)/φ̂ halved for n₁ ≥ 1 (see above); the stage interface stores h/φ̂
+# (`half = 1`, `cj = identity`).
+function rnfft_correction!(H, h, c::RNFFTCore{D,K,T}, half=T(0.5), cj=conj) where {D,K,T}
   N, Ñ, ip = c.N, c.Ñ, c.invphi
   @maybe_threads c.nthreads for r in chunks(1:size(h, D), c.nthreads)
     @inbounds for I in CartesianIndices((ntuple(d -> 1:size(h, d), D - 1)..., r))
-      a = ip[1][I[1]] * (I[1] == 1 ? one(T) : T(0.5))
+      a = ip[1][I[1]] * (I[1] == 1 ? one(T) : half)
       for d in 2:D
         a *= ip[d][I[d]]
       end
-      H[I[1], ntuple(d -> gridindex(I[d+1], N[d+1], Ñ[d+1]), D - 1)...] = a * conj(h[I])
+      H[I[1], ntuple(d -> gridindex(I[d+1], N[d+1], Ñ[d+1]), D - 1)...] = a * cj(h[I])
     end
   end
   H
 end
-function rnfft_correction_adjoint!(h, H, c::RNFFTCore{D,K,T}) where {D,K,T}
+function rnfft_correction_adjoint!(h, H, c::RNFFTCore{D,K,T}, cj=conj) where {D,K,T}
   N, Ñ, ip = c.N, c.Ñ, c.invphi
   @maybe_threads c.nthreads for r in chunks(1:size(h, D), c.nthreads)
     @inbounds for I in CartesianIndices((ntuple(d -> 1:size(h, d), D - 1)..., r))
@@ -106,7 +108,7 @@ function rnfft_correction_adjoint!(h, H, c::RNFFTCore{D,K,T}) where {D,K,T}
       for d in 2:D
         a *= ip[d][I[d]]
       end
-      h[I] = a * conj(H[I[1], ntuple(d -> gridindex(I[d+1], N[d+1], Ñ[d+1]), D - 1)...])
+      h[I] = a * cj(H[I[1], ntuple(d -> gridindex(I[d+1], N[d+1], Ñ[d+1]), D - 1)...])
     end
   end
   h
@@ -117,15 +119,12 @@ function trafo_core!(out, c::RNFFTCore{D}, h) where {D}
   rnfft_correction!(c.H, h, c)
   D > 1 && apply!(c.pfwd, half_view(c))
   c2r_boxes!(c, c.c2r, true)
-  fill_halo!(c.gp, halo(c.W), c.nthreads)
-  resample!(out, c.gp, c.kernel, c.binned, c.Ñ, c.bufs)
+  resample_interior!(c, out)
   out
 end
 
 function adjoint_core!(h, c::RNFFTCore{D}, vals) where {D}
-  threaded_fill!(c.gp, 0, c.nthreads)
-  resample_adjoint!(c.gp, c.kernel, c.binned, vals, c.Ñ, c.locks, c.bufs)
-  fold_halo!(c.gp, halo(c.W), c.nthreads)
+  resample_adjoint_interior!(c, vals)
   c2r_boxes!(c, c.r2c, false)
   D > 1 && apply!(c.pbwd, half_view(c))
   rnfft_correction_adjoint!(h, c.H, c)
@@ -164,3 +163,51 @@ end
 
 # Core for data on a device (GPU array types; the GPU extension), handling all batch dimensions.
 device_rnfft_core(storage, args...) = device_core(storage)
+
+# Stage interface (plans without batch dimensions, on the CPU). The resampling correction writes the
+# half spectrum ĝ_n = h_n/φ̂(n), n₁ = 0…Ñ₁÷2 (size spectrum_size(p), zero outside the modes); the FFT
+# stage computes the real array g_l = Re Σ_n ĝ_n exp(−2πi n·l/Ñ), summed over that half, and its
+# transpose with respect to the real inner product, ĝ_n = Σ_l g_l exp(2πi n·l/Ñ). Neither changes in
+# place: ĝ and g differ in size and type.
+function check_rnfft_stage(p, f, ĝ, g, fHat)
+  c = full_core(p)
+  c isa RNFFTCore || throw(ArgumentError("the stage interface of RNFFT plans needs a plan on the CPU"))
+  f === nothing || check_size(f, p.Nin, "the equidistant array")
+  ĝ === nothing || check_size(ĝ, size(c.H), "the oversampled spectrum")
+  g === nothing || check_size(g, c.Ñ, "the oversampled array")
+  fHat === nothing || check_size(fHat, p.NOut, "the array at the nodes")
+  c
+end
+
+AbstractNFFTs.oversampled_size(p::RNFFTPlan) = check_rnfft_stage(p, nothing, nothing, nothing, nothing).Ñ
+AbstractNFFTs.spectrum_size(p::RNFFTPlan) = size(check_rnfft_stage(p, nothing, nothing, nothing, nothing).H)
+
+function AbstractNFFTs.resampling_correction!(p::RNFFTPlan{T}, f::AbstractArray, ĝ::AbstractArray) where {T}
+  c = check_rnfft_stage(p, f, ĝ, nothing, nothing)
+  fill!(ĝ, 0)
+  rnfft_correction!(ĝ, f, c, one(T), identity)
+end
+AbstractNFFTs.resampling_correction_adjoint!(p::RNFFTPlan, ĝ::AbstractArray, f::AbstractArray) =
+  rnfft_correction_adjoint!(f, ĝ, check_rnfft_stage(p, f, ĝ, nothing, nothing), identity)
+
+# FFTW's c2r transform has the positive sign and counts the modes 0 < n₁ < Ñ₁/2 twice: it gets the
+# conjugate, halved there.
+function AbstractNFFTs.oversampled_fft!(p::RNFFTPlan{T}, ĝ::AbstractArray, g::AbstractArray) where {T}
+  c = check_rnfft_stage(p, nothing, ĝ, g, nothing)
+  X = conj.(ĝ)
+  selectdim(X, 1, 2:cld(c.Ñ[1], 2)) .*= T(0.5)
+  copyto!(g, FFTW.brfft(X, c.Ñ[1]))
+end
+function AbstractNFFTs.oversampled_bfft!(p::RNFFTPlan, g::AbstractArray, ĝ::AbstractArray)
+  check_rnfft_stage(p, nothing, ĝ, g, nothing)
+  ĝ .= conj.(FFTW.rfft(g))
+end
+AbstractNFFTs.oversampled_fft!(::RNFFTPlan, ::AbstractArray) =
+  throw(ArgumentError("the FFT stages of an RNFFT plan only exist out of place: oversampled_fft!(p, ĝ, g)"))
+AbstractNFFTs.oversampled_bfft!(::RNFFTPlan, ::AbstractArray) =
+  throw(ArgumentError("the FFT stages of an RNFFT plan only exist out of place: oversampled_bfft!(p, g, ĝ)"))
+
+AbstractNFFTs.resampling!(p::RNFFTPlan, g::AbstractArray, fHat::AbstractArray) =
+  (resampling_stage!(check_rnfft_stage(p, nothing, nothing, g, fHat), vec(fHat), g); fHat)
+AbstractNFFTs.resampling_adjoint!(p::RNFFTPlan, fHat::AbstractArray, g::AbstractArray) =
+  (resampling_adjoint_stage!(check_rnfft_stage(p, nothing, nothing, g, fHat), g, vec(fHat)); g)
