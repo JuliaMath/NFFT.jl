@@ -41,6 +41,7 @@ include("contract.jl")                       # relerr, allowed
 
     # options of the CPU code are rejected, not ignored
     @test_throws ArgumentError plan_nfft(k, N; reltol, storage=arrayType, tilesize=8)
+    @test_throws ArgumentError plan_nfft(k, N; reltol, storage=arrayType, measure=true)
     @test_throws ArgumentError plan_nfft(k, N; reltol, storage=arrayType, fft=NFFT.FFTWBackend())
 
     # storage defaults to the array type of the nodes

@@ -7,7 +7,7 @@ CurrentModule = NFFT
 ## Options
 
 Keyword arguments of `plan_nfft`, `plan_rnfft`, `plan_nfct` and `plan_nfst`; `plan_nnfft` takes
-them without `dims` and `tilesize`, and its `window`, `W` and `σ` apply to its inner NFFT:
+them without `tilesize` and `measure`, and its `window`, `W` and `σ` apply to its inner NFFT:
 
 | keyword | meaning |
 |:--|:--|
@@ -20,10 +20,11 @@ them without `dims` and `tilesize`, and its `window`, `W` and `σ` apply to its 
 | `W`, `σ` | window width and oversampling factor |
 | `fft` | FFT backend, default `FFTWBackend()` |
 | `tilesize` | edge length of the tiles the nodes are sorted into (expert option) |
+| `measure` | `true`: time the four parameter sets of lowest predicted cost at plan time and keep the fastest (CPU) |
 
 The first five are part of the [Abstract Interface](@ref) and mean the same for every
 implementation; the others are specific to NFFT.jl. An unknown option is an error, and so are
-`fft` and `tilesize` for plans on a GPU. How to use
+`fft`, `tilesize` and `measure` for plans on a GPU. How to use
 `window`, `W`, `σ` and `fft` is shown in [Choosing Parameters](@ref).
 
 ## Plans and transforms
@@ -77,6 +78,7 @@ resampling!
 resampling_adjoint!
 oversampled_bfft!
 resampling_correction_adjoint!
+Main.SparseArrays.sparse(::NFFTPlan)
 ```
 
 ## NFFTTools

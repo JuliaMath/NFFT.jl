@@ -89,6 +89,9 @@ Generic options (every AbstractNFFTs implementation): `reltol` (default 1e-8), `
 * `σ`: oversampling factor
 * `fft`: FFT backend, default `FFTWBackend()`
 * `tilesize`: expert option, tile edge of the node binning
+* `measure`: `true` times the four parameter sets of lowest predicted cost at plan
+  time (transform and adjoint) and keeps the fastest; the cost model cannot see how fast FFTW is
+  for a particular grid size
 """
 mutable struct NFFTPlan{T,D,R} <: AbstractNFFTPlan{T,D,R}
   @plan_fields
@@ -157,10 +160,6 @@ end
 # Stage interface (Knopp et al. 2023), for plans without batch dimensions. `g` is an unpadded
 # oversampled array of size oversampled_size(p). The FFT stages here are full (unpruned) FFTs, so
 # they can be composed freely.
-function full_core(p::NFFTPlan{T,D}) where {T,D}
-  p.dims == 1:D || throw(ArgumentError("the stage interface needs a plan without batch dimensions"))
-  p.core
-end
 
 # the stage functions take (p, input, output) or (p, array)
 function check_stage(p, f, g, fHat)

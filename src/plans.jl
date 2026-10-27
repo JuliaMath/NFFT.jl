@@ -5,17 +5,46 @@
 
 const FastPlan{T,D,R} = Union{NFFTPlan{T,D,R},RNFFTPlan{T,D,R},NFCTPlan{T,D,R},NFSTPlan{T,D,R}}
 
-const NFFT_OPTIONS = (:window, :W, :σ, :fft, :tilesize)
+const NFFT_OPTIONS = (:window, :W, :σ, :fft, :tilesize, :measure)
+
+# Candidates timed with `measure = true`.
+const MEASURE_CANDIDATES = 4
 
 function fast_plan(P, k::AbstractMatrix, N::NTuple{D,Int}, g::GenericOptions{T}; window=:auto, W=nothing,
-                   σ=nothing, fft=nothing, tilesize=nothing) where {D,T}
+                   σ=nothing, fft=nothing, tilesize=nothing, measure=false) where {D,T}
   fft = cpu_options(g.storage, fft, tilesize)
+  measure && !(g.storage <: Array) && throw(ArgumentError("measure is supported for plans on the CPU"))
   dims = g.dims; Nd = N[dims]; J = size(k, 2)
-  kernel, acc = select_kernel(window, W, σ, g.reltol, error_size(P, Nd), J, T; Ncost=Nd)
+  kernels = select_kernels(window, W, σ, g.reltol, error_size(P, Nd), J, T; Ncost=Nd,
+                           n=measure ? MEASURE_CANDIDATES : 1)
   NOut = out_size(N, dims, J)
-  strategy, core, fbuf, gbuf = make_engine(P, k, N, dims, kernel, T, fft, tilesize, g.nthreads, g.storage)
-  P{T,D,length(NOut)}(N, input_size(P, N, dims), NOut, dims, to_storage(g.storage, k, T), kernel, acc, g, fft,
-                      tilesize, strategy, core, fbuf, gbuf)
+  build((kernel, acc)) = P{T,D,length(NOut)}(N, input_size(P, N, dims), NOut, dims, to_storage(g.storage, k, T),
+    kernel, acc, g, fft, tilesize, make_engine(P, k, N, dims, kernel, T, fft, tilesize, g.nthreads, g.storage)...)
+  p = build(kernels[1])
+  length(kernels) == 1 && return p
+  # measure: the cost model cannot see how fast FFTW is for a particular grid size
+  t = time_plan(p)
+  for kernel in kernels[2:end]
+    q = build(kernel)
+    tq = time_plan(q)
+    tq < t && ((p, t) = (q, tq))
+  end
+  p
+end
+
+# Element types of the input and the output of a transform.
+data_eltypes(::NFFTPlan{T}) where {T} = (Complex{T}, Complex{T})
+data_eltypes(::RNFFTPlan{T}) where {T} = (Complex{T}, T)
+data_eltypes(::Union{NFCTPlan{T},NFSTPlan{T}}) where {T} = (T, T)
+
+# Time of a transform and its adjoint (or transpose) on random data, the fastest of three.
+function time_plan(p)
+  Tin, Tout = data_eltypes(p)
+  f = randn(Tin, size_in(p)); fHat = randn(Tout, size_out(p))
+  back = Tout <: Real && Tin <: Real ? transpose(p) : adjoint(p)
+  run() = (mul!(fHat, p, f); mul!(f, back, fHat))
+  run()
+  minimum(@elapsed(run()) for _ in 1:3)
 end
 
 error_size(P, Nd) = Nd
@@ -117,6 +146,12 @@ function Base.show(io::IO, p::FastPlan{T}) where {T}
   e = p.kernel
   print(io, "$(nameof(typeof(p))){$T} of size $(p.N) along dims $(p.dims) at $(size(p.k, 2)) nodes: ",
         "$(nameof(typeof(e.window))) window, W = $(e.W), σ = $(e.σ), predicted error $(p.accuracy)")
+end
+
+# the core of a plan without batch dimensions, for the stage interface
+function full_core(p::FastPlan{T,D}) where {T,D}
+  p.dims == 1:D || throw(ArgumentError("the stage interface needs a plan without batch dimensions"))
+  p.core
 end
 
 check_size(a, sz, what) = size(a) == sz ||

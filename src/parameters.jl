@@ -64,15 +64,16 @@ function kernel_cost(e::KernelEntry, N::NTuple{D,Int}, J) where {D}
   a * J * e.W^D + a1 * J * e.W + b * M * log2(M) + c
 end
 
-# The kernel of a plan from its options `window`, `W`, `σ`: a CustomWindow as given (its error is
-# unknown), otherwise from the table (`choose_kernel`). Returns the entry and the predicted error.
-function select_kernel(window, W, σ, reltol, N, J, T; Ncost=N)
+# The kernels a plan may use, from its options `window`, `W`, `σ`, as pairs (entry, predicted
+# error): a CustomWindow as given (its error is unknown), otherwise the `n` cheapest table entries
+# that reach the tolerance (`choose_kernels`).
+function select_kernels(window, W, σ, reltol, N, J, T; Ncost=N, n=1)
   check_window_options(W, σ)
   if window isa CustomWindow
     (W === nothing || σ === nothing) && throw(ArgumentError("a CustomWindow needs W and σ"))
-    KernelEntry(window, W, σ, NaN, NaN, NaN, NaN), NaN
+    [(KernelEntry(window, W, σ, NaN, NaN, NaN, NaN), NaN)]
   elseif window === :auto || window isa AbstractWindow
-    choose_kernel(reltol, N, J, T; window, W, σ, Ncost)
+    choose_kernels(reltol, N, J, T; window, W, σ, Ncost, n)
   else
     throw(ArgumentError("window must be :auto or an AbstractWindow, got $window"))
   end
@@ -85,11 +86,11 @@ function check_window_options(W, σ)
   nothing
 end
 
-# Choose the kernel for requested `reltol` from the table, restricted by the user's `window`
-# (`:auto` or a family), `W` and `σ`. Returns the table entry (with σ replaced by the user's σ when
-# given) and the predicted error. `Ncost` is the size whose oversampled grid the cost model sees
-# (NFCT/NFST: the error is that of an NFFT of twice the size on half its grid).
-function choose_kernel(reltol, N::NTuple{D,Int}, J, T; window=:auto, W=nothing, σ=nothing, Ncost=N) where {D}
+# The `n` table entries of lowest predicted cost that reach `reltol`, restricted by the user's
+# `window` (`:auto` or a family), `W` and `σ`, cheapest first, as pairs (entry, predicted error);
+# σ is replaced by the user's σ when given. `Ncost` is the size whose oversampled grid the cost
+# model sees (NFCT/NFST: the error is that of an NFFT of twice the size on half its grid).
+function choose_kernels(reltol, N::NTuple{D,Int}, J, T; window=:auto, W=nothing, σ=nothing, Ncost=N, n=1) where {D}
   cands = filter(KERNEL_TABLE) do e
     (window === :auto || e.window == window) && (W === nothing || e.W == W)
   end
@@ -100,9 +101,12 @@ function choose_kernel(reltol, N::NTuple{D,Int}, J, T; window=:auto, W=nothing, 
   isempty(cands) && throw(ArgumentError("no table entry for window = $window, W = $W, σ = $σ"))
   # below what any candidate reaches: take the most accurate
   tol = max(reltol, minimum(e -> predicted_error(e, N, T), cands))
-  best = argmin(e -> kernel_cost(e, Ncost, J), filter(e -> predicted_error(e, N, T) <= tol, cands))
+  ok = filter(e -> predicted_error(e, N, T) <= tol, cands)
+  # the cost once per entry: it searches the next FFT-friendly grid size
+  cost = [kernel_cost(e, Ncost, J) for e in ok]
+  best = ok[partialsortperm(cost, 1:min(n, length(ok)))]
   if σ !== nothing
-    best = KernelEntry(best.window, best.W, Float64(σ), best.β, best.e0, best.est_rms, best.amp)
+    best = [KernelEntry(e.window, e.W, Float64(σ), e.β, e.e0, e.est_rms, e.amp) for e in best]
   end
-  best, predicted_error(best, N, T)
+  [(e, predicted_error(e, N, T)) for e in best]
 end

@@ -250,7 +250,8 @@ requested `reltol` turned into.
 ## Optional interface ##
 # Stage interface for implementations built from the three steps of Knopp et al. 2023:
 # resampling correction → FFT → resampling (direct), and the adjoint steps in reverse order.
-# The equidistant oversampled array `g` has size `oversampled_size(p)`.
+# The equidistant oversampled array `g` has size `oversampled_size(p)`. For NFCT and NFST plans
+# the FFT stages are the DCT-I/DST-I and its transpose, and the adjoint steps are transposes.
 
 """
     oversampled_size(p) -> NTuple

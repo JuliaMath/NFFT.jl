@@ -1,4 +1,4 @@
-using Documenter, Literate, NFFT, NFFTTools
+using Documenter, Literate, NFFT, NFFTTools, SparseArrays
 
 # Examples are Literate scripts in literate/<section>/, rendered to src/generated/<section>/
 # and run when the documentation is built.
@@ -11,7 +11,7 @@ end
 DocMeta.setdocmeta!(NFFT, :DocTestSetup, :(using NFFT); recursive=true)
 
 makedocs(;
-  modules=[NFFT, AbstractNFFTs, NFFTTools],
+  modules=[NFFT, AbstractNFFTs, NFFTTools, Base.get_extension(NFFT, :NFFTSparseArraysExt)],
   sitename="NFFT.jl",
   authors="Tobias Knopp and contributors",
   repo=Remotes.GitHub("JuliaMath", "NFFT.jl"),

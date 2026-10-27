@@ -4,6 +4,7 @@ using Random
 using LinearAlgebra
 using Zygote
 using NFFTTools
+using SparseArrays
 
 # Contract tests of the AbstractNFFTs interface (implementation-independent), then NFFT.jl's own
 # behaviour, then NFFTTools. The GPU tests run separately (test/gpu/run.jl, on Buildkite).

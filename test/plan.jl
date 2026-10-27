@@ -54,6 +54,14 @@
     end
     @test accuracy(plan_nfft(k, N; reltol=1e-16)) < 1e-13         # below the floor: the most accurate kernel
     @test eltype(plan_nfft(k, N; eltype=Float32)) == ComplexF32
+    # measure: one of the cheapest candidates of the cost model, same transform
+    p = plan_nfft(k, N; reltol=1e-8, measure=true)
+    cands = first.(NFFT.choose_kernels(1e-8, N, J, Float64; n=NFFT.MEASURE_CANDIDATES))
+    @test p.kernel in cands
+    @test accuracy(p) <= 1e-8
+    @test norm(p * f - plan_nfft(k, N; reltol=1e-12) * f) / norm(p * f) < 1e-7
+    q = plan_nfst(rand(rng, 2, 50) ./ 2, (12, 10); measure=true, W=8)
+    @test q.kernel.W == 8
     # a custom window with explicit width and oversampling
     gauss = CustomWindow((z, W) -> abs(z) < W / 2 ? exp(-(2z / W)^2 * 9) : 0.0)
     p = plan_nfft(k, N; window=gauss, W=8, σ=2.0)

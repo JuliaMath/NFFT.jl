@@ -9,8 +9,9 @@
 # DCT-I / DST-I along every dimension of a contiguous array F (Ñ+1 resp. Ñ−1 points per dimension),
 # one real FFT of length 2Ñ per line of the even (odd) extension (FFTW's REDFT00/RODFT00 run in
 # O(n²) for most sizes when planned with ESTIMATE, and MEASURE planning takes seconds to minutes).
-# Like the complex FFT stage, the passes skip lines that are zero (direct transform: modes outside
-# 1:N along the dimensions not yet transformed) or not needed (transposed transform).
+# Like the complex FFT stage, pruned passes skip lines that are zero (direct transform: modes outside
+# 1:N along the dimensions not yet transformed) or not needed (transposed transform); the stage
+# interface uses unpruned passes.
 struct R2RPass{T}
   d::Int
   Ñ::Int
@@ -24,7 +25,7 @@ end
 
 const R2R_LINES = 16
 
-function R2RPass(::Type{T}, F, d, Ñ, N, flags, nthreads) where {T}
+function R2RPass(::Type{T}, F, d, Ñ, N, flags, nthreads; pruned=true) where {T}
   M = size(F); D = ndims(F)
   A = prod(M[1:d-1]; init=1); C = prod(M[d+1:end]; init=1)
   items = NTuple{3,Int}[]
@@ -35,8 +36,8 @@ function R2RPass(::Type{T}, F, d, Ñ, N, flags, nthreads) where {T}
     end
   else
     Lb = R2R_LINES
-    # dimensions below d: only 1:N, the data are zero elsewhere
-    R = ntuple(e -> 1:N[e], d - 1)
+    # dimensions below d: only 1:N where the data are zero elsewhere
+    R = ntuple(e -> pruned ? (1:N[e]) : (1:M[e]), d - 1)
     LA = LinearIndices(M[1:d-1])
     for c in 1:C, m in CartesianIndices(Base.tail(R)), a0 in first(R[1]):Lb:last(R[1])
       push!(items, (LA[a0, Tuple(m)...], min(Lb, last(R[1]) - a0 + 1), c))
@@ -101,8 +102,8 @@ end
 
 # Passes of the direct transform (dimensions in decreasing order, lines with zeros skipped); the
 # transposed transform runs the same passes in increasing order (only the lines needed later).
-r2r_passes(::Type{T}, F, Ñ, N, flags, nthreads) where {T} =
-  [R2RPass(T, F, d, Ñ[d], N, flags, nthreads) for d in ndims(F):-1:1]
+r2r_passes(::Type{T}, F, Ñ, N, flags, nthreads; pruned=true) where {T} =
+  [R2RPass(T, F, d, Ñ[d], N, flags, nthreads; pruned) for d in ndims(F):-1:1]
 
 struct RealCore{S,D,K<:SymKernel,T,Tk}   # S = :cos or :sin
   N::NTuple{D,Int}
@@ -219,42 +220,60 @@ function real_correction_adjoint!(f, g, c, N::NTuple{D,Int}, nthreads) where {D}
 end
 
 function trafo_core!(out, c::RealCore{S}, f) where {S}
-  h = halo(c.W); g = stored(c.gp, h, c.Ñ, Val(S))
   threaded_fill!(c.F, 0, c.nthreads)
   real_correction!(c.F, f, c.cfwd, c.N, c.nthreads)
-  for P in c.passes
-    apply_r2r!(P, c.F, Val(S))
-  end
+  r2r!(c.F, c.passes, Val(S))
+  real_resample!(out, c, c.F)
+end
+
+function adjoint_core!(f, c::RealCore{S}, vals) where {S}
+  real_resample_adjoint!(c.F, c, vals)
+  r2r_transposed!(c.F, c.passes, Val(S))
+  real_correction_adjoint!(f, c.F, c.cadj, c.N, c.nthreads)
+end
+
+# The stages between the stored points F and the nodes, and the DCT-I/DST-I with its transpose.
+function real_resample!(out, c::RealCore{S}, F) where {S}
+  h = halo(c.W)
   if S === :sin                          # the grid vanishes at l = 0 and l = Ñ
     for d in 1:ndims(c.gp)
       selectdim(c.gp, d, h[1] + 1) .= 0
       selectdim(c.gp, d, h[1] + 1 + c.Ñ[d]) .= 0
     end
   end
-  threaded_copy!(g, c.F, c.nthreads)
+  threaded_copy!(stored(c.gp, h, c.Ñ, Val(S)), F, c.nthreads)
   fill_mirror!(c.gp, h, c.Ñ, S === :cos ? 1 : -1)
   resample!(out, c.gp, c.kernel, c.binned, 2 .* c.Ñ, c.bufs)
   out
 end
 
-function adjoint_core!(f, c::RealCore{S}, vals) where {S}
+function real_resample_adjoint!(F, c::RealCore{S}, vals) where {S}
   h = halo(c.W)
   threaded_fill!(c.gp, 0, c.nthreads)
   resample_adjoint!(c.gp, c.kernel, c.binned, vals, 2 .* c.Ñ, c.locks, c.bufs)
   fold_mirror!(c.gp, h, c.Ñ, S === :cos ? 1 : -1)
-  threaded_copy!(c.F, stored(c.gp, h, c.Ñ, Val(S)), c.nthreads)
+  threaded_copy!(F, stored(c.gp, h, c.Ñ, Val(S)), c.nthreads)
+end
+
+function r2r!(F, passes, ::Val{S}) where {S}
+  for P in passes
+    apply_r2r!(P, F, Val(S))
+  end
+  F
+end
+
+function r2r_transposed!(F, passes, ::Val{S}) where {S}
   if S === :cos
     # the transposed DCT-I is the DCT-I with the end points l = 0 and l = Ñ doubled
-    for d in 1:ndims(c.F)
-      selectdim(c.F, d, 1) .*= 2
-      selectdim(c.F, d, size(c.F, d)) .*= 2
+    for d in 1:ndims(F)
+      selectdim(F, d, 1) .*= 2
+      selectdim(F, d, size(F, d)) .*= 2
     end
   end
-  for P in Iterators.reverse(c.passes)
-    apply_r2r!(P, c.F, Val(S))
+  for P in Iterators.reverse(passes)
+    apply_r2r!(P, F, Val(S))
   end
-  real_correction_adjoint!(f, c.F, c.cadj, c.N, c.nthreads)
-  f
+  F
 end
 
 function copy_core(c::RealCore{S,D,K,T,Tk}, nthreads) where {S,D,K,T,Tk}
@@ -328,3 +347,55 @@ end
 
 # Core for data on a device (GPU array types; the GPU extension), handling all batch dimensions.
 device_real_core(S, storage, args...) = device_core(storage)
+
+# Stage interface (plans without batch dimensions, on the CPU): the oversampled array is the stored
+# grid F, l = 0…Ñ (NFCT) or l = 1…Ñ−1 (NFST) per dimension; the FFT stages are the DCT-I/DST-I and
+# its transpose, unpruned, so that the stages can be composed freely.
+function real_stage_core(p::RealPlan)
+  c = full_core(p)
+  c isa RealCore || throw(ArgumentError("the stage interface of NFCT/NFST plans needs a plan on the CPU"))
+  c
+end
+
+function check_real_stage(p, f, g, fHat)
+  c = real_stage_core(p)
+  f === nothing || check_size(f, p.N, "the equidistant array")
+  g === nothing || check_size(g, size(c.F), "the oversampled array")
+  fHat === nothing || check_size(fHat, p.NOut, "the array at the nodes")
+  c
+end
+
+unpruned_passes(c::RealCore{S,D,K,T}, F) where {S,D,K,T} = r2r_passes(T, F, c.Ñ, c.N, c.flags, c.nthreads; pruned=false)
+
+AbstractNFFTs.oversampled_size(p::RealPlan) = size(real_stage_core(p).F)
+
+function AbstractNFFTs.resampling_correction!(p::RealPlan, f::AbstractArray, g::AbstractArray)
+  c = check_real_stage(p, f, g, nothing)
+  fill!(g, 0)
+  real_correction!(g, f, c.cfwd, c.N, c.nthreads)
+end
+function AbstractNFFTs.oversampled_fft!(p::RealPlan, g::AbstractArray)
+  c = check_real_stage(p, nothing, g, nothing)
+  r2r!(g, unpruned_passes(c, g), Val(kind(typeof(p))))
+end
+AbstractNFFTs.resampling!(p::RealPlan, g::AbstractArray, fHat::AbstractArray) =
+  (real_resample!(vec(fHat), check_real_stage(p, nothing, g, fHat), g); fHat)
+AbstractNFFTs.resampling_adjoint!(p::RealPlan, fHat::AbstractArray, g::AbstractArray) =
+  real_resample_adjoint!(g, check_real_stage(p, nothing, g, fHat), vec(fHat))
+# The transforms compute 2·C instead of the transpose diag(1, 2, …, 2, 1)·C of the DCT-I and take the
+# factor into `cadj`; the stages are the exact transposes of the direct stages.
+function AbstractNFFTs.oversampled_bfft!(p::RealPlan, g::AbstractArray)
+  c = check_real_stage(p, nothing, g, nothing)
+  r2r_transposed!(g, unpruned_passes(c, g), Val(kind(typeof(p))))
+  if kind(typeof(p)) === :cos
+    for d in 1:ndims(g)
+      selectdim(g, d, 1) ./= 2
+      selectdim(g, d, size(g, d)) ./= 2
+    end
+  end
+  g
+end
+function AbstractNFFTs.resampling_correction_adjoint!(p::RealPlan, g::AbstractArray, f::AbstractArray)
+  c = check_real_stage(p, f, g, nothing)
+  real_correction_adjoint!(f, g, c.cfwd, c.N, c.nthreads)
+end

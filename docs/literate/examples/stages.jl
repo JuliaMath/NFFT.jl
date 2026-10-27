@@ -64,4 +64,17 @@ Legend(fig[2, 1], [PolyElement(color=colors[c]) for c in 1:3], names;
        orientation=:horizontal, framevisible=false)
 fig
 
-# The stage interface needs a plan without batch dimensions (`dims` covering all dimensions).
+# The stage interface needs a plan without batch dimensions (`dims` covering all dimensions). NFCT and
+# NFST plans have it as well: their oversampled array holds the stored grid points, and the FFT
+# stages are the DCT-I/DST-I and its transpose.
+#
+# ## The resampling as a matrix
+#
+# For analysis and teaching, `sparse(p)` (with `using SparseArrays`) returns the resampling stage
+# as a sparse matrix ``\bm{B}`` with ``W^D`` window weights per node; the resampling is
+# ``\hat{\bm f} = \bm{B}\,\mathrm{vec}(\bm g)`` and its adjoint ``\bm{B}^{\mathsf H}``. The
+# transforms themselves never build it.
+
+using SparseArrays
+B = sparse(p)
+size(B), nnz(B), B * vec(g) ≈ resampling!(p, g, similar(fHat))
