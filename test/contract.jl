@@ -143,8 +143,8 @@ function contract_tests(make_plan; T=Float64, tols=(T == Float64 ? (1e-4, 1e-8, 
     @test size(p) == (J, prod(N))
     @test eltype(p) == C
     f = randn(rng, C, N); fHat = randn(rng, C, J)
-    g = similar(fHat); @test mul!(g, p, f) === g; @test g ≈ p * f
-    h = similar(f); @test mul!(h, adjoint(p), fHat) === h; @test h ≈ adjoint(p) * fHat
+    g = similar(fHat); @test @inferred(mul!(g, p, f)) === g; @test g ≈ @inferred(p * f)
+    h = similar(f); @test @inferred(mul!(h, adjoint(p), fHat)) === h; @test h ≈ @inferred(adjoint(p) * fHat)
   end
 
   @testset "nodes! ($(T), N = $N)" for N in sizes
@@ -170,7 +170,7 @@ function contract_tests(make_plan; T=Float64, tols=(T == Float64 ? (1e-4, 1e-8, 
       @test size_in(p) == N
       @test size_out(p) == (N[1], J, N[4])
       f = randn(rng, C, N); fHat = randn(rng, C, N[1], J, N[4])
-      g = p * f; h = adjoint(p) * fHat
+      g = @inferred(p * f); h = @inferred(adjoint(p) * fHat)
       for a in 1:N[1], b in 1:N[4]
         @test relerr(g[a, :, b], ndft_ref(k, f[a, :, :, b])) <= allowed(tol, T, N[dims]; slack)
         @test relerr(h[a, :, :, b], ndft_adjoint_ref(k, N[dims], fHat[a, :, b])) <= allowed(tol, T, N[dims]; slack)

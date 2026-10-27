@@ -23,12 +23,12 @@ include("contract.jl")                       # relerr, allowed
 
     # against the exact transform at the accuracy the plan promises, and against the CPU plan
     # with the same parameters at the rounding level
-    y = Array(p * arrayType(f))
+    y = Array(@inferred(p * arrayType(f)))
     @test y isa Vector{Complex{T}}
     @test relerr(y, pndft * f) < 10 * accuracy(p)
     @test relerr(y, pcpu * f) < 100 * eps(T)
 
-    x = Array(adjoint(p) * arrayType(fHat))
+    x = Array(@inferred(adjoint(p) * arrayType(fHat)))
     @test x isa Array{Complex{T},D}
     @test relerr(x, adjoint(pndft) * fHat) < 10 * accuracy(p)
     @test relerr(x, adjoint(pcpu) * fHat) < 100 * eps(T)
