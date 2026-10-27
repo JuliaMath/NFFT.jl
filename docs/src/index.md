@@ -1,6 +1,6 @@
 # NFFT.jl
 
-*Fast Fourier transforms at non-equidistant nodes, in pure Julia.*
+*Fast Fourier transforms at non-equidistant nodes, in pure Julia, on CPUs and GPUs.*
 
 !!! warning "Development version"
     This documentation describes NFFT.jl 1.0, which is under development on the main branch
@@ -10,7 +10,8 @@
 NFFT.jl computes the non-equidistant fast Fourier transform (NFFT, also called NUFFT, or gridding in
 MRI): a discrete Fourier transform where the nodes in one domain do not lie on a grid. It is
 accurate to a tolerance you choose and runs in ``\mathcal{O}(|\bm{N}| \log |\bm{N}| + J)`` operations
-for ``J`` nodes and an array of size ``\bm{N}``.
+for ``J`` nodes and an array of size ``\bm{N}``. The same plans run multi-threaded on the CPU and
+on GPUs (CUDA, AMD, Apple).
 
 ```julia
 using NFFT
@@ -28,6 +29,9 @@ g = adjoint(p) * fHat                # adjoint NFFT: nodes → equidistant
 - **You ask for an accuracy, not for parameters.** `reltol` is all you need to set. The plan picks
   the window function, its width and the oversampling factor that reach this error at the lowest
   predicted cost, and `accuracy(p)` tells you what it expects to achieve.
+- **CPU and GPU from one code base.** Every transform, including batch dimensions, runs on the GPU
+  when the plan gets a GPU array type: `plan_nfft(k, N; storage=CuArray)`. The GPU kernels are
+  written with KernelAbstractions.jl and serve CUDA, AMD and Apple GPUs alike; see [GPU](@ref).
 - **Fast.** Tiled resampling with piecewise-polynomial window evaluation, an FFT that skips the
   zero padding, and multi-threading in every stage. See [Performance](@ref) for a comparison with
   FINUFFT and ducc.
@@ -37,7 +41,6 @@ g = adjoint(p) * fHat                # adjoint NFFT: nodes → equidistant
 - **Cosine and sine transforms** (NFCT, NFST) for real data, with the definitions of NFFT3 and
   about the cost of a complex NFFT.
 - **Non-equidistant points in both domains** (NNFFT, `plan_nnfft`).
-- **GPUs** (CUDA, AMD, Apple) for all transforms through `storage`, from the same code base.
 - **Single and double precision**, with node positions always computed in double precision.
 - **The three stages of the algorithm as an interface**: resampling correction, FFT and
   resampling can be called one by one, for example to embed the NFFT into a Toeplitz approach or to

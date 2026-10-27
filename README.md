@@ -1,6 +1,7 @@
 # NFFT.jl
 
-This package provides a Julia implementation of the Non-equidistant Fast Fourier Transform (NFFT).
+This package provides a Julia implementation of the Non-equidistant Fast Fourier Transform (NFFT)
+that runs multi-threaded on the CPU and on GPUs (CUDA, AMD, Apple) from the same code base.
 
 [![](https://img.shields.io/badge/docs-stable%20(0.14)-blue.svg)](https://JuliaMath.github.io/NFFT.jl/stable)
 [![](https://img.shields.io/badge/docs-dev%20(1.0)-blue.svg)](https://JuliaMath.github.io/NFFT.jl/dev)
