@@ -20,16 +20,19 @@ struct NFFTCore{D,K<:SymKernel,T,Tk}
   nthreads::Int
 end
 
+# With fft = nothing a core for the resampling stages only (the spreading of the NNFFT): no FFT
+# plans and no correction factors.
 function NFFTCore(k::AbstractMatrix, N::NTuple{D,Int}, Ñ::NTuple{D,Int}, W, φ, ::Type{T}, fft, B, nthreads) where {D,T}
   K = make_kernel(φ, W, T)
-  invphi = inv_kernel_ft(φ, W, N, Ñ, T, nthreads)
+  invphi = fft === nothing ? ntuple(_ -> T[], D) : inv_kernel_ft(φ, W, N, Ñ, T, nthreads)
   B = B === nothing ? default_tile(D, W) : B
   h = halo(W)
   gp = Array{Complex{T}}(undef, Ñ .+ W)         # zeroed by every transform
   g = interior(gp, h)
   NFFTCore(N, Ñ, W, B, K, invphi, Binned(k, Ñ, B, nthreads), gp,
            PassFFT(fft, g, N; dir=:fwd, nthreads), PassFFT(fft, g, N; dir=:bwd, nthreads),
-           TileLocks(size(gp), B), task_buffers(Complex{T}, ntuple(_ -> B + W + 1, D), nthreads), fft.flags, nthreads)
+           TileLocks(size(gp), B), task_buffers(Complex{T}, ntuple(_ -> B + W + 1, D), nthreads),
+           something(fft, FFTWBackend()).flags, nthreads)
 end
 
 function trafo_core!(out, c::NFFTCore, f)
@@ -129,7 +132,7 @@ end
 function copy_core(c::NFFTCore{D,K,T}, nthreads) where {D,K,T}
   gp = similar(c.gp)
   g = interior(gp, halo(c.W))
-  fft = FFTWBackend(flags=c.flags)
+  fft = isempty(c.fwd.plans) ? nothing : FFTWBackend(flags=c.flags)
   NFFTCore(c.N, c.Ñ, c.W, c.B, c.kernel, c.invphi, c.binned, gp,
            PassFFT(fft, g, c.N; dir=:fwd, nthreads), PassFFT(fft, g, c.N; dir=:bwd, nthreads),
            TileLocks(size(gp), c.B), task_buffers(Complex{T}, size(c.bufs[1]), nthreads), c.flags, nthreads)

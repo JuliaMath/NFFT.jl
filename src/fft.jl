@@ -65,6 +65,10 @@ function PassFFT(fft::FFTWBackend, x::AbstractArray{T,D}, N::NTuple{D,Int}; dir=
   PassFFT{D}(plans, boxes)
 end
 
+# No FFT: the core of the NNFFT spreading only resamples.
+PassFFT(::Nothing, x::AbstractArray{T,D}, N; kwargs...) where {T,D} =
+  PassFFT{D}(Vector{Any}[], Vector{NTuple{D,UnitRange{Int}}}[])
+
 function apply!(P::PassFFT, x)
   for (ps, bs) in zip(P.plans, P.boxes)
     @maybe_threads length(ps) :dynamic for i in eachindex(ps)

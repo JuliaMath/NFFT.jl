@@ -315,20 +315,24 @@ struct GPUCore{D,ND,V,G,PF,PB,B}
   backend::B
 end
 
+# fft = false: a core for the resampling stages only (the spreading of the NNFFT), without FFT
+# grids, FFT plans and correction factors.
 function NFFT.device_core(storage::Type{<:AbstractGPUArray}, k::Matrix, N::NTuple{D,Int}, Ñ::NTuple{D,Int}, W, φ,
-                          ::Type{T}, nthreads, L1, L3) where {D,T}
-  invphi = NFFT.inv_kernel_ft(φ, W, N, Ñ, T, nthreads)
+                          ::Type{T}, nthreads, L1, L3; fft=true) where {D,T}
+  invphi = fft ? NFFT.inv_kernel_ft(φ, W, N, Ñ, T, nthreads) : ntuple(_ -> T[], D)
   nd = Nodes(storage, k, Ñ, Ñ .+ W, W, φ, T)
-  gf = storage(zeros(Complex{T}, Ñ..., L1 * L3))
+  gf = storage(zeros(Complex{T}, (fft ? Ñ : map(zero, Ñ))..., L1 * L3))
   backend = KA.get_backend(gf)
   gp = KA.zeros(backend, Complex{T}, (Ñ .+ W)..., L1 * L3)
-  GPUCore(N, Ñ, L1, L3, W, nd, map(storage, invphi), gp, gf, plan_fft!(gf, 1:D), plan_bfft!(gf, 1:D), backend)
+  GPUCore(N, Ñ, L1, L3, W, nd, map(storage, invphi), gp, gf, fft_plans(gf, Val(D), fft)..., backend)
 end
+
+fft_plans(gf, ::Val{D}, fft) where {D} = fft ? (plan_fft!(gf, 1:D), plan_bfft!(gf, 1:D)) : (nothing, nothing)
 
 # A copy has its own grids and FFT plans and shares the rest.
 function Base.copy(c::GPUCore{D}) where {D}
   gp = similar(c.gp); gf = similar(c.gf)
-  GPUCore(c.N, c.Ñ, c.L1, c.L3, c.W, c.nodes, c.invphi, gp, gf, plan_fft!(gf, 1:D), plan_bfft!(gf, 1:D), c.backend)
+  GPUCore(c.N, c.Ñ, c.L1, c.L3, c.W, c.nodes, c.invphi, gp, gf, fft_plans(gf, Val(D), c.pf !== nothing)..., c.backend)
 end
 
 # Resampling correction between the modes f, (L1, N..., L3), and the grids gf, (Ñ..., L): one

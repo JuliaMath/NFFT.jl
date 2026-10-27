@@ -78,7 +78,7 @@ function nnfft_plan(::Val{D}, k, y, kc, yc, g::GenericOptions{T}; window, W, σ,
   outer, inner_entry, n, acc = choose_nnfft(g.reltol, Y, K, N, J, T; window, W, σ)
   σ1 = outer.σ; W1 = outer.W
   h = map(x -> x > 0 ? 1 / (2σ1 * x) : 1.0, K)
-  # the outer grid as an NFFT core: source y′/h sits at grid position y′/h + n÷2
+  # the outer grid as a resampling core: source y′/h sits at grid position y′/h + n÷2
   ys = Matrix{Float64}(undef, D, N)
   @maybe_threads g.nthreads for l in 1:N
     for d in 1:D
@@ -88,8 +88,8 @@ function nnfft_plan(::Val{D}, k, y, kc, yc, g::GenericOptions{T}; window, W, σ,
   end
   φ = window_function(outer.window, W1, outer.β, outer.e0)
   core = g.storage <: Array ?
-    NFFTCore(ys, n, n, W1, φ, T, FFTWBackend(), nothing, g.nthreads) :
-    device_core(g.storage, ys, n, n, W1, φ, T, g.nthreads, 1, 1)
+    NFFTCore(ys, n, n, W1, φ, T, nothing, nothing, g.nthreads) :
+    device_core(g.storage, ys, n, n, W1, φ, T, g.nthreads, 1, 1; fft=false)
   # inner NFFT at h k′ in Float64 (its grid positions are computed from these)
   xs = Matrix{Float64}(undef, D, J)
   @maybe_threads g.nthreads for j in 1:J
