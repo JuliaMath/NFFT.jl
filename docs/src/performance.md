@@ -91,16 +91,18 @@ targets in ``[-1/2, 1/2)^D``, the space-frequency extent of an NFFT of size ``\b
 
 ![NNFFT, double precision](assets/benchmarks/nnfft_float64.svg)
 
-In double precision NFFT.jl and FINUFFT are on par in 1D and 2D; in 3D FINUFFT is up to 20 %
-faster between ``10^{-8}`` and ``10^{-11}``. At the highest accuracy NFFT.jl is ahead: in 2D it
-reaches ``7·10^{-14}`` in 4.4 ms, FINUFFT ``9·10^{-13}`` in 21 ms. Planning takes 6–16 ms in NFFT.jl
-and 4–7 ms in FINUFFT (more at its accuracy limits).
+In double precision NFFT.jl is faster than FINUFFT in 1D (up to 1.5×) and in 2D, and on par in
+3D, where FINUFFT is ahead around ``10^{-10}`` in the adjoint and NFFT.jl at the other accuracies. At
+the highest accuracy the difference is large: in 2D NFFT.jl reaches ``7·10^{-14}`` in 3.6 ms,
+FINUFFT ``9·10^{-13}`` in 22 ms. Planning takes 5–12 ms in NFFT.jl and 4–7 ms in FINUFFT (more at
+its accuracy limits).
 
 ![NNFFT, single precision](assets/benchmarks/nnfft_float32.svg)
 
 NFFT.jl computes grid positions and phases in double precision also for single-precision data. With
-the large coordinates of the type 3 this matters: NFFT.jl reaches ``10^{-7}`` in 1D and 2D, where
-FINUFFT stays at ``10^{-2}`` (1D) and ``5·10^{-5}`` (2D). In 3D FINUFFT is faster at equal error.
+the large coordinates of the type 3 this matters: NFFT.jl reaches ``3·10^{-7}`` in 1D, 2D and 3D,
+where FINUFFT stays at ``10^{-2}`` (1D), ``5·10^{-5}`` (2D) and ``8·10^{-6}`` (3D). At equal error
+NFFT.jl is also faster, except in 3D at errors above ``10^{-4}``.
 
 ## On GPUs
 

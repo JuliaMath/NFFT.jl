@@ -344,18 +344,26 @@ function correction_stage!(c::NFFTCore, g, f)
 end
 
 function resampling_stage!(c::NFFTCore, fHat, g)
-  h = halo(c.W)
-  copyto!(interior(c.gp, h), g)
-  fill_halo!(c.gp, h, c.nthreads)
+  threaded_copy!(interior(c.gp, halo(c.W)), g, c.nthreads)
+  resample_interior!(c, fHat)
+end
+
+resampling_adjoint_stage!(c::NFFTCore, g, fHat) = threaded_copy!(g, resample_adjoint_interior!(c, fHat), c.nthreads)
+
+# The stages on the grid of the core itself: resampling from the values in the interior of the
+# padded grid, and adjoint resampling into it (returns the interior as a view). The NNFFT uses them
+# to pass the grid to its inner NFFT without a copy.
+function resample_interior!(c::NFFTCore, fHat)
+  fill_halo!(c.gp, halo(c.W), c.nthreads)
   resample!(fHat, c.gp, c.kernel, c.binned, c.Ñ, c.bufs)
 end
 
-function resampling_adjoint_stage!(c::NFFTCore, g, fHat)
+function resample_adjoint_interior!(c::NFFTCore, fHat)
   h = halo(c.W)
   threaded_fill!(c.gp, 0, c.nthreads)
   resample_adjoint!(c.gp, c.kernel, c.binned, fHat, c.Ñ, c.locks, c.bufs)
   fold_halo!(c.gp, h, c.nthreads)
-  copyto!(g, interior(c.gp, h))
+  interior(c.gp, h)
 end
 
 correction_adjoint_stage!(c::NFFTCore, f, g) =

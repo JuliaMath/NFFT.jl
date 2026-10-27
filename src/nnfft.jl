@@ -117,7 +117,7 @@ function nnfft_plan(::Val{D}, k, y, kc, yc, g::GenericOptions{T}; window, W, σ,
 end
 
 # Outer window e₁ (spreading) and inner NFFT kernel e₂ at the lowest predicted cost: e₁ with error
-# ε₁ ≤ reltol/2 fixes the grid n ≈ 4σ₁·Y·K and leaves (reltol − ε₁)/A₁ for the inner NFFT. Cost:
+# ε₁ fixes the grid n ≈ 4σ₁·Y·K and leaves (reltol − ε₁)/A₁ for the inner NFFT. Cost:
 # the spreading term of the cost model for the N sources plus the cost of the inner NFFT (both
 # directions). `window`, `W`, `σ` restrict the inner kernel.
 function choose_nnfft(reltol, Y::NTuple{D}, K::NTuple{D}, N, J, ::Type{T}; window=:auto, W=nothing, σ=nothing) where {D,T}
@@ -140,15 +140,18 @@ function choose_nnfft(reltol, Y::NTuple{D}, K::NTuple{D}, N, J, ::Type{T}; windo
   ε2 = [ε(e) for e in inner]
   c2 = [a * J * e.W^D + a1 * J * e.W for e in inner]
   σ2 = [e.σ^D for e in inner]
+  # target: reltol, or 1.5 times the smallest predicted error if reltol is below it
+  fl(e1) = error_floor(grid(e1), T)
+  emin = minimum(e1 -> ε(e1) + fl(e1) + e1.amp * (minimum(ε2) + fl(e1)), outer)
+  tol = max(reltol, 1.5emin)
   best = nothing; bestcost = Inf
   for e1 in outer
-    ε1w = ε(e1)
-    ε1w <= reltol / 2 || continue
+    ε(e1) <= tol || continue
     n = grid(e1)
-    fl = error_floor(n, T)
-    ε1 = ε1w + fl
-    ε1 <= reltol / 2 || continue
-    tol2 = (reltol - ε1) / e1.amp - fl
+    f = error_floor(n, T)
+    ε1 = ε(e1) + f
+    ε1 <= tol || continue
+    tol2 = (tol - ε1) / e1.amp - f
     c1 = a * N * e1.W^D + a1 * N * e1.W + c
     Mn = prod(n)
     for i in eachindex(inner)
@@ -158,15 +161,8 @@ function choose_nnfft(reltol, Y::NTuple{D}, K::NTuple{D}, N, J, ::Type{T}; windo
       cost < bestcost && ((best, bestcost) = ((e1, inner[i], n, ε1), cost))
     end
   end
-  # below what any pair reaches: the most accurate
-  e1, e2, n, ε1 = best === nothing ? most_accurate(grid, inner, T) : best
+  e1, e2, n, ε1 = best
   e1, e2, n, (outer=ε1,)
-end
-
-function most_accurate(grid, inner, T)
-  e1 = argmin(e -> predicted_error(e, grid(e), T), KERNEL_TABLE)
-  n = grid(e1)
-  e1, argmin(e -> predicted_error(e, n, T), inner), n, predicted_error(e1, n, T)
 end
 
 # entries whose key tuple is not dominated (all components ≥, one >) by another entry's
@@ -204,17 +200,26 @@ function LinearAlgebra.mul!(fHat::AbstractVector, p::NNFFTPlan, f::AbstractVecto
   length(f) == p.N || throw(DimensionMismatch("input has length $(length(f)), the plan expects $(p.N)"))
   length(fHat) == p.J || throw(DimensionMismatch("output has length $(length(fHat)), the plan expects $(p.J)"))
   p.fs .= f .* p.pre
-  resampling_adjoint_stage!(p.core, p.g, p.fs)
-  mul!(fHat, p.inner, p.g)
+  mul!(fHat, p.inner, spread!(p.core, p.g, p.fs))
   fHat .*= p.post
 end
+
+# spread the sources onto the grid; on the CPU the inner NFFT reads the grid of the core in place
+spread!(c::NFFTCore, g, fs) = resample_adjoint_interior!(c, fs)
+spread!(c, g, fs) = (resampling_adjoint_stage!(c, g, fs); g)
 
 function LinearAlgebra.mul!(f::AbstractVector, pl::Adjoint{Complex{T},<:NNFFTPlan{T}}, fHat::AbstractVector) where {T}
   p = pl.parent
   length(f) == p.N || throw(DimensionMismatch("output has length $(length(f)), the plan expects $(p.N)"))
   length(fHat) == p.J || throw(DimensionMismatch("input has length $(length(fHat)), the plan expects $(p.J)"))
   p.fj .= fHat .* conj.(p.post)
-  mul!(p.g, adjoint(p.inner), p.fj)
-  resampling_stage!(p.core, f, p.g)
+  interpolate!(p.core, f, p.g, adjoint(p.inner), p.fj)
   f .*= conj.(p.pre)
 end
+
+# the adjoint of the inner NFFT and the resampling at the sources (on the CPU in place, as `spread!`)
+function interpolate!(c::NFFTCore, f, g, inner, fj)
+  mul!(interior(c.gp, halo(c.W)), inner, fj)
+  resample_interior!(c, f)
+end
+interpolate!(c, f, g, inner, fj) = (mul!(g, inner, fj); resampling_stage!(c, f, g); f)
