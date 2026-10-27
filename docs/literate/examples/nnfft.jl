@@ -66,3 +66,12 @@ p2
 
 v = randn(ComplexF64, 3000)
 norm(adjoint(p2) * v - adjoint(NNDFTPlan(ks, ys)) * v) / norm(adjoint(p2) * v)
+
+# ## Many signals at the same points
+#
+# With the size of the data array as third argument, `dims` selects the dimension that holds the
+# sources; the other dimensions are batch dimensions. Eight signals at the 5000 sources:
+
+pb = plan_nnfft(ks, ys, (5000, 8); dims=1, reltol=1e-8)
+F = randn(ComplexF64, 5000, 8)
+size(pb * F), pb * F ≈ reduce(hcat, [p2 * F[:, c] for c in 1:8])

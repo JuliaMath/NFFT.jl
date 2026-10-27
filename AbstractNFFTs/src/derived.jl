@@ -79,17 +79,20 @@ dimensions is the halved one. Keyword arguments as for [`plan_nfft`](@ref).
 plan_rnfft
 
 """
-    plan_nnfft([backend,] k, y; kwargs...)
+    plan_nnfft([backend,] k, y[, N]; kwargs...)
 
-Plan an NNFFT with non-equidistant nodes `k` in the frequency domain and `y` in the spatial
-domain. Keyword arguments as for [`plan_nfft`](@ref).
+Plan an NNFFT with non-equidistant nodes `k` (`D × J`) in the frequency domain and `y` (`D × M`)
+in the spatial domain. The input is a vector of length `M`, or an array of size `N` whose
+dimension `dims` (an integer) holds the `M` sources; the output has the `J` targets in that
+dimension, and the other dimensions are batch dimensions. Keyword arguments as for
+[`plan_nfft`](@ref).
 """
 plan_nnfft
 
 ## NNFFT constructor
-plan_nnfft(k::AbstractVecOrMat, y::AbstractVecOrMat; kwargs...) = plan_nnfft(active_backend(), k, y; kwargs...)
-plan_nnfft(b::AbstractNFFTBackend, k::AbstractVector, y::AbstractVector; kwargs...) =
-    plan_nnfft(b, reshape(k, 1, :), reshape(y, 1, :); kwargs...)
+plan_nnfft(k::AbstractVecOrMat, y::AbstractVecOrMat, N::Dims...; kwargs...) = plan_nnfft(active_backend(), k, y, N...; kwargs...)
+plan_nnfft(b::AbstractNFFTBackend, k::AbstractVector, y::AbstractVector, N::Dims...; kwargs...) =
+    plan_nnfft(b, reshape(k, 1, :), reshape(y, 1, :), N...; kwargs...)
 plan_nnfft(::Missing, args...; kwargs...) = no_backend_error()
 
 

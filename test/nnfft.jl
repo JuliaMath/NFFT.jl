@@ -33,4 +33,28 @@
   @test relerr(q * f, NNDFTPlan(k2, y) * ComplexF64.(f)) < 10 * accuracy(q)
   @test p * f == copy(p) * f
   @test_throws DimensionMismatch nodes!(q, rand(3, 10))
+
+  @testset "batch dimensions" begin
+    rng = Xoshiro(3)
+    y = 20 .* randn(rng, 2, 120); k = 2 .* randn(rng, 2, 90)
+    q = plan_nnfft(k, y; reltol=1e-9)
+    for (N, dims) in (((120, 3), 1), ((4, 120), 2), ((2, 120, 3), 2))
+      p = plan_nnfft(k, y, N; dims, reltol=1e-9)
+      NOut = Base.setindex(N, 90, dims)
+      @test size_in(p) == N && size_out(p) == NOut
+      f = randn(rng, ComplexF64, N); v = randn(rng, ComplexF64, NOut)
+      g = p * f; h = adjoint(p) * v
+      for I in CartesianIndices(Base.setindex(N, 1, dims))
+        sl = ntuple(d -> d == dims ? Colon() : I[d], length(N))
+        @test g[sl...] ≈ q * f[sl...]
+        @test h[sl...] ≈ adjoint(q) * v[sl...]
+      end
+      @test copy(p) * f == g
+      c = copy(p); nodes!(c, k[:, 1:50])
+      @test size_out(c) == Base.setindex(N, 50, dims)
+    end
+    @test_throws ArgumentError plan_nnfft(k, y, (120, 3))                 # dims needed
+    @test_throws DimensionMismatch plan_nnfft(k, y, (100, 3); dims=1)     # wrong number of sources
+    @test_throws ArgumentError plan_nnfft(k, y, (120, 3); dims=3)
+  end
 end

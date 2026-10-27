@@ -17,21 +17,27 @@
 # of the division (the dynamic range of FINUFFT's Remark 3).
 
 """
-    NNFFTPlan{T,D}
+    NNFFTPlan{T,D,M}
 
-NNFFT plan of NFFT.jl (non-equidistant nodes in both domains), created by `plan_nnfft(k, y; kwargs...)`
-for targets `k` (D × J) and sources `y` (D × N), arbitrary real coordinates:
+NNFFT plan of NFFT.jl (non-equidistant nodes in both domains), created by
+`plan_nnfft(k, y[, N]; kwargs...)` for targets `k` (D × J) and sources `y` (D × N), arbitrary real
+coordinates:
 
     f̂_j = Σ_l f_l exp(−2πi k_j·y_l)
 
 The cost grows with the product of the extents of `k` and `y` (the size of the inner NFFT is about
-4σ²·Y·K per dimension), not with their numbers. Generic options `reltol`, `eltype`, `storage`,
-`nthreads` (no `dims`); restrictions of the inner NFFT `window` (`:auto`, `KaiserBessel()` or
+4σ²·Y·K per dimension), not with their numbers. With an array size `N` (M dimensions), `dims`
+selects the dimension of the sources; the transform maps it to the targets and passes the other
+dimensions through, one slice after the other. Generic options `reltol`, `eltype`, `storage`,
+`nthreads`; restrictions of the inner NFFT `window` (`:auto`, `KaiserBessel()` or
 `ExpSemicircle()`), `W` and `σ`, and its FFT backend `fft`, as for [`NFFTPlan`](@ref).
 """
-mutable struct NNFFTPlan{T,D} <: AbstractNNFFTPlan{T,1,1}
+mutable struct NNFFTPlan{T,D,M} <: AbstractNNFFTPlan{T,M,M}
   N::Int                       # number of sources
   J::Int                       # number of targets
+  Nin::NTuple{M,Int}           # input size: the sources along `dim`, batch dimensions around it
+  NOut::NTuple{M,Int}          # output size: the targets along `dim`
+  dim::Int
   k::AbstractMatrix
   y::AbstractMatrix
   ysrc::AbstractMatrix         # sources in full precision on the CPU, for nodes!
@@ -50,26 +56,41 @@ end
 
 const NNFFT_OPTIONS = (:window, :W, :σ, :fft)
 
-function AbstractNFFTs.plan_nnfft(b::NFFTBackend, k::AbstractMatrix, y::AbstractMatrix; kwargs...)
+# `N` is the size of the data array and `dims` the dimension of the sources in it; the other
+# dimensions are batch dimensions. The nodes have D rows independently of it, so `dims` is not
+# passed on to `generic_options`.
+function AbstractNFFTs.plan_nnfft(b::NFFTBackend, k::AbstractMatrix, y::AbstractMatrix, N::Dims=(size(y, 2),);
+                                  dims=nothing, kwargs...)
   D = size(k, 1)
   size(y, 1) == D || throw(ArgumentError("targets have $D dimensions, sources $(size(y, 1))"))
+  dim = source_dim(dims, N)
+  N[dim] == size(y, 2) ||
+    throw(DimensionMismatch("dimension $dim of the size $N has $(N[dim]) entries, there are $(size(y, 2)) sources"))
   g, rest = generic_options(k, ntuple(_ -> 1, D); kwargs...)
-  g.dims == 1:D || throw(ArgumentError("an NNFFT has no batch dimensions"))
+  g = GenericOptions(g.reltol, dim:dim, g.eltype, g.storage, g.nthreads)
   check_options(b, rest, NNFFT_OPTIONS)
-  NNFFTPlan(k, y, g; rest...)
+  NNFFTPlan(k, y, g; N, rest...)
 end
 
-NNFFTPlan(k::AbstractVecOrMat, y::AbstractVecOrMat; kwargs...) = plan_nnfft(NFFTBackend(), k, y; kwargs...)
+function source_dim(dims, N)
+  d = dims === nothing && length(N) == 1 ? 1 : dims isa Integer ? Int(dims) :
+      dims isa AbstractUnitRange && length(dims) == 1 ? first(dims) :
+      throw(ArgumentError("dims must be the dimension of the sources (an integer), got $(repr(dims))"))
+  1 <= d <= length(N) || throw(ArgumentError("dims = $d is not a dimension of the size $N"))
+  d
+end
 
-function NNFFTPlan(k::AbstractMatrix, y::AbstractMatrix, g::GenericOptions{T}; window=:auto, W=nothing, σ=nothing,
-                   fft=nothing) where {T}
+NNFFTPlan(k::AbstractVecOrMat, y::AbstractVecOrMat, N::Dims...; kwargs...) = plan_nnfft(NFFTBackend(), k, y, N...; kwargs...)
+
+function NNFFTPlan(k::AbstractMatrix, y::AbstractMatrix, g::GenericOptions{T}; N=(size(y, 2),), window=:auto,
+                   W=nothing, σ=nothing, fft=nothing) where {T}
   cpu_options(g.storage, fft, nothing)
   kc = Array{Float64}(k); yc = Array{Float64}(y)
   all(isfinite, kc) && all(isfinite, yc) || throw(ArgumentError("nodes must be finite"))
-  nnfft_plan(Val(size(kc, 1)), k, y, kc, yc, g; window, W, σ, fft)
+  nnfft_plan(Val(size(kc, 1)), k, y, kc, yc, g, N; window, W, σ, fft)
 end
 
-function nnfft_plan(::Val{D}, k, y, kc, yc, g::GenericOptions{T}; window, W, σ, fft) where {D,T}
+function nnfft_plan(::Val{D}, k, y, kc, yc, g::GenericOptions{T}, Nin::NTuple{M,Int}; window, W, σ, fft) where {D,T,M}
   J = size(kc, 2); N = size(yc, 2)
   y0 = ntuple(d -> N == 0 ? 0.0 : (minimum(view(yc, d, :)) + maximum(view(yc, d, :))) / 2, Val(D))
   k0 = ntuple(d -> J == 0 ? 0.0 : (minimum(view(kc, d, :)) + maximum(view(kc, d, :))) / 2, Val(D))
@@ -113,7 +134,8 @@ function nnfft_plan(::Val{D}, k, y, kc, yc, g::GenericOptions{T}; window, W, σ,
   end
   S = g.storage
   store(v) = to_storage(S, Complex{T}.(v))
-  NNFFTPlan{T,D}(N, J, to_storage(S, k, T), to_storage(S, y, T), S <: Array ? y : yc, outer, n, acc.outer + outer.amp * accuracy(inner),
+  dim = first(g.dims)
+  NNFFTPlan{T,D,M}(N, J, Nin, Base.setindex(Nin, J, dim), dim, to_storage(S, k, T), to_storage(S, y, T), S <: Array ? y : yc, outer, n, acc.outer + outer.amp * accuracy(inner),
                  g, core, inner, store(pre), store(post), to_storage(S, zeros(Complex{T}, S <: Array ? map(zero, n) : n)),
                  to_storage(S, zeros(Complex{T}, N)), to_storage(S, zeros(Complex{T}, J)))
 end
@@ -181,14 +203,14 @@ function pareto_front(entries, key)
   entries[front]
 end
 
-AbstractNFFTs.size_in(p::NNFFTPlan) = (p.N,)
-AbstractNFFTs.size_out(p::NNFFTPlan) = (p.J,)
+AbstractNFFTs.size_in(p::NNFFTPlan) = p.Nin
+AbstractNFFTs.size_out(p::NNFFTPlan) = p.NOut
 AbstractNFFTs.nodes(p::NNFFTPlan) = p.k
 AbstractNFFTs.accuracy(p::NNFFTPlan) = p.accuracy
 
 function AbstractNFFTs.nodes!(p::NNFFTPlan{T,D}, k::AbstractMatrix) where {T,D}
   size(k, 1) == D || throw(DimensionMismatch("targets must have $D rows"))
-  q = NNFFTPlan(k, p.ysrc, p.options; parameters(p.inner)...)
+  q = NNFFTPlan(k, p.ysrc, p.options; N=p.Nin, parameters(p.inner)...)
   for f in fieldnames(NNFFTPlan)
     setfield!(p, f, getfield(q, f))
   end
@@ -196,18 +218,29 @@ function AbstractNFFTs.nodes!(p::NNFFTPlan{T,D}, k::AbstractMatrix) where {T,D}
 end
 
 # A copy shares nodes, phases and correction factors and gets its own cores and buffers.
-Base.copy(p::NNFFTPlan{T,D}) where {T,D} =
-  NNFFTPlan{T,D}(p.N, p.J, p.k, p.y, p.ysrc, p.outer, p.n, p.accuracy, p.options, copy(p.core), copy(p.inner),
+Base.copy(p::NNFFTPlan{T,D,M}) where {T,D,M} =
+  NNFFTPlan{T,D,M}(p.N, p.J, p.Nin, p.NOut, p.dim, p.k, p.y, p.ysrc, p.outer, p.n, p.accuracy, p.options, copy(p.core), copy(p.inner),
                  p.pre, p.post, similar(p.g), similar(p.fs), similar(p.fj))
 
-function Base.show(io::IO, p::NNFFTPlan{T}) where {T}
-  print(io, "NNFFTPlan{$T} from $(p.N) sources to $(p.J) targets: inner NFFT of size $(p.n), ",
+function Base.show(io::IO, p::NNFFTPlan{T,D,M}) where {T,D,M}
+  print(io, "NNFFTPlan{$T} from $(p.N) sources to $(p.J) targets",
+        M > 1 ? " along dims $(p.dim) of an array of size $(p.Nin)" : "", ": inner NFFT of size $(p.n), ",
         "spreading with $(nameof(typeof(p.outer.window))) W = $(p.outer.W), σ = $(p.outer.σ), predicted error $(p.accuracy)")
 end
 
-function LinearAlgebra.mul!(fHat::AbstractVector, p::NNFFTPlan, f::AbstractVector)
-  length(f) == p.N || throw(DimensionMismatch("input has length $(length(f)), the plan expects $(p.N)"))
-  length(fHat) == p.J || throw(DimensionMismatch("output has length $(length(fHat)), the plan expects $(p.J)"))
+# Batch dimensions: one slice after the other through the buffers of the plan.
+function LinearAlgebra.mul!(fHat::AbstractArray, p::NNFFTPlan, f::AbstractArray)
+  check_size(f, p.Nin, "input"); check_size(fHat, p.NOut, "output")
+  L1, L3 = batch_sizes(p.Nin, p.dim:p.dim)
+  L1 * L3 == 1 && (nnfft!(vec(fHat), p, vec(f)); return fHat)
+  fr = reshape(f, L1, p.N, L3); gr = reshape(fHat, L1, p.J, L3)
+  for b in 1:L3, a in 1:L1
+    view(gr, a, :, b) .= nnfft!(p.fj, p, view(fr, a, :, b))
+  end
+  fHat
+end
+
+function nnfft!(fHat, p, f)
   p.fs .= f .* p.pre
   mul!(fHat, p.inner, spread!(p.core, p.g, p.fs))
   fHat .*= p.post
@@ -217,10 +250,19 @@ end
 spread!(c::NFFTCore, g, fs) = resample_adjoint_interior!(c, fs)
 spread!(c, g, fs) = (resampling_adjoint_stage!(c, g, fs); g)
 
-function LinearAlgebra.mul!(f::AbstractVector, pl::Adjoint{Complex{T},<:NNFFTPlan{T}}, fHat::AbstractVector) where {T}
+function LinearAlgebra.mul!(f::AbstractArray, pl::Adjoint{Complex{T},<:NNFFTPlan{T}}, fHat::AbstractArray) where {T}
   p = pl.parent
-  length(f) == p.N || throw(DimensionMismatch("output has length $(length(f)), the plan expects $(p.N)"))
-  length(fHat) == p.J || throw(DimensionMismatch("input has length $(length(fHat)), the plan expects $(p.J)"))
+  check_size(f, p.Nin, "output"); check_size(fHat, p.NOut, "input")
+  L1, L3 = batch_sizes(p.Nin, p.dim:p.dim)
+  L1 * L3 == 1 && (nnfft_adjoint!(vec(f), p, vec(fHat)); return f)
+  fr = reshape(f, L1, p.N, L3); gr = reshape(fHat, L1, p.J, L3)
+  for b in 1:L3, a in 1:L1
+    view(fr, a, :, b) .= nnfft_adjoint!(p.fs, p, view(gr, a, :, b))
+  end
+  f
+end
+
+function nnfft_adjoint!(f, p, fHat)
   p.fj .= fHat .* conj.(p.post)
   interpolate!(p.core, f, p.g, adjoint(p.inner), p.fj)
   f .*= conj.(p.pre)

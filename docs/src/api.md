@@ -7,7 +7,8 @@ CurrentModule = NFFT
 ## Options
 
 Keyword arguments of `plan_nfft`, `plan_rnfft`, `plan_nfct` and `plan_nfst`; `plan_nnfft` takes
-them without `tilesize` and `measure`, and its `window`, `W` and `σ` apply to its inner NFFT:
+them without `tilesize` and `measure`, its `dims` is the dimension of the sources in an array of the
+size given as third argument, and its `window`, `W` and `σ` apply to its inner NFFT:
 
 | keyword | meaning |
 |:--|:--|

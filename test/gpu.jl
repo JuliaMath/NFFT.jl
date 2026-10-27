@@ -102,6 +102,10 @@ include("contract.jl")                       # relerr, allowed
     f = randn(Complex{T}, 200); v = randn(Complex{T}, 300)
     @test relerr(Array(p * arrayType(f)), pcpu * f) < 100 * eps(T) * pcpu.outer.amp
     @test relerr(Array(adjoint(p) * arrayType(v)), adjoint(pcpu) * v) < 100 * eps(T) * pcpu.outer.amp
+    # batch dimensions
+    pb = plan_nnfft(k, y, (2, 200, 3); dims=2, reltol, storage=arrayType)
+    F = randn(Complex{T}, 2, 200, 3)
+    @test relerr(Array(pb * arrayType(F))[2, :, 3], pcpu * F[2, :, 3]) < 100 * eps(T) * pcpu.outer.amp
   end
 
   @testset "sdc" begin
