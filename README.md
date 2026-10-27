@@ -18,8 +18,6 @@ This package provides a Julia implementation of the Non-equidistant Fast Fourier
 > - The [dev documentation](https://JuliaMath.github.io/NFFT.jl/dev) describes the new version,
 >   including a [migration guide](https://JuliaMath.github.io/NFFT.jl/dev/migration/) and
 >   [benchmarks](https://JuliaMath.github.io/NFFT.jl/dev/performance/) against FINUFFT and ducc.
-> - Not yet ported to the new interface: the GPU implementation (CuNFFT and the GPUArrays
->   extension of 0.14) and the wrappers in `Wrappers/`.
 >
 > To try the development version (AbstractNFFTs 1.0 is not registered yet, so it comes first):
 > ```
