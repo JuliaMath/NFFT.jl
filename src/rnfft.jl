@@ -144,7 +144,7 @@ end
 function AbstractNFFTs.plan_rnfft(b::NFFTBackend, k::AbstractMatrix, N::Dims{D}; kwargs...) where {D}
   g, rest = generic_options(k, N; kwargs...)
   check_options(b, rest, NFFT_OPTIONS)
-  RNFFTPlan(k, N, g; rest...)
+  fast_plan(RNFFTPlan, k, N, g, out_ndims(N, kwargs); rest...)
 end
 
 RNFFTPlan(k::AbstractVecOrMat, N; kwargs...) = plan_rnfft(NFFTBackend(), k, N; kwargs...)

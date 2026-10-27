@@ -31,6 +31,16 @@ function stability_plans(J, n, nthreads)
 end
 
 @testset "Type stability and allocations" begin
+  # the plan type is inferred when `dims` is left out or a single dimension
+  k1 = rand(1, 20) .- 0.5; k2 = rand(2, 20) .- 0.5
+  @test @inferred(plan_nfft(k2, (8, 8))) isa NFFTPlan{Float64,2,1}
+  @test @inferred(plan_nfft(Float32.(k2), (8, 8); reltol=1e-4)) isa NFFTPlan{Float32,2,1}
+  @test @inferred(plan_nfft(k1, (8, 3); dims=1)) isa NFFTPlan{Float64,2,2}
+  @test @inferred(plan_nfft(vec(k1), (8,))) isa NFFTPlan{Float64,1,1}
+  @test @inferred(plan_rnfft(k2, (8, 8))) isa RNFFTPlan{Float64,2,1}
+  @test @inferred(plan_nfct(abs.(k2) ./ 2, (8, 8))) isa NFCTPlan{Float64,2,1}
+  @test @inferred(plan_nfst(abs.(k1) ./ 2, (3, 8); dims=2)) isa NFSTPlan{Float64,2,2}
+
   for (name, p, Tin, Tout) in stability_plans(500, 16, Threads.nthreads())
     @testset "$name" begin
       back = Tin <: Real ? transpose(p) : adjoint(p)

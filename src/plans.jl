@@ -10,15 +10,22 @@ const NFFT_OPTIONS = (:window, :W, :σ, :fft, :tilesize, :measure)
 # Candidates timed with `measure = true`.
 const MEASURE_CANDIDATES = 4
 
-function fast_plan(P, k::AbstractMatrix, N::NTuple{D,Int}, g::GenericOptions{T}; window=:auto, W=nothing,
-                   σ=nothing, fft=nothing, tilesize=nothing, measure=false) where {D,T}
+# Number of dimensions of the output, from the type of the `dims` keyword where that determines it
+# (all dimensions, a single one), so that the type of the plan is inferred in these cases.
+out_ndims(::Val{D}, ::Colon) where {D} = 1
+out_ndims(::Val{D}, ::Integer) where {D} = D
+out_ndims(::Val{D}, dims) where {D} = D - length(dims) + 1
+out_ndims(::NTuple{D,Int}, kwargs) where {D} = Val(out_ndims(Val(D), get(kwargs, :dims, Colon())))
+
+function fast_plan(::Type{P}, k::AbstractMatrix, N::NTuple{D,Int}, g::GenericOptions{T}, ::Val{R}=Val(D - length(g.dims) + 1);
+                   window=:auto, W=nothing, σ=nothing, fft=nothing, tilesize=nothing, measure=false) where {P,D,T,R}
   fft = cpu_options(g.storage, fft, tilesize)
   measure && !(g.storage <: Array) && throw(ArgumentError("measure is supported for plans on the CPU"))
   dims = g.dims; Nd = N[dims]; J = size(k, 2)
   kernels = select_kernels(window, W, σ, g.reltol, error_size(P, Nd), J, T; Ncost=Nd,
                            n=measure ? MEASURE_CANDIDATES : 1)
   NOut = out_size(N, dims, J)
-  build((kernel, acc)) = P{T,D,length(NOut)}(N, input_size(P, N, dims), NOut, dims, to_storage(g.storage, k, T),
+  build((kernel, acc)) = P{T,D,R}(N, input_size(P, N, dims), NOut, dims, to_storage(g.storage, k, T),
     kernel, acc, g, fft, tilesize, make_engine(P, k, N, dims, kernel, T, fft, tilesize, g.nthreads, g.storage)...)
   p = build(kernels[1])
   length(kernels) == 1 && return p

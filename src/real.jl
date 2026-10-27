@@ -315,12 +315,12 @@ kind(::Type{<:NFSTPlan}) = :sin
 function AbstractNFFTs.plan_nfct(b::NFFTBackend, k::AbstractMatrix, N::Dims{D}; kwargs...) where {D}
   g, rest = generic_options(k, N; kwargs...)
   check_options(b, rest, NFFT_OPTIONS)
-  fast_plan(NFCTPlan, k, N, g; rest...)
+  fast_plan(NFCTPlan, k, N, g, out_ndims(N, kwargs); rest...)
 end
 function AbstractNFFTs.plan_nfst(b::NFFTBackend, k::AbstractMatrix, N::Dims{D}; kwargs...) where {D}
   g, rest = generic_options(k, N; kwargs...)
   check_options(b, rest, NFFT_OPTIONS)
-  fast_plan(NFSTPlan, k, N, g; rest...)
+  fast_plan(NFSTPlan, k, N, g, out_ndims(N, kwargs); rest...)
 end
 
 NFCTPlan(k::AbstractVecOrMat, N; kwargs...) = plan_nfct(NFFTBackend(), k, N; kwargs...)
