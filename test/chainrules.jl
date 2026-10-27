@@ -1,41 +1,41 @@
+using Zygote: ChainRulesCore
+
 @testset "Chainrules" begin
+  rng = Xoshiro(7)
+  rel(a, b) = norm(a - b) / norm(b)
+  NT = ChainRulesCore.NoTangent()
 
-eps = 1e-4
+  # (one-shot transform, its adjoint/transpose, plan, direct plan, data type, nodes)
+  cases = [(nfft, nfft_adjoint, plan_nfft, NDFTPlan, complex, k -> k .- one(eltype(k)) / 2),
+           (nfct, nfct_transpose, plan_nfct, NDCTPlan, identity, k -> k ./ 2),
+           (nfst, nfst_transpose, plan_nfst, NDSTPlan, identity, k -> k ./ 2)]
 
-for N in [17,33,67]
-  for T in [Float32, Float64]
-    M = rand(N÷2:2*N)
-    # signal
-    fHat = rand(complex(T), N) # random signal
-    f = rand(complex(T),M) # random Fourier space signal
-    # Fourier matrix
-    k = rand(real(T),M).-real(T)(0.5)
-    x = range(-N÷2, step=1, length=N)
-    nfftMat = [exp(-real(T)(2π)*im*k[i]*x[j]) for i=1:M, j=1:N]
-    # NFFT-plan
-    p = plan_nfft(k,(N,))
-    p_adj = adjoint(p)
-    
-    # test gradients of NFFT
-    y, g = Zygote.withgradient(v->sum(abs.(nfftMat*v).^2), fHat)
-    y2, g2 = Zygote.withgradient(v->sum(abs.(nfft(k,v)).^2), fHat)
-    y3, g3 = Zygote.withgradient(v->sum(abs.(p*v).^2), fHat)
-    @test (y-y2)/y < eps
-    @test (y-y3)/y < eps
-    @test norm(g[1]-g2[1])/norm(g[1]) < eps
-    @test norm(g[1]-g3[1])/norm(g[1]) < eps
+  for (op, op_t, plan, dplan, dtype, scale) in cases, T in (Float32, Float64), N in (17, 33)
+    tol = T == Float64 ? 1e-8 : 1e-4
+    M = 2N
+    k = scale(rand(rng, T, 1, M))
+    p = plan(k, (N,); reltol=tol)
+    A = dplan(k, (N,))
+    pt = op === nfft ? adjoint(p) : transpose(p)
+    At = op === nfft ? adjoint(A) : transpose(A)
+    x = dtype.(randn(rng, T, N) .+ (dtype === complex ? im .* randn(rng, T, N) : 0))
+    v = dtype.(randn(rng, T, M) .+ (dtype === complex ? im .* randn(rng, T, M) : 0))
 
-    # test gradients of adjoint NFFT
-    y, g = Zygote.withgradient(v->sum(abs.(adjoint(nfftMat)*v).^2), f)
-    y2, g2 = Zygote.withgradient(v->sum(abs.(nfft_adjoint(k,N,v)).^2), f)
-    y3, g3 = Zygote.withgradient(v->sum(abs.(p_adj*v).^2), f)
-    @test (y-y2)/y < eps
-    @test (y-y3)/y < eps
-    @test norm(g[1]-g2[1])/norm(g[1]) < eps
-    @test norm(g[1]-g3[1])/norm(g[1]) < eps
+    @testset "$op $T N=$N" begin
+      # gradient of ‖A x‖² is 2 Aᴴ A x
+      g = 2 * (At * (A * x))
+      @test rel(Zygote.gradient(z -> sum(abs2, op(k, z; reltol=tol)), x)[1], g) < 10tol
+      @test rel(Zygote.gradient(z -> sum(abs2, p * z), x)[1], g) < 10tol
+      gt = 2 * (A * (At * v))
+      @test rel(Zygote.gradient(z -> sum(abs2, op_t(k, N, z; reltol=tol)), v)[1], gt) < 10tol
+      @test rel(Zygote.gradient(z -> sum(abs2, pt * z), v)[1], gt) < 10tol
+
+      # forward mode: the tangent of the data is transformed
+      Δx = dtype.(randn(rng, T, N))
+      @test rel(ChainRulesCore.frule((NT, NT, Δx), op, k, x)[2], A * Δx) < 10tol
+      @test rel(ChainRulesCore.frule((NT, NT, Δx), *, p, x)[2], A * Δx) < 10tol
+      Δv = dtype.(randn(rng, T, M))
+      @test rel(ChainRulesCore.frule((NT, NT, NT, Δv), op_t, k, N, v)[2], At * Δv) < 10tol
+    end
   end
-
-end
-
-
 end

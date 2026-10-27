@@ -43,10 +43,9 @@ function R2RPass(::Type{T}, F, d, Ñ, N, kept_below, flags, nthreads) where {T}
     end
   end
   ntasks = D == 1 ? 1 : min(4nthreads, length(items))
-  FFTW.set_num_threads(D == 1 ? nthreads : 1)
   bufs = [zeros(T, 2Ñ, Lb) for _ in 1:ntasks]
   outs = [zeros(Complex{T}, Ñ + 1, Lb) for _ in 1:ntasks]
-  plans = Any[FFTW.plan_rfft(b, 1; flags) for b in bufs]
+  plans = with_fftw_threads(() -> Any[FFTW.plan_rfft(b, 1; flags) for b in bufs], D == 1 ? nthreads : 1)
   R2RPass{T}(d, Ñ, A, C, items, bufs, outs, plans)
 end
 
@@ -338,14 +337,7 @@ function RealPlan(P::Type, k::AbstractMatrix, N::NTuple{D,Int}, g::GenericOption
   dims = g.dims
   Nv = virtual_size(kind(P), N[dims])
   J = size(k, 2)
-  if window isa CustomWindow
-    (W === nothing || σ === nothing) && throw(ArgumentError("a CustomWindow needs W and σ"))
-    kernel, acc = KernelEntry(window, W, σ, NaN, NaN, NaN, NaN), NaN
-  elseif window === :auto || window isa AbstractWindow
-    kernel, acc = choose_kernel(g.reltol, Nv, J, T; window, W, σ, Ncost=N[dims])
-  else
-    throw(ArgumentError("window must be :auto or an AbstractWindow, got $window"))
-  end
+  kernel, acc = select_kernel(window, W, σ, g.reltol, Nv, J, T; Ncost=N[dims])
   NOut = (N[1:first(dims)-1]..., J, N[last(dims)+1:end]...)
   core = real_core(kind(P), k, N[dims], kernel, T, fft, tilesize, g.nthreads, g.storage, batch_sizes(N, dims)...)
   P{T,D,length(NOut)}(N, NOut, dims, to_storage(g.storage, k, T), kernel, acc, g, fft, tilesize, core,

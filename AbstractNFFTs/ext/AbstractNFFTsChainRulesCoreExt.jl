@@ -1,73 +1,69 @@
 module AbstractNFFTsChainRulesCoreExt
 
-using AbstractNFFTs
+using AbstractNFFTs, LinearAlgebra
 isdefined(Base, :get_extension) ? (import ChainRulesCore) : (import ..ChainRulesCore)
+
+const NT = ChainRulesCore.NoTangent
 
 ###############
 # mul-interface
 ###############
-function ChainRulesCore.frule((_, Δx, _), ::typeof(*), plan::AbstractFTPlan, x::AbstractArray)
-  y = plan*x
-  Δy = plan*Δx
-  return y, Δy
-end
-function ChainRulesCore.rrule(::typeof(*), plan::AbstractFTPlan, x::AbstractArray)
-  y = plan*x
-  project_x = ChainRulesCore.ProjectTo(x)
-  function mul_pullback(ȳ)
-      x̄ = project_x( adjoint(plan)*ChainRulesCore.unthunk(ȳ) )
-      return ChainRulesCore.NoTangent(), ChainRulesCore.NoTangent(), x̄
+# The pullback of a plan is its adjoint, for the real transforms (NFCT, NFST) its transpose; the
+# pullback of an adjoint or transposed plan is the plan itself.
+const WrappedPlan = Union{Adjoint{<:Any,<:AbstractFTPlan},Transpose{<:Any,<:AbstractFTPlan}}
+pullback_plan(plan::AbstractRealFTPlan) = transpose(plan)
+pullback_plan(plan::AbstractFTPlan) = adjoint(plan)
+pullback_plan(plan::WrappedPlan) = parent(plan)
+
+# Adjoint and Transpose are AbstractMatrix: the second signature is more specific than the
+# matrix-times-vector rule of ChainRules.
+for X in (AbstractArray, AbstractVecOrMat{<:Union{Real,Complex}})
+  @eval begin
+    function ChainRulesCore.frule((_, _, Δx), ::typeof(*), plan::Union{AbstractFTPlan,WrappedPlan}, x::$X)
+      return plan * x, plan * Δx
+    end
+    function ChainRulesCore.rrule(::typeof(*), plan::Union{AbstractFTPlan,WrappedPlan}, x::$X)
+      y = plan * x
+      project_x = ChainRulesCore.ProjectTo(x)
+      mul_pullback(ȳ) = (NT(), NT(), project_x(pullback_plan(plan) * ChainRulesCore.unthunk(ȳ)))
+      return y, mul_pullback
+    end
   end
-  return y, mul_pullback
 end
 
 ##################
 # NFFT, NFCT, NFST
 ##################
-for (op,trans) in zip([:nfft, :nfct, :nfst], [:adjoint, :transpose, :transpose])
+for (op, trans) in zip([:nfft, :nfct, :nfst], [:adjoint, :transpose, :transpose])
 
   func_trans = Symbol("$(op)_$(trans)")
   pbfunc = Symbol("$(op)_pullback")
   pbfunc_trans = Symbol("$(op)_$(trans)_pullback")
   @eval begin
-  
-    # direct trafo
-    function ChainRulesCore.frule((_, Δx, _), ::typeof($(op)), k::AbstractArray, x::AbstractArray)
-      y = $(op)(k,x)
-      Δy = $(op)(k,Δx)
-      return y, Δy
+
+    # direct transform
+    function ChainRulesCore.frule((_, _, Δx), ::typeof($(op)), k::AbstractArray, x::AbstractArray; kwargs...)
+      return $(op)(k, x; kwargs...), $(op)(k, Δx; kwargs...)
     end
-    function ChainRulesCore.rrule(::typeof($(op)), k::AbstractArray, x::AbstractArray)
-      y = $(op)(k,x)
+    function ChainRulesCore.rrule(::typeof($(op)), k::AbstractArray, x::AbstractArray; kwargs...)
+      y = $(op)(k, x; kwargs...)
       project_x = ChainRulesCore.ProjectTo(x)
-      function $(pbfunc)(ȳ)
-        x̄ = project_x($(func_trans)(k, size(x), ChainRulesCore.unthunk(ȳ)))
-        return ChainRulesCore.NoTangent(), ChainRulesCore.NoTangent(), x̄
-      end
-      return y, nfft_pullback
+      $(pbfunc)(ȳ) = (NT(), NT(), project_x($(func_trans)(k, size(x), ChainRulesCore.unthunk(ȳ); kwargs...)))
+      return y, $(pbfunc)
     end
 
-    # adjoint trafo
-    function ChainRulesCore.frule((_, Δx, _), ::typeof($(func_trans)), k::AbstractMatrix, N, x::AbstractArray)
-      y = $(func_trans)(k,N,x)
-      Δy = $(func_trans)(k,N,Δx)
-      return y, Δy
+    # adjoint / transposed transform
+    function ChainRulesCore.frule((_, _, _, Δx), ::typeof($(func_trans)), k::AbstractArray, N, x::AbstractArray; kwargs...)
+      return $(func_trans)(k, N, x; kwargs...), $(func_trans)(k, N, Δx; kwargs...)
     end
-    function ChainRulesCore.rrule(::typeof($(func_trans)), k::AbstractArray, N, x::AbstractArray)
-      y = $(func_trans)(k,N,x)
+    function ChainRulesCore.rrule(::typeof($(func_trans)), k::AbstractArray, N, x::AbstractArray; kwargs...)
+      y = $(func_trans)(k, N, x; kwargs...)
       project_x = ChainRulesCore.ProjectTo(x)
-      function $(pbfunc_trans)(ȳ)
-        x̄ = project_x($(op)(k, ChainRulesCore.unthunk(ȳ)))
-        return ChainRulesCore.NoTangent(), ChainRulesCore.NoTangent(), ChainRulesCore.NoTangent(), x̄
-      end
+      $(pbfunc_trans)(ȳ) = (NT(), NT(), NT(), project_x($(op)(k, ChainRulesCore.unthunk(ȳ); kwargs...)))
       return y, $(pbfunc_trans)
     end
 
   end
-
 end
-
-
-
 
 end # module

@@ -21,4 +21,17 @@
   p = plan_nnfft(fill(0.3, 1, 5), fill(-2.0, 1, 1))
   @test p * [1.0 + 0im] ≈ fill(cispi(-2 * 0.3 * -2.0), 5)
   @test_throws ArgumentError plan_nnfft(rand(2, 4), rand(1, 4))
+  @test_throws ArgumentError plan_nnfft(rand(2, 4), rand(2, 4); σ=0.9)
+  # a copy computes the same; new targets are planned from the sources in full precision
+  rng = MersenneTwister(2)
+  y = 50 .* randn(rng, 2, 300); k = 3 .* randn(rng, 2, 200)
+  p = plan_nnfft(k, y; eltype=Float32)
+  f = randn(rng, ComplexF32, 300)
+  @test copy(p) * f == p * f
+  q = copy(p)
+  k2 = 3 .* randn(rng, 2, 100)
+  nodes!(q, k2)
+  @test relerr(q * f, NNDFTPlan(k2, y) * ComplexF64.(f)) < 10 * accuracy(q)
+  @test p * f == copy(p) * f
+  @test_throws DimensionMismatch nodes!(q, rand(3, 10))
 end

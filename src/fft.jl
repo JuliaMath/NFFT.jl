@@ -18,6 +18,17 @@ Base.@kwdef struct FFTWBackend <: AbstractFFTBackend
   flags::UInt32 = FFTW.ESTIMATE
 end
 
+# The thread count of FFTW's planner is global; planning restores it.
+function with_fftw_threads(f, n)
+  old = FFTW.get_num_threads()
+  FFTW.set_num_threads(n)
+  try
+    f()
+  finally
+    FFTW.set_num_threads(old)
+  end
+end
+
 # One pass per transformed dimension, each over a set of boxes (array views) with a batched 1D
 # plan. Forward (direct NFFT): the input is nonzero only in the corners of the kept modes, passes
 # run along the transformed dims in decreasing order, pass d only on lines whose transformed dims
@@ -36,7 +47,6 @@ function PassFFT(fft::FFTWBackend, x::AbstractArray{T,D}, N::NTuple{D,Int}; dir=
                  fftw_threads=length(tdims) == 1) where {T,D}
   Ñ = size(x)
   onepass = fftw_threads
-  FFTW.set_num_threads(onepass ? nthreads : 1)
   order = pattern == :fwd ? reverse(tdims) : tdims
   plans, boxes = Vector{Any}[], Vector{NTuple{D,UnitRange{Int}}}[]
   for d in order
@@ -49,8 +59,10 @@ function PassFFT(fft::FFTWBackend, x::AbstractArray{T,D}, N::NTuple{D,Int}; dir=
       push!(pb, Base.setindex(b, c, s))
     end
     push!(boxes, pb)
-    push!(plans, Any[dir == :fwd ? FFTW.plan_fft!(view(x, b...), d; flags=fft.flags) :
-                                   FFTW.plan_bfft!(view(x, b...), d; flags=fft.flags) for b in pb])
+    push!(plans, with_fftw_threads(onepass ? nthreads : 1) do
+      Any[dir == :fwd ? FFTW.plan_fft!(view(x, b...), d; flags=fft.flags) :
+                        FFTW.plan_bfft!(view(x, b...), d; flags=fft.flags) for b in pb]
+    end)
   end
   PassFFT{D}(plans, boxes)
 end

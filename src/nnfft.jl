@@ -33,6 +33,7 @@ mutable struct NNFFTPlan{T,D} <: AbstractNNFFTPlan{T,1,1}
   J::Int                       # number of targets
   k::AbstractMatrix
   y::AbstractMatrix
+  ysrc::AbstractMatrix         # sources in full precision on the CPU, for nodes!
   outer::KernelEntry           # window of the spreading
   n::NTuple{D,Int}             # grid of the spreading = modes of the inner NFFT
   accuracy::Float64
@@ -41,7 +42,7 @@ mutable struct NNFFTPlan{T,D} <: AbstractNNFFTPlan{T,1,1}
   inner::Any                   # NFFT plan of size n at the nodes h k′
   pre::AbstractVector          # exp(−2πi k₀·y′_l)
   post::AbstractVector         # exp(−2πi k_j·y₀) / Π_d φ̂(h_d k′_dj)
-  g::AbstractArray             # spread grid (n...)
+  g::AbstractArray             # spread grid (n...); empty on the CPU, where the core's grid is used
   fs::AbstractVector           # sources times pre
   fj::AbstractVector           # targets times conj(post)
 end
@@ -111,8 +112,8 @@ function nnfft_plan(::Val{D}, k, y, kc, yc, g::GenericOptions{T}; window, W, σ,
   end
   S = g.storage
   store(v) = to_storage(S, Complex{T}.(v))
-  NNFFTPlan{T,D}(N, J, to_storage(S, k, T), to_storage(S, y, T), outer, n, acc.outer + outer.amp * accuracy(inner),
-                 g, core, inner, store(pre), store(post), to_storage(S, zeros(Complex{T}, n)),
+  NNFFTPlan{T,D}(N, J, to_storage(S, k, T), to_storage(S, y, T), S <: Array ? y : yc, outer, n, acc.outer + outer.amp * accuracy(inner),
+                 g, core, inner, store(pre), store(post), to_storage(S, zeros(Complex{T}, S <: Array ? map(zero, n) : n)),
                  to_storage(S, zeros(Complex{T}, N)), to_storage(S, zeros(Complex{T}, J)))
 end
 
@@ -121,6 +122,7 @@ end
 # the spreading term of the cost model for the N sources plus the cost of the inner NFFT (both
 # directions). `window`, `W`, `σ` restrict the inner kernel.
 function choose_nnfft(reltol, Y::NTuple{D}, K::NTuple{D}, N, J, ::Type{T}; window=:auto, W=nothing, σ=nothing) where {D,T}
+  check_window_options(W, σ)
   a, a1, b, c = COST_COEF[min(D, 3)]
   grid(e1) = ntuple(d -> smooth_size(ceil(Int, 4 * e1.σ * Y[d] * K[d]) + e1.W + 2), Val(D))
   inner = filter(KERNEL_TABLE) do e
@@ -181,15 +183,19 @@ AbstractNFFTs.size_out(p::NNFFTPlan) = (p.J,)
 AbstractNFFTs.nodes(p::NNFFTPlan) = p.k
 AbstractNFFTs.accuracy(p::NNFFTPlan) = p.accuracy
 
-function AbstractNFFTs.nodes!(p::NNFFTPlan{T}, k::AbstractMatrix) where {T}
-  q = NNFFTPlan(k, p.y, p.options; parameters(p.inner)...)
+function AbstractNFFTs.nodes!(p::NNFFTPlan{T,D}, k::AbstractMatrix) where {T,D}
+  size(k, 1) == D || throw(DimensionMismatch("targets must have $D rows"))
+  q = NNFFTPlan(k, p.ysrc, p.options; parameters(p.inner)...)
   for f in fieldnames(NNFFTPlan)
     setfield!(p, f, getfield(q, f))
   end
   p
 end
 
-Base.copy(p::NNFFTPlan) = NNFFTPlan(p.k, p.y, p.options; parameters(p.inner)...)
+# A copy shares nodes, phases and correction factors and gets its own cores and buffers.
+Base.copy(p::NNFFTPlan{T,D}) where {T,D} =
+  NNFFTPlan{T,D}(p.N, p.J, p.k, p.y, p.ysrc, p.outer, p.n, p.accuracy, p.options, copy(p.core), copy(p.inner),
+                 p.pre, p.post, similar(p.g), similar(p.fs), similar(p.fj))
 
 function Base.show(io::IO, p::NNFFTPlan{T}) where {T}
   print(io, "NNFFTPlan{$T} from $(p.N) sources to $(p.J) targets: inner NFFT of size $(p.n), ",

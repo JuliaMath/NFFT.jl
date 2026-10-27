@@ -48,12 +48,13 @@ function RNFFTCore(k::AbstractMatrix, N::NTuple{D,Int}, Ñ::NTuple{D,Int}, W, φ
   pfwd = PassFFT(fft, Hk, Nk; dir=:bwd, pattern=:fwd, nthreads, tdims=2:D, fftw_threads=false)
   pbwd = PassFFT(fft, Hk, Nk; dir=:fwd, pattern=:bwd, nthreads, tdims=2:D, fftw_threads=false)
   boxes = D == 1 ? [1:1] : chunks(1:Ñ[D], 4nthreads)
-  FFTW.set_num_threads(D == 1 ? nthreads : 1)
   c2r = Any[]; r2c = Any[]
-  for b in boxes
-    X = box(H, b); Y = box(g, b)
-    push!(c2r, FFTW.rFFTWPlan{Complex{T},FFTW.BACKWARD,false,D}(X, Y, (1,), fft.flags, FFTW.NO_TIMELIMIT))
-    push!(r2c, FFTW.rFFTWPlan{T,FFTW.FORWARD,false,D}(Y, X, (1,), fft.flags, FFTW.NO_TIMELIMIT))
+  with_fftw_threads(D == 1 ? nthreads : 1) do
+    for b in boxes
+      X = box(H, b); Y = box(g, b)
+      push!(c2r, FFTW.rFFTWPlan{Complex{T},FFTW.BACKWARD,false,D}(X, Y, (1,), fft.flags, FFTW.NO_TIMELIMIT))
+      push!(r2c, FFTW.rFFTWPlan{T,FFTW.FORWARD,false,D}(Y, X, (1,), fft.flags, FFTW.NO_TIMELIMIT))
+    end
   end
   RNFFTCore{D,typeof(K),T,nodetype(binned)}(N, Nh, Ñ, W, B, K, invphi, binned, gp, H, pfwd, pbwd, boxes, c2r, r2c,
     TileLocks(size(gp), B), task_buffers(T, ntuple(_ -> B + W + 1, D), nthreads), fft.flags, nthreads)
@@ -162,14 +163,7 @@ function RNFFTPlan(k::AbstractMatrix, N::NTuple{D,Int}, g::GenericOptions{T}; wi
   fft = cpu_options(g.storage, fft, tilesize)
   dims = g.dims
   J = size(k, 2)
-  if window isa CustomWindow
-    (W === nothing || σ === nothing) && throw(ArgumentError("a CustomWindow needs W and σ"))
-    kernel, acc = KernelEntry(window, W, σ, NaN, NaN, NaN, NaN), NaN
-  elseif window === :auto || window isa AbstractWindow
-    kernel, acc = choose_kernel(g.reltol, N[dims], J, T; window, W, σ)
-  else
-    throw(ArgumentError("window must be :auto or an AbstractWindow, got $window"))
-  end
+  kernel, acc = select_kernel(window, W, σ, g.reltol, N[dims], J, T)
   d1 = first(dims)
   Nin = Base.setindex(N, N[d1] ÷ 2 + 1, d1)
   NOut = (N[1:d1-1]..., J, N[last(dims)+1:end]...)

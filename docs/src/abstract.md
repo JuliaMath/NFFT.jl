@@ -88,6 +88,6 @@ In the type parameters, `T` is the real element type of the data, `D` the number
 of the input and `R` that of the output (`R = 1` without batch dimensions). Everything else,
 `*`, `nfft`, `size`, ChainRules, is derived from these functions.
 
-The test suite of NFFT.jl contains contract tests that check an implementation against the NDFT
-for all generic options; they take a plan constructor as an argument and can be run against any
-backend.
+The test suite of NFFT.jl contains contract tests (`test/contract.jl`) that check an implementation
+against the NDFT, for several tolerances `reltol` and with batch dimensions (`dims`); they take a
+plan constructor as an argument and can be run against any backend.

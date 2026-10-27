@@ -27,6 +27,8 @@
     @test_throws ArgumentError plan_nfft(k, N; reltol=-1)
     @test_throws ArgumentError plan_nfft(k, N; dims=2:3)
     @test_throws ArgumentError plan_nfft(k, N; window=CustomWindow((z, W) -> exp(-z^2)))  # needs W, σ
+    @test_throws ArgumentError plan_nfft(k, N; σ=0.8)                        # grid smaller than N
+    @test_throws ArgumentError plan_nfft(k, N; W=1)
     p = plan_nfft(k, N)
     @test_throws ArgumentError nodes!(p, [0.7 0.1; 0.1 0.1])
     @test_throws DimensionMismatch nodes!(p, rand(3, 10) .- 0.5)
@@ -74,6 +76,19 @@
       out[i] = plans[i] * f
     end
     @test all(o -> o == p * f, out)
+  end
+
+  @testset "FFTW: flags are kept, the global thread count is not changed" begin
+    n = NFFT.FFTW.get_num_threads()
+    fft = NFFT.FFTWBackend(flags=NFFT.FFTW.MEASURE)
+    p = plan_nfft(k, N; fft)
+    @test NFFT.FFTW.get_num_threads() == n
+    @test copy(p).core.flags == NFFT.FFTW.MEASURE
+    for nt in (1, 4)
+      q = plan_nfft(k, (N..., 16); dims=1:2, fft, nthreads=nt)
+      cores = q.core isa Vector ? q.core : [q.core]
+      cores[1] isa NFFT.NFFTCore && @test all(c -> c.flags == NFFT.FFTW.MEASURE, cores)
+    end
   end
 
   @testset "show" begin

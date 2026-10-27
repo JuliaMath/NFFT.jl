@@ -19,8 +19,8 @@
 end
 
 # w₁·v is formed once per node, so every grid point of a row takes one FMA.
-@inline function resample_adjoint_node!(g::AbstractArray{C,D}, off::NTuple{D,Int}, ws::NTuple{D,SVector{W,T}}, v::C) where {C,D,W,T}
-  w1v = ws[1] .* v
+@inline function resample_adjoint_node!(g::AbstractArray{C,D}, off::NTuple{D,Int}, ws::NTuple{D,SVector{W,T}}, v) where {C,D,W,T}
+  w1v = ws[1] .* convert(C, v)
   @inbounds for It in CartesianIndices(ntuple(_ -> Base.OneTo(W), Val(D - 1)))
     wt = prod(ntuple(d -> ws[d+1][It[d]], Val(D - 1)); init=one(T))
     jt = Base.tail(off) .+ Tuple(It)

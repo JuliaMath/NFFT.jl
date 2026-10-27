@@ -65,6 +65,27 @@ function kernel_cost(e::KernelEntry, N::NTuple{D,Int}, J) where {D}
   a * J * e.W^D + a1 * J * e.W + b * M * log2(M) + c
 end
 
+# The kernel of a plan from its options `window`, `W`, `σ`: a CustomWindow as given (its error is
+# unknown), otherwise from the table (`choose_kernel`). Returns the entry and the predicted error.
+function select_kernel(window, W, σ, reltol, N, J, T; Ncost=N)
+  check_window_options(W, σ)
+  if window isa CustomWindow
+    (W === nothing || σ === nothing) && throw(ArgumentError("a CustomWindow needs W and σ"))
+    KernelEntry(window, W, σ, NaN, NaN, NaN, NaN), NaN
+  elseif window === :auto || window isa AbstractWindow
+    choose_kernel(reltol, N, J, T; window, W, σ, Ncost)
+  else
+    throw(ArgumentError("window must be :auto or an AbstractWindow, got $window"))
+  end
+end
+
+# σ ≤ 1 gives a grid smaller than the modes, which then alias.
+function check_window_options(W, σ)
+  W === nothing || (W isa Integer && W >= 2) || throw(ArgumentError("W must be an integer ≥ 2, got $W"))
+  σ === nothing || σ > 1 || throw(ArgumentError("σ must be > 1, got $σ"))
+  nothing
+end
+
 # Choose the kernel for requested `reltol` from the table, restricted by the user's `window`
 # (`:auto` or a family), `W` and `σ`. Returns the table entry (with σ replaced by the user's σ when
 # given) and the predicted error. `Ncost` is the size whose oversampled grid the cost model sees

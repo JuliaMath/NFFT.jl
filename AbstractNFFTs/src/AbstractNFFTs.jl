@@ -23,9 +23,7 @@ export oversampled_size, resampling_correction!, oversampled_fft!, resampling!,
        resampling_adjoint!, oversampled_bfft!, resampling_correction_adjoint!
 
 # derived
-export nfft, nfft_adjoint, ndft, ndft_adjoint,
-       nfct, nfct_transpose, ndct, ndct_transpose,
-       nfst, nfst_transpose
+export nfft, nfft_adjoint, nfct, nfct_transpose, nfst, nfst_transpose
 
 # options shared by all implementations
 export DEFAULT_RELTOL, GenericOptions, generic_options, check_options

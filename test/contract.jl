@@ -82,12 +82,13 @@ function edge_nodes(T, D, N)
 end
 
 """
-    contract_tests(make_plan; T=Float64, tols, sizes, J=nothing, rng)
+    contract_tests(make_plan; T=Float64, tols, sizes, rng, slack, supports_dims=true)
 
-Run the contract tests for plans built by `make_plan(k, N; reltol, dims)`.
+Run the contract tests for plans built by `make_plan(k, N; reltol, dims)`. An implementation without
+batch dimensions passes `supports_dims=false` to skip their test.
 """
 function contract_tests(make_plan; T=Float64, tols=(T == Float64 ? (1e-4, 1e-8, 1e-12) : (1e-3, 1e-5)),
-                        sizes=((64,), (31, 32), (12, 13, 10)), rng=Xoshiro(1234), slack=10)
+                        sizes=((64,), (31, 32), (12, 13, 10)), rng=Xoshiro(1234), slack=10, supports_dims=true)
   C = Complex{T}
 
   @testset "accuracy against NDFT ($(T), N = $N, reltol = $tol)" for N in sizes, tol in tols
@@ -161,14 +162,10 @@ function contract_tests(make_plan; T=Float64, tols=(T == Float64 ? (1e-4, 1e-8, 
     N = (3, 10, 11, 2); dims = 2:3; J = 40
     tol = tols[min(2, length(tols))]
     k = random_nodes(rng, T, length(dims), J)
-    p = try
-      make_plan(k, N; reltol=tol, dims)
-    catch
-      nothing                   # an implementation may refuse dims it does not support
-    end
-    if p === nothing
+    if !supports_dims
       @test_skip "dims = $dims not supported"
     else
+      p = make_plan(k, N; reltol=tol, dims)
       @test size_in(p) == N
       @test size_out(p) == (N[1], J, N[4])
       f = randn(rng, C, N); fHat = randn(rng, C, N[1], J, N[4])

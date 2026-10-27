@@ -46,8 +46,9 @@ function BatchCore(k::AbstractMatrix, N::NTuple{D,Int}, Ñ::NTuple{D,Int}, W, φ
   F = fwdF = bwdF = nothing
   if D == 1
     F = Matrix{Complex{T}}(undef, Ñ[1], Lp)
-    FFTW.set_num_threads(nthreads)
-    fwdF = FFTW.plan_fft!(F, 1; flags=fft.flags); bwdF = FFTW.plan_bfft!(F, 1; flags=fft.flags)
+    fwdF, bwdF = with_fftw_threads(nthreads) do
+      FFTW.plan_fft!(F, 1; flags=fft.flags), FFTW.plan_bfft!(F, 1; flags=fft.flags)
+    end
   end
   BatchCore{D,typeof(K),T,eltype(k),D + 1,CH}(L, Lp, N, Ñ, W, B, K, invphi, Binned(k, Ñ, B, nthreads), gp,
     PassFFT(fft, g, Nf; dir=:fwd, nthreads, tdims=2:D+1), PassFFT(fft, g, Nf; dir=:bwd, nthreads, tdims=2:D+1),

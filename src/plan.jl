@@ -16,6 +16,7 @@ struct NFFTCore{D,K<:SymKernel,T,Tk}
   locks::TileLocks{D}
   # one extra point: tile assignment and support may round differently at tile edges
   bufs::Vector{Array{Complex{T},D}} # tile buffers of edge B+W+1
+  flags::UInt32                     # FFTW flags, for copies
   nthreads::Int
 end
 
@@ -28,7 +29,7 @@ function NFFTCore(k::AbstractMatrix, N::NTuple{D,Int}, Ñ::NTuple{D,Int}, W, φ,
   g = interior(gp, h)
   NFFTCore(N, Ñ, W, B, K, invphi, Binned(k, Ñ, B, nthreads), gp,
            PassFFT(fft, g, N; dir=:fwd, nthreads), PassFFT(fft, g, N; dir=:bwd, nthreads),
-           TileLocks(size(gp), B), task_buffers(Complex{T}, ntuple(_ -> B + W + 1, D), nthreads), nthreads)
+           TileLocks(size(gp), B), task_buffers(Complex{T}, ntuple(_ -> B + W + 1, D), nthreads), fft.flags, nthreads)
 end
 
 function trafo_core!(out, c::NFFTCore, f)
@@ -103,14 +104,7 @@ function NFFTPlan(k::AbstractMatrix, N::NTuple{D,Int}, g::GenericOptions{T}; win
   dims = g.dims
   Nd = N[dims]
   J = size(k, 2)
-  if window isa CustomWindow
-    (W === nothing || σ === nothing) && throw(ArgumentError("a CustomWindow needs W and σ"))
-    kernel, acc = KernelEntry(window, W, σ, NaN, NaN, NaN, NaN), NaN
-  elseif window === :auto || window isa AbstractWindow
-    kernel, acc = choose_kernel(g.reltol, Nd, J, T; window, W, σ)
-  else
-    throw(ArgumentError("window must be :auto or an AbstractWindow, got $window"))
-  end
+  kernel, acc = select_kernel(window, W, σ, g.reltol, Nd, J, T)
   NOut = (N[1:first(dims)-1]..., J, N[last(dims)+1:end]...)
   strategy, core, fbuf, gbuf = make_engine(k, N, dims, kernel, T, fft, tilesize, g.nthreads, g.storage)
   NFFTPlan{T,D,length(NOut)}(N, NOut, dims, to_storage(g.storage, k, T), kernel, acc, g, fft, tilesize,
@@ -171,26 +165,19 @@ function check_nodes(k)
   end
 end
 
-# Single-threaded copy of a core, sharing kernel, correction factors and binned nodes.
-function single_core(c::NFFTCore{D,K,T}) where {D,K,T}
+# A copy shares the read-only parts (kernel, correction factors, binned nodes) and gets its own
+# grid, FFT plans, locks and buffers, so that copies can run concurrently.
+function copy_core(c::NFFTCore{D,K,T}, nthreads) where {D,K,T}
   gp = similar(c.gp)
   g = interior(gp, halo(c.W))
-  fft = FFTWBackend()
+  fft = FFTWBackend(flags=c.flags)
   NFFTCore(c.N, c.Ñ, c.W, c.B, c.kernel, c.invphi, c.binned, gp,
-           PassFFT(fft, g, c.N; dir=:fwd, nthreads=1), PassFFT(fft, g, c.N; dir=:bwd, nthreads=1),
-           TileLocks(size(gp), c.B), task_buffers(Complex{T}, size(c.bufs[1]), 1), 1)
+           PassFFT(fft, g, c.N; dir=:fwd, nthreads), PassFFT(fft, g, c.N; dir=:bwd, nthreads),
+           TileLocks(size(gp), c.B), task_buffers(Complex{T}, size(c.bufs[1]), nthreads), c.flags, nthreads)
 end
 
-# A copy shares the read-only parts (kernel, correction factors, binned nodes) and gets its own
-# grid, FFT plans and locks, so that copies can run concurrently.
-function Base.copy(c::NFFTCore{D}) where {D}
-  gp = similar(c.gp)
-  g = interior(gp, halo(c.W))
-  fft = FFTWBackend()
-  NFFTCore(c.N, c.Ñ, c.W, c.B, c.kernel, c.invphi, c.binned, gp,
-           PassFFT(fft, g, c.N; dir=:fwd, nthreads=c.nthreads), PassFFT(fft, g, c.N; dir=:bwd, nthreads=c.nthreads),
-           TileLocks(size(gp), c.B), [zero(b) for b in c.bufs], c.nthreads)
-end
+single_core(c::NFFTCore) = copy_core(c, 1)
+Base.copy(c::NFFTCore) = copy_core(c, c.nthreads)
 
 function Base.copy(p::NFFTPlan{T,D,R}) where {T,D,R}
   strategy, core, fbuf, gbuf = p.strategy in (:single, :loop) ? (p.strategy, copy(p.core), nothing, nothing) :

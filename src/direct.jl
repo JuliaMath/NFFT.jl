@@ -91,23 +91,6 @@ function NNDFTPlan(k::Matrix{T}, y::Matrix{T}; kwargs...) where {T}
   return NNDFTPlan{T}(N, J, k, y)
 end
 
-### ndft functions ###
-
-ndft(k::AbstractArray, f::AbstractArray; kargs...) =
-    NDFTPlan(k, size(f); kargs...) * f
-
-ndft_adjoint(k, N, fHat::AbstractVector; kargs...) =
-    adjoint(NDFTPlan(k, N; kargs...)) * fHat
-
-ndct(k::AbstractArray, f::AbstractArray; kargs...) =
-    NDCTPlan(k, size(f); kargs...) * f
-
-ndct_transposed(k, N, fHat::AbstractVector; kargs...) =
-    transpose(NDCTPlan(k, N; kargs...)) * fHat
-
-
-
-
 function LinearAlgebra.mul!(g::AbstractArray{Tg}, plan::NDFTPlan{Tp,D}, f::AbstractArray{T,D}) where {D,Tp,T,Tg}
 
     plan.N == size(f) ||
