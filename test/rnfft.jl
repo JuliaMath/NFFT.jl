@@ -31,7 +31,7 @@
     q = plan_rnfft(k, 40)
     for (N, nthreads) in (((40, 3), 8), ((40, 64), 8), ((40, 64), 1))
       p = plan_rnfft(k, N; dims = 1, nthreads)
-      @test isempty(p.slicecores) == (N[2] < 8 || nthreads == 1)
+      @test (p.strategy === :slices) == !(N[2] < 8 || nthreads == 1)
       h = randn(rng, ComplexF64, size_in(p))
       y = p * h
       @test size(y) == (90, N[2])
@@ -55,7 +55,7 @@
     k = rand(rng, 1, 70) ./ 2
     f = randn(rng, 30, 40)
     p = plan_nfct(k, size(f); dims = 1, nthreads = 8)
-    @test !isempty(p.slicecores)
+    @test p.strategy === :slices
     q = plan_nfct(k, 30)
     @test p * f ≈ reduce(hcat, [q * f[:, l] for l in 1:40])
     y = p * f

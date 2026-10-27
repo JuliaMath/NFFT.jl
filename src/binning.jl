@@ -12,6 +12,8 @@ struct Binned{D,T}
   order1::Vector{Int}
 end
 
+nodetype(::Binned{D,T}) where {D,T} = T
+
 function Binned(k::AbstractMatrix{T}, Ñ::NTuple{D,Int}, B::Int, nthreads) where {D,T}
   J = size(k, 2)
   ntiles = cld.(Ñ, B)

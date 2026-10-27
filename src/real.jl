@@ -24,7 +24,7 @@ end
 
 const R2R_LINES = 16
 
-function R2RPass(::Type{T}, F, d, Ñ, N, kept_below, flags, nthreads) where {T}
+function R2RPass(::Type{T}, F, d, Ñ, N, flags, nthreads) where {T}
   M = size(F); D = ndims(F)
   A = prod(M[1:d-1]; init=1); C = prod(M[d+1:end]; init=1)
   items = NTuple{3,Int}[]
@@ -35,8 +35,8 @@ function R2RPass(::Type{T}, F, d, Ñ, N, kept_below, flags, nthreads) where {T}
     end
   else
     Lb = R2R_LINES
-    # dimensions below d: all points, or only 1:N where the data are zero elsewhere
-    R = ntuple(e -> kept_below ? (1:N[e]) : (1:M[e]), d - 1)
+    # dimensions below d: only 1:N, the data are zero elsewhere
+    R = ntuple(e -> 1:N[e], d - 1)
     LA = LinearIndices(M[1:d-1])
     for c in 1:C, m in CartesianIndices(Base.tail(R)), a0 in first(R[1]):Lb:last(R[1])
       push!(items, (LA[a0, Tuple(m)...], min(Lb, last(R[1]) - a0 + 1), c))
@@ -99,14 +99,10 @@ function r2r_lines!(F3, buf, out, plan, Ñ, x0, nb, c, ::Val{S}) where {S}
   end
 end
 
-# passes of the direct transform (dimensions in decreasing order, lines with zeros skipped) and of
-# the transposed transform (increasing order, only lines needed later)
-function r2r_passes(::Type{T}, F, Ñ, N, flags, nthreads) where {T}
-  D = ndims(F)
-  fwd = [R2RPass(T, F, d, Ñ[d], N, true, flags, nthreads) for d in D:-1:1]
-  adj = [R2RPass(T, F, d, Ñ[d], N, true, flags, nthreads) for d in 1:D]
-  fwd, adj
-end
+# Passes of the direct transform (dimensions in decreasing order, lines with zeros skipped); the
+# transposed transform runs the same passes in increasing order (only the lines needed later).
+r2r_passes(::Type{T}, F, Ñ, N, flags, nthreads) where {T} =
+  [R2RPass(T, F, d, Ñ[d], N, flags, nthreads) for d in ndims(F):-1:1]
 
 struct RealCore{S,D,K<:SymKernel,T,Tk}   # S = :cos or :sin
   N::NTuple{D,Int}
@@ -119,8 +115,7 @@ struct RealCore{S,D,K<:SymKernel,T,Tk}   # S = :cos or :sin
   binned::Binned{D,Tk}
   gp::Array{T,D}                         # padded grid, (Ñ + 1) .+ W
   F::Array{T,D}                          # contiguous copy of the stored points for the FFT stage
-  fwd::Vector{R2RPass{T}}
-  adj::Vector{R2RPass{T}}
+  passes::Vector{R2RPass{T}}            # direct: in this order, transposed: reversed
   locks::TileLocks{D}
   bufs::Vector{Array{T,D}}
   flags::UInt32
@@ -131,10 +126,22 @@ end
 virtual_size(S, N) = S === :cos ? 2 .* N : 2 .* (N .+ 1)
 
 function RealCore{S}(k::AbstractMatrix, N::NTuple{D,Int}, Ñv::NTuple{D,Int}, W, φ, ::Type{T}, fft, B, nthreads) where {S,D,T}
-  K = SymKernel(PolyKernel(φ, W, W + 3; T))
+  K = make_kernel(φ, W, T)
   Ñ = Ñv .÷ 2
-  # φ̂ of the virtual grid at the modes n ≥ 0; the factors 1/2 come from the DCT-I/DST-I
-  # normalisation (Y_l = X_0 + 2 Σ X_n cos(π n l / Ñ), resp. 2 Σ X_n sin(π n l / Ñ))
+  cfwd, cadj = real_factors(Val(S), φ, W, N, Ñv, T, nthreads)
+  B = B === nothing ? default_tile(D, W) : B
+  h = halo(W)
+  gp = zeros(T, (Ñ .+ 1) .+ W)
+  F = zeros(T, size(stored(gp, h, Ñ, Val(S))))
+  RealCore{S,D,typeof(K),T,eltype(k)}(N, Ñ, W, B, K, cfwd, cadj, Binned(k, Ñv, B, nthreads), gp, F,
+    r2r_passes(T, F, Ñ, N, fft.flags, nthreads),
+    TileLocks(size(gp), B), task_buffers(T, ntuple(_ -> B + W + 1, D), nthreads), fft.flags, nthreads)
+end
+
+# Correction factors of the direct and the transposed transform per mode: 1/φ̂ of the virtual grid
+# at the modes n ≥ 0, with the factors 1/2 of the DCT-I/DST-I normalisation
+# (Y_l = X_0 + 2 Σ X_n cos(π n l / Ñ), resp. 2 Σ X_n sin(π n l / Ñ)).
+function real_factors(::Val{S}, φ, W, N::NTuple{D,Int}, Ñv, ::Type{T}, nthreads) where {S,D,T}
   phihat = ntuple(D) do d
     if S === :cos
       kernel_ft(φ, W, 2N[d], Ñv[d]; nthreads)[N[d]+1:2N[d]]
@@ -144,13 +151,7 @@ function RealCore{S}(k::AbstractMatrix, N::NTuple{D,Int}, Ñv::NTuple{D,Int}, W,
   end
   cadj = map(p -> T.(1 ./ (2 .* p)), phihat)
   cfwd = S === :cos ? map(p -> T.([1 / p[1]; 1 ./ (2 .* p[2:end])]), phihat) : cadj
-  B = B === nothing ? default_tile(D, W) : B
-  h = halo(W)
-  gp = zeros(T, (Ñ .+ 1) .+ W)
-  F = zeros(T, size(stored(gp, h, Ñ, Val(S))))
-  fwd, adj = r2r_passes(T, F, Ñ, N, fft.flags, nthreads)
-  RealCore{S,D,typeof(K),T,eltype(k)}(N, Ñ, W, B, K, cfwd, cadj, Binned(k, Ñv, B, nthreads), gp, F, fwd, adj,
-    TileLocks(size(gp), B), task_buffers(T, ntuple(_ -> B + W + 1, D), nthreads), fft.flags, nthreads)
+  cfwd, cadj
 end
 
 # Padded index of grid point l is l + h[1] + 1. The DCT-I acts on l = 0…Ñ, the DST-I on l = 1…Ñ−1.
@@ -221,7 +222,7 @@ function trafo_core!(out, c::RealCore{S}, f) where {S}
   h = halo(c.W); g = stored(c.gp, h, c.Ñ, Val(S))
   threaded_fill!(c.F, 0, c.nthreads)
   real_correction!(c.F, f, c.cfwd, c.N, c.nthreads)
-  for P in c.fwd
+  for P in c.passes
     apply_r2r!(P, c.F, Val(S))
   end
   if S === :sin                          # the grid vanishes at l = 0 and l = Ñ
@@ -249,24 +250,21 @@ function adjoint_core!(f, c::RealCore{S}, vals) where {S}
       selectdim(c.F, d, size(c.F, d)) .*= 2
     end
   end
-  for P in c.adj
+  for P in Iterators.reverse(c.passes)
     apply_r2r!(P, c.F, Val(S))
   end
   real_correction_adjoint!(f, c.F, c.cadj, c.N, c.nthreads)
   f
 end
 
-Base.copy(c::RealCore) = real_copy(c, c.nthreads)
-single_core(c::RealCore) = real_copy(c, 1)
-
-function real_copy(c::RealCore{S,D,K,T,Tk}, nthreads) where {S,D,K,T,Tk}
+function copy_core(c::RealCore{S,D,K,T,Tk}, nthreads) where {S,D,K,T,Tk}
   F = zero(c.F)
-  fwd, adj = r2r_passes(T, F, c.Ñ, c.N, c.flags, nthreads)
-  RealCore{S,D,K,T,Tk}(c.N, c.Ñ, c.W, c.B, c.kernel, c.cfwd, c.cadj, c.binned, zero(c.gp), F, fwd, adj,
+  RealCore{S,D,K,T,Tk}(c.N, c.Ñ, c.W, c.B, c.kernel, c.cfwd, c.cadj, c.binned, zero(c.gp), F,
+                       r2r_passes(T, F, c.Ñ, c.N, c.flags, nthreads),
                        TileLocks(size(c.gp), c.B), task_buffers(T, size(c.bufs[1]), nthreads), c.flags, nthreads)
 end
 
-slice_cores(c::RealCore, Nd, J, L) = use_slices(L, J + prod(Nd), c.nthreads) ? single_cores(c, L) : Any[]
+slice_size(c::RealCore) = c.N
 
 """
     NFCTPlan{T,D,R}
@@ -283,148 +281,50 @@ transposed transform. Options as for [`NFFTPlan`](@ref); batch dimensions run as
 parallel or one after the other.
 """
 mutable struct NFCTPlan{T,D,R} <: AbstractNFCTPlan{T,D,R}
-  N::NTuple{D,Int}
-  NOut::NTuple{R,Int}
-  dims::UnitRange{Int}
-  k::AbstractMatrix
-  kernel::KernelEntry
-  accuracy::Float64
-  options::GenericOptions{T}
-  fft::AbstractFFTBackend
-  tilesize::Union{Nothing,Int}
-  core::Any
-  slicecores::Vector{Any}              # single-threaded cores for many slices (`use_slices`)
+  @plan_fields
 end
 
 @doc (@doc NFCTPlan)
 mutable struct NFSTPlan{T,D,R} <: AbstractNFSTPlan{T,D,R}
-  N::NTuple{D,Int}
-  NOut::NTuple{R,Int}
-  dims::UnitRange{Int}
-  k::AbstractMatrix
-  kernel::KernelEntry
-  accuracy::Float64
-  options::GenericOptions{T}
-  fft::AbstractFFTBackend
-  tilesize::Union{Nothing,Int}
-  core::Any
-  slicecores::Vector{Any}              # single-threaded cores for many slices (`use_slices`)
+  @plan_fields
 end
 
 const RealPlan{T,D,R} = Union{NFCTPlan{T,D,R},NFSTPlan{T,D,R}}
-kind(::NFCTPlan) = :cos
-kind(::NFSTPlan) = :sin
 kind(::Type{<:NFCTPlan}) = :cos
 kind(::Type{<:NFSTPlan}) = :sin
 
 function AbstractNFFTs.plan_nfct(b::NFFTBackend, k::AbstractMatrix, N::Dims{D}; kwargs...) where {D}
   g, rest = generic_options(k, N; kwargs...)
   check_options(b, rest, NFFT_OPTIONS)
-  RealPlan(NFCTPlan, k, N, g; rest...)
+  fast_plan(NFCTPlan, k, N, g; rest...)
 end
 function AbstractNFFTs.plan_nfst(b::NFFTBackend, k::AbstractMatrix, N::Dims{D}; kwargs...) where {D}
   g, rest = generic_options(k, N; kwargs...)
   check_options(b, rest, NFFT_OPTIONS)
-  RealPlan(NFSTPlan, k, N, g; rest...)
+  fast_plan(NFSTPlan, k, N, g; rest...)
 end
 
 NFCTPlan(k::AbstractVecOrMat, N; kwargs...) = plan_nfct(NFFTBackend(), k, N; kwargs...)
 NFSTPlan(k::AbstractVecOrMat, N; kwargs...) = plan_nfst(NFFTBackend(), k, N; kwargs...)
 
-function RealPlan(P::Type, k::AbstractMatrix, N::NTuple{D,Int}, g::GenericOptions{T}; window=:auto,
-                  W=nothing, σ=nothing, fft=nothing, tilesize=nothing) where {D,T}
-  fft = cpu_options(g.storage, fft, tilesize)
-  dims = g.dims
-  Nv = virtual_size(kind(P), N[dims])
-  J = size(k, 2)
-  kernel, acc = select_kernel(window, W, σ, g.reltol, Nv, J, T; Ncost=N[dims])
-  NOut = (N[1:first(dims)-1]..., J, N[last(dims)+1:end]...)
-  core = real_core(kind(P), k, N[dims], kernel, T, fft, tilesize, g.nthreads, g.storage, batch_sizes(N, dims)...)
-  P{T,D,length(NOut)}(N, NOut, dims, to_storage(g.storage, k, T), kernel, acc, g, fft, tilesize, core,
-                      slice_cores(core, N[dims], J, prod(batch_sizes(N, dims))))
-end
+# The error model sees the virtual NFFT (twice the size), the cost model the stored half.
+error_size(P::Type{<:RealPlan}, Nd) = virtual_size(kind(P), Nd)
 
-function real_core(S, k, Nd, kernel::KernelEntry, ::Type{T}, fft, tilesize, nthreads, storage=Array, L1=1, L3=1) where {T}
-  k = k isa Array ? k : Array(k)
+function check_nodes(::Type{<:RealPlan}, k)
   for x in k
     (isfinite(x) && 0 <= x <= 0.5) ||
       throw(ArgumentError("nodes of an NFCT/NFST must be in [0, 1/2], found $x"))
   end
+end
+
+function make_core(P::Type{<:RealPlan}, k, Nd, kernel::KernelEntry, ::Type{T}, fft, tilesize, nthreads, storage,
+                   L1, L3) where {T}
+  S = kind(P)
   Ñv = grid_size(kernel.σ, virtual_size(S, Nd), kernel.W)
-  φ = window_function(kernel.window, kernel.W, kernel.β, kernel.e0)
+  φ = window_function(kernel)
   storage <: Array || return device_real_core(Val(S), storage, k, Nd, Ñv, kernel.W, φ, T, nthreads, L1, L3)
   RealCore{S}(k, Nd, Ñv, kernel.W, φ, T, fft, tilesize, nthreads)
 end
 
 # Core for data on a device (GPU array types; the GPU extension), handling all batch dimensions.
 device_real_core(S, storage, args...) = device_core(storage)
-
-AbstractNFFTs.size_in(p::RealPlan) = p.N
-AbstractNFFTs.size_out(p::RealPlan) = p.NOut
-AbstractNFFTs.nodes(p::RealPlan) = p.k
-AbstractNFFTs.accuracy(p::RealPlan) = p.accuracy
-parameters(p::RealPlan) = (window=p.kernel.window, W=p.kernel.W, σ=p.kernel.σ)
-
-function Base.copy(p::P) where {T,D,R,P<:RealPlan{T,D,R}}
-  core = copy(p.core)
-  P(p.N, p.NOut, p.dims, p.k, p.kernel, p.accuracy, p.options, p.fft, p.tilesize, core,
-    slice_cores(core, p.N[p.dims], size(p.k, 2), prod(batch_sizes(p.N, p.dims))))
-end
-
-function AbstractNFFTs.nodes!(p::RealPlan{T}, k::AbstractMatrix) where {T}
-  size(k, 1) == length(p.dims) || throw(DimensionMismatch("nodes must have $(length(p.dims)) rows"))
-  p.core = real_core(kind(p), k, p.N[p.dims], p.kernel, T, p.fft, p.tilesize, p.options.nthreads,
-                     p.options.storage, batch_sizes(p.N, p.dims)...)
-  p.slicecores = slice_cores(p.core, p.N[p.dims], size(k, 2), prod(batch_sizes(p.N, p.dims)))
-  p.k = to_storage(p.options.storage, k, T)
-  p.NOut = (p.N[1:first(p.dims)-1]..., size(k, 2), p.N[last(p.dims)+1:end]...)
-  p
-end
-
-function Base.show(io::IO, p::RealPlan{T}) where {T}
-  e = p.kernel
-  print(io, "$(nameof(typeof(p))){$T} for an input of size $(p.N) along dims $(p.dims) at $(size(p.k, 2)) nodes: ",
-        "$(nameof(typeof(e.window))) window, W = $(e.W), σ = $(e.σ), predicted error $(p.accuracy)")
-end
-
-function LinearAlgebra.mul!(fHat::AbstractArray, p::RealPlan, f::AbstractArray)
-  check_sizes(p, f, fHat)
-  if isempty(p.slicecores)
-    real_transform!(p, p.core, fHat, f)
-  else
-    fr, gr, L1, L3, Dd = batch_views(p, f, fHat)
-    slices_parallel(p.slicecores, L1, L3) do c, a, b
-      trafo_core!(view(gr, a, :, b), c, view(fr, a, ntuple(_ -> Colon(), Dd)..., b))
-    end
-  end
-  fHat
-end
-
-function LinearAlgebra.mul!(f::AbstractArray, pl::Transpose{T,<:RealPlan{T}}, fHat::AbstractArray) where {T}
-  p = pl.parent
-  check_sizes(p, f, fHat)
-  if isempty(p.slicecores)
-    real_transform_adjoint!(p, p.core, f, fHat)
-  else
-    fr, gr, L1, L3, Dd = batch_views(p, f, fHat)
-    slices_parallel(p.slicecores, L1, L3) do c, a, b
-      adjoint_core!(view(fr, a, ntuple(_ -> Colon(), Dd)..., b), c, view(gr, a, :, b))
-    end
-  end
-  f
-end
-
-# The core argument is the function barrier into code specialised on the kernel; batch dimensions
-# loop over the slices.
-function real_transform!(p, c, fHat, f)
-  fr, gr, L1, L3, Dd = batch_views(p, f, fHat)
-  for b in 1:L3, a in 1:L1
-    trafo_core!(view(gr, a, :, b), c, view(fr, a, ntuple(_ -> Colon(), Dd)..., b))
-  end
-end
-function real_transform_adjoint!(p, c, f, fHat)
-  fr, gr, L1, L3, Dd = batch_views(p, f, fHat)
-  for b in 1:L3, a in 1:L1
-    adjoint_core!(view(fr, a, ntuple(_ -> Colon(), Dd)..., b), c, view(gr, a, :, b))
-  end
-end

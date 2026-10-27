@@ -24,6 +24,7 @@ struct BatchCore{D,K<:SymKernel,T,Tk,D1,CH}
   # 1D: FFT buffer with the batch dimension last. A 1D FFT along dimension 2 of the batch-first grid
   # (stride Lp) is ≈ 3× slower than on contiguous columns (Ñ = 354294, L = 8: 11.6 vs 3.8 ms).
   F::Union{Nothing,Matrix{Complex{T}}}
+  flags::UInt32                     # FFTW flags, for copies
   nthreads::Int
 end
 
@@ -31,14 +32,15 @@ end
 batch_tile(D, W, Lp) = D == 1 ? clamp(8192 ÷ Lp - W - 1, 64, 1024) :
                        max(8, floor(Int, (8192 / Lp)^(1 / D)) - W - 1)
 
-function BatchCore(k::AbstractMatrix, N::NTuple{D,Int}, Ñ::NTuple{D,Int}, W, φ, ::Type{T}, fft, L, B, nthreads) where {D,T}
-  K = SymKernel(PolyKernel(φ, W, W + 3; T))
-  invphi = ntuple(d -> T.(1 ./ kernel_ft(φ, W, N[d], Ñ[d]; nthreads)), D)
+function BatchCore(k::AbstractMatrix, N::NTuple{D,Int}, Ñ::NTuple{D,Int}, W, φ, ::Type{T}, fft, L, B, nthreads;
+                   kernel=nothing, invphi=nothing, binned=nothing) where {D,T}
+  K = kernel === nothing ? make_kernel(φ, W, T) : kernel
+  invphi = invphi === nothing ? inv_kernel_ft(φ, W, N, Ñ, T, nthreads) : invphi
   CH = L <= 4 ? L : 4
   Lp = CH * cld(L, CH)
   B = B === nothing ? batch_tile(D, W, Lp) : B
   gp = Array{Complex{T}}(undef, Lp, (Ñ .+ W)...)
-  g = view(gp, :, map((n, h) -> h[1]+1:h[1]+n, Ñ, ntuple(_ -> halo(W), D))...)
+  g = interior_b(gp, halo(W))
   if D == 1
     F = Matrix{Complex{T}}(undef, Ñ[1], Lp)
     x, Nf, tdims = F, (N[1], Lp), 1:1
@@ -46,35 +48,16 @@ function BatchCore(k::AbstractMatrix, N::NTuple{D,Int}, Ñ::NTuple{D,Int}, W, φ
     F = nothing
     x, Nf, tdims = g, (Lp, N...), 2:D+1
   end
-  BatchCore{D,typeof(K),T,eltype(k),D + 1,CH}(L, N, Ñ, W, B, K, invphi, Binned(k, Ñ, B, nthreads), gp,
+  binned = binned === nothing ? Binned(k, Ñ, B, nthreads) : binned
+  BatchCore{D,typeof(K),T,nodetype(binned),D + 1,CH}(L, N, Ñ, W, B, K, invphi, binned, gp,
     PassFFT(fft, x, Nf; dir=:fwd, nthreads, tdims), PassFFT(fft, x, Nf; dir=:bwd, nthreads, tdims),
     TileLocks(Ñ .+ W, B), task_buffers(Complex{T}, (Lp, ntuple(_ -> B + W + 1, D)...), nthreads),
-    F, nthreads)
+    F, fft.flags, nthreads)
 end
 
-interior_b(c::BatchCore{D}) where {D} = view(c.gp, :, ntuple(d -> halo(c.W)[1]+1:halo(c.W)[1]+c.Ñ[d], D)...)
-
-# Halo fill/fold over the NFFT dimensions 2…D+1 only.
-function halo_b!(gp, h, fold::Bool, nthreads)
-  nd = ndims(gp)
-  for d in (fold ? (nd:-1:2) : (2:nd))
-    Ñ = size(gp, d) - h[1] - h[2]
-    e = d == nd ? 2 : nd
-    e == d && (e = 1)                                  # 1D NFFT: split along the batch dimension
-    @maybe_threads nthreads for c in chunks(axes(gp, e), nthreads)
-      g = selectdim(gp, e, c)
-      lo, hi = selectdim(g, d, 1:h[1]), selectdim(g, d, Ñ+h[1]+1:Ñ+h[1]+h[2])
-      if fold
-        selectdim(g, d, Ñ+1:Ñ+h[1]) .+= lo
-        selectdim(g, d, h[1]+1:h[1]+h[2]) .+= hi
-      else
-        copyto!(lo, selectdim(g, d, Ñ+1:Ñ+h[1]))
-        copyto!(hi, selectdim(g, d, h[1]+1:h[1]+h[2]))
-      end
-    end
-  end
-  gp
-end
+copy_core(c::BatchCore{D,K,T}, nthreads) where {D,K,T} =
+  BatchCore(zeros(0, 0), c.N, c.Ñ, c.W, nothing, T, FFTWBackend(flags=c.flags), c.L, c.B, nthreads;
+            kernel=c.kernel, invphi=c.invphi, binned=c.binned)
 
 function correction_b!(g, f, c::BatchCore{D}, adjoint::Bool) where {D}
   N, Ñ, L = c.N, c.Ñ, c.L
@@ -220,7 +203,7 @@ end
 
 # out: (L, J), f: (L, N…)
 function trafo_batch!(out, c::BatchCore{D}, f) where {D}
-  h = halo(c.W); g = interior_b(c)
+  h = halo(c.W); g = interior_b(c.gp, h)
   if D == 1
     threaded_fill!(c.F, 0, c.nthreads)
     correction_F!(c.F, f, c, false)
@@ -231,15 +214,15 @@ function trafo_batch!(out, c::BatchCore{D}, f) where {D}
     correction_b!(g, f, c, false)
     apply!(c.fwd, g)
   end
-  halo_b!(c.gp, h, false, c.nthreads)
+  fill_halo!(c.gp, h, c.nthreads, 2:ndims(c.gp))
   resample_b!(out, c)
 end
 
 function adjoint_batch!(f, c::BatchCore{D}, vals) where {D}
-  h = halo(c.W); g = interior_b(c)
+  h = halo(c.W); g = interior_b(c.gp, h)
   threaded_fill!(c.gp, 0, c.nthreads)
   resample_adjoint_b!(c, vals)
-  halo_b!(c.gp, h, true, c.nthreads)
+  fold_halo!(c.gp, h, c.nthreads, 2:ndims(c.gp))
   if D == 1
     transpose_F!(g, c.F, true, c.nthreads)
     apply!(c.bwd, c.F)

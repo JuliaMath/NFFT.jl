@@ -21,8 +21,8 @@ struct NFFTCore{D,K<:SymKernel,T,Tk}
 end
 
 function NFFTCore(k::AbstractMatrix, N::NTuple{D,Int}, Ñ::NTuple{D,Int}, W, φ, ::Type{T}, fft, B, nthreads) where {D,T}
-  K = SymKernel(PolyKernel(φ, W, W + 3; T))
-  invphi = ntuple(d -> T.(1 ./ kernel_ft(φ, W, N[d], Ñ[d]; nthreads)), D)
+  K = make_kernel(φ, W, T)
+  invphi = inv_kernel_ft(φ, W, N, Ñ, T, nthreads)
   B = B === nothing ? default_tile(D, W) : B
   h = halo(W)
   gp = Array{Complex{T}}(undef, Ñ .+ W)         # zeroed by every transform
@@ -52,6 +52,26 @@ function adjoint_core!(f, c::NFFTCore, vals)
   f
 end
 
+# Fields of the plans of NFFT, RNFFT, NFCT and NFST (shared methods in plans.jl).
+macro plan_fields()
+  esc(quote
+    N::NTuple{D,Int}                  # array size (RNFFT: of the full coefficient array)
+    Nin::NTuple{D,Int}                # input size (RNFFT: half along the first of dims)
+    NOut::NTuple{R,Int}
+    dims::UnitRange{Int}
+    k::AbstractMatrix
+    kernel::KernelEntry
+    accuracy::Float64
+    options::GenericOptions{T}
+    fft::AbstractFFTBackend
+    tilesize::Union{Nothing,Int}
+    strategy::Symbol                  # batch dimensions, see make_engine
+    core::Any
+    fbuf::Any                         # :trail: batch-first copies of input and output
+    gbuf::Any
+  end)
+end
+
 """
     NFFTPlan{T,D,R}
 
@@ -68,26 +88,8 @@ Generic options (every AbstractNFFTs implementation): `reltol` (default 1e-8), `
 * `tilesize`: expert option, tile edge of the node binning
 """
 mutable struct NFFTPlan{T,D,R} <: AbstractNFFTPlan{T,D,R}
-  N::NTuple{D,Int}
-  NOut::NTuple{R,Int}
-  dims::UnitRange{Int}
-  k::AbstractMatrix
-  kernel::KernelEntry
-  accuracy::Float64
-  options::GenericOptions{T}
-  fft::AbstractFFTBackend
-  tilesize::Union{Nothing,Int}
-  # how batch dimensions are handled: :single (none), :lead (batch dims before dims: batch-first
-  # kernels), :trail (after dims: transposes into batch-first kernels), :slices (many slices in
-  # parallel on single-threaded cores, `core` is the vector of cores), :loop (one transform per
-  # slice; 3D, or batch dims on both sides)
-  strategy::Symbol
-  core::Any
-  fbuf::Any                         # :trail: batch-first copies of input and output
-  gbuf::Any
+  @plan_fields
 end
-
-const NFFT_OPTIONS = (:window, :W, :σ, :fft, :tilesize)
 
 function AbstractNFFTs.plan_nfft(b::NFFTBackend, k::AbstractMatrix, N::Dims{D}; kwargs...) where {D}
   g, rest = generic_options(k, N; kwargs...)
@@ -98,71 +100,28 @@ end
 NFFTPlan(k::AbstractMatrix, N::Dims; kwargs...) = plan_nfft(NFFTBackend(), k, N; kwargs...)
 NFFTPlan(k::AbstractVector, N; kwargs...) = plan_nfft(NFFTBackend(), k, N; kwargs...)
 
-function NFFTPlan(k::AbstractMatrix, N::NTuple{D,Int}, g::GenericOptions{T}; window=:auto, W=nothing,
-                  σ=nothing, fft=nothing, tilesize=nothing) where {D,T}
-  fft = cpu_options(g.storage, fft, tilesize)
-  dims = g.dims
-  Nd = N[dims]
-  J = size(k, 2)
-  kernel, acc = select_kernel(window, W, σ, g.reltol, Nd, J, T)
-  NOut = (N[1:first(dims)-1]..., J, N[last(dims)+1:end]...)
-  strategy, core, fbuf, gbuf = make_engine(k, N, dims, kernel, T, fft, tilesize, g.nthreads, g.storage)
-  NFFTPlan{T,D,length(NOut)}(N, NOut, dims, to_storage(g.storage, k, T), kernel, acc, g, fft, tilesize,
-                             strategy, core, fbuf, gbuf)
-end
+NFFTPlan(k::AbstractMatrix, N::NTuple{D,Int}, g::GenericOptions; kwargs...) where {D} =
+  fast_plan(NFFTPlan, k, N, g; kwargs...)
 
-batch_sizes(N, dims) = (prod(N[1:first(dims)-1]; init=1), prod(N[last(dims)+1:end]; init=1))
-
-# The plan is set up on the CPU (parameters, binning, window); a GPU core moves what the transforms
-# need to the device.
-function make_engine(k, N, dims, kernel::KernelEntry, ::Type{T}, fft, tilesize, nthreads, storage) where {T}
-  Nd = N[dims]; Dd = length(dims); J = size(k, 2)
-  L1, L3 = batch_sizes(N, dims)
-  k = k isa Array ? k : Array(k)
-  check_nodes(k)
+function make_core(::Type{<:NFFTPlan}, k, Nd, kernel::KernelEntry, ::Type{T}, fft, tilesize, nthreads, storage,
+                   L1, L3) where {T}
   Ñ = grid_size(kernel.σ, Nd, kernel.W)
-  φ = window_function(kernel.window, kernel.W, kernel.β, kernel.e0)
-  if !(storage <: Array)
-    # the device core handles batch dimensions itself
-    :single, device_core(storage, k, Nd, Ñ, kernel.W, φ, T, nthreads, L1, L3), nothing, nothing
-  elseif L1 == 1 && L3 == 1
-    :single, NFFTCore(k, Nd, Ñ, kernel.W, φ, T, fft, tilesize, nthreads), nothing, nothing
-  elseif use_slices(L1 * L3, J + prod(Nd), nthreads)
-    :slices, single_cores(NFFTCore(k, Nd, Ñ, kernel.W, φ, T, fft, tilesize, nthreads), L1 * L3), nothing, nothing
-  elseif Dd <= 2 && L1 > 1 && L3 == 1
-    :lead, BatchCore(k, Nd, Ñ, kernel.W, φ, T, fft, L1, tilesize, nthreads), nothing, nothing
-  elseif Dd <= 2 && L1 == 1
-    :trail, BatchCore(k, Nd, Ñ, kernel.W, φ, T, fft, L3, tilesize, nthreads),
-      Array{Complex{T}}(undef, L3, Nd...), Array{Complex{T}}(undef, L3, J)
-  else
-    :loop, NFFTCore(k, Nd, Ñ, kernel.W, φ, T, fft, tilesize, nthreads), nothing, nothing
-  end
+  φ = window_function(kernel)
+  storage <: Array || return device_core(storage, k, Nd, Ñ, kernel.W, φ, T, nthreads, L1, L3)
+  NFFTCore(k, Nd, Ñ, kernel.W, φ, T, fft, tilesize, nthreads)
 end
 
-# The FFT backend and the tile size are options of the CPU code; plans on a device reject them
-# instead of ignoring them.
-function cpu_options(storage, fft, tilesize)
-  storage <: Array || (fft === nothing && tilesize === nothing) ||
-    throw(ArgumentError("the options fft and tilesize are not supported with storage = $storage"))
-  something(fft, FFTWBackend())
-end
+slice_size(c::NFFTCore) = c.N
 
-# Core of a plan whose data live on a device (GPU array types); implemented by the GPU extension.
-device_core(storage, args...) = throw(ArgumentError(
-  "storage = $storage is not supported; for GPU arrays load the GPU package (CUDA, AMDGPU, Metal, …)"))
+# 1D and 2D: batch dimensions only before dims run in the batch-first kernels, only after dims
+# transposed into them.
+batch_strategy(::Type{<:NFFTPlan}, Dd, L1, L3) = Dd > 2 ? :loop : L3 == 1 ? :lead : L1 == 1 ? :trail : :loop
 
-# The nodes as the plan returns them (`nodes(p)`): in the storage of the plan, on a device in the
-# precision T of the plan (devices may lack Float64).
-to_storage(::Type{S}, k) where {S} = k isa S ? k : S(Array(k))
-to_storage(::Type{S}, k, ::Type{T}) where {S,T} = S <: Array || k isa S ? k : S(Array{T}(k))
-
-# Nodes must be finite and in [−1/2, 1/2] (1/2 is the same node as −1/2); anything else would be
-# binned outside the grid.
-function check_nodes(k)
-  for x in k
-    (isfinite(x) && -0.5 <= x <= 0.5) ||
-      throw(ArgumentError("nodes must be finite and in [-1/2, 1/2], found $x"))
-  end
+function batch_engine(strategy, k, Nd, kernel::KernelEntry, ::Type{T}, fft, tilesize, nthreads, L1, L3) where {T}
+  Ñ = grid_size(kernel.σ, Nd, kernel.W)
+  c = BatchCore(k, Nd, Ñ, kernel.W, window_function(kernel), T, fft, L1 * L3, tilesize, nthreads)
+  strategy === :lead && return :lead, c, nothing, nothing
+  :trail, c, Array{Complex{T}}(undef, L3, Nd...), Array{Complex{T}}(undef, L3, size(k, 2))
 end
 
 # A copy shares the read-only parts (kernel, correction factors, binned nodes) and gets its own
@@ -176,105 +135,8 @@ function copy_core(c::NFFTCore{D,K,T}, nthreads) where {D,K,T}
            TileLocks(size(gp), c.B), task_buffers(Complex{T}, size(c.bufs[1]), nthreads), c.flags, nthreads)
 end
 
-single_core(c::NFFTCore) = copy_core(c, 1)
-Base.copy(c::NFFTCore) = copy_core(c, c.nthreads)
-
-function Base.copy(p::NFFTPlan{T,D,R}) where {T,D,R}
-  strategy, core, fbuf, gbuf = p.strategy in (:single, :loop) ? (p.strategy, copy(p.core), nothing, nothing) :
-    p.strategy === :slices ? (:slices, single_cores(p.core[1], length(p.core)), nothing, nothing) :
-    make_engine(p.k, p.N, p.dims, p.kernel, T, p.fft, p.tilesize, p.options.nthreads, p.options.storage)
-  NFFTPlan{T,D,R}(p.N, p.NOut, p.dims, p.k, p.kernel, p.accuracy, p.options, p.fft, p.tilesize,
-                  strategy, core, fbuf, gbuf)
-end
-
-AbstractNFFTs.size_in(p::NFFTPlan) = p.N
-AbstractNFFTs.size_out(p::NFFTPlan) = p.NOut
-AbstractNFFTs.nodes(p::NFFTPlan) = p.k
-AbstractNFFTs.accuracy(p::NFFTPlan) = p.accuracy
-
-function AbstractNFFTs.nodes!(p::NFFTPlan{T}, k::AbstractMatrix) where {T}
-  size(k, 1) == length(p.dims) || throw(DimensionMismatch("nodes must have $(length(p.dims)) rows"))
-  J = size(k, 2)
-  p.strategy, p.core, p.fbuf, p.gbuf = make_engine(k, p.N, p.dims, p.kernel, T, p.fft, p.tilesize,
-                                                   p.options.nthreads, p.options.storage)
-  p.k = to_storage(p.options.storage, k, T)
-  p.NOut = (p.N[1:first(p.dims)-1]..., J, p.N[last(p.dims)+1:end]...)
-  p
-end
-
-"""
-    NFFT.parameters(p::NFFTPlan) -> (; window, W, σ)
-
-Window family, window width and oversampling factor the plan uses.
-"""
-parameters(p::NFFTPlan) = (window=p.kernel.window, W=p.kernel.W, σ=p.kernel.σ)
-
-function Base.show(io::IO, p::NFFTPlan{T}) where {T}
-  e = p.kernel
-  print(io, "NFFTPlan{$T} for an input of size $(p.N) along dims $(p.dims) at $(size(p.k, 2)) nodes: ",
-        "$(nameof(typeof(e.window))) window, W = $(e.W), σ = $(e.σ), predicted error $(p.accuracy)")
-end
-
-check_sizes(p, f, fHat) = (check_size(f, p.N, "input"); check_size(fHat, p.NOut, "output"))
-
-# Batch dimensions before and after `dims`: the arrays are viewed as (L1, N[dims]..., L3) and
-# (L1, J, L3).
-function batch_views(p, f, fHat)
-  L1, L3 = batch_sizes(p.N, p.dims)
-  reshape(f, L1, p.N[p.dims]..., L3), reshape(fHat, L1, size(p.k, 2), L3), L1, L3, length(p.dims)
-end
-
-function LinearAlgebra.mul!(fHat::AbstractArray, p::NFFTPlan{T,D}, f::AbstractArray) where {T,D}
-  check_sizes(p, f, fHat)
-  transform!(Val(p.strategy), p, p.core, fHat, f)
-  fHat
-end
-
-function LinearAlgebra.mul!(f::AbstractArray, pl::Adjoint{Complex{T},<:NFFTPlan{T,D}}, fHat::AbstractArray) where {T,D}
-  p = pl.parent
-  check_sizes(p, f, fHat)
-  transform_adjoint!(Val(p.strategy), p, p.core, f, fHat)
-  f
-end
-
-# The core argument makes these the function barrier into code specialised on the kernel.
-transform!(::Val{:single}, p, c, fHat, f) = trafo_core!(vec(fHat), c, f)
-transform_adjoint!(::Val{:single}, p, c, f, fHat) = adjoint_core!(f, c, vec(fHat))
-
-function transform!(::Val{:slices}, p, cores, fHat, f)
-  fr, gr, L1, L3, Dd = batch_views(p, f, fHat)
-  slices_parallel(cores, L1, L3) do c, a, b
-    trafo_core!(view(gr, a, :, b), c, view(fr, a, ntuple(_ -> Colon(), Dd)..., b))
-  end
-end
-function transform_adjoint!(::Val{:slices}, p, cores, f, fHat)
-  fr, gr, L1, L3, Dd = batch_views(p, f, fHat)
-  slices_parallel(cores, L1, L3) do c, a, b
-    adjoint_core!(view(fr, a, ntuple(_ -> Colon(), Dd)..., b), c, view(gr, a, :, b))
-  end
-end
-
-function transform!(::Val{:loop}, p, c, fHat, f)
-  fr, gr, L1, L3, Dd = batch_views(p, f, fHat)
-  for b in 1:L3, a in 1:L1
-    trafo_core!(view(gr, a, :, b), c, view(fr, a, ntuple(_ -> Colon(), Dd)..., b))
-  end
-end
-function transform_adjoint!(::Val{:loop}, p, c, f, fHat)
-  fr, gr, L1, L3, Dd = batch_views(p, f, fHat)
-  for b in 1:L3, a in 1:L1
-    adjoint_core!(view(fr, a, ntuple(_ -> Colon(), Dd)..., b), c, view(gr, a, :, b))
-  end
-end
-
-function transform!(::Val{:lead}, p, c, fHat, f)
-  fr, gr, L1, L3, Dd = batch_views(p, f, fHat)
-  trafo_batch!(view(gr, :, :, 1), c, view(fr, :, ntuple(_ -> Colon(), Dd)..., 1))
-end
-function transform_adjoint!(::Val{:lead}, p, c, f, fHat)
-  fr, gr, L1, L3, Dd = batch_views(p, f, fHat)
-  adjoint_batch!(view(fr, :, ntuple(_ -> Colon(), Dd)..., 1), c, view(gr, :, :, 1))
-end
+transform!(::Val{:lead}, p, c, fHat, f) = trafo_batch!(reshape(fHat, c.L, :), c, reshape(f, c.L, c.N...))
+transform_adjoint!(::Val{:lead}, p, c, f, fHat) = adjoint_batch!(reshape(f, c.L, c.N...), c, reshape(fHat, c.L, :))
 
 function transform!(::Val{:trail}, p, c, fHat, f)
   L3 = c.L
@@ -296,9 +158,6 @@ function full_core(p::NFFTPlan{T,D}) where {T,D}
   p.dims == 1:D || throw(ArgumentError("the stage interface needs a plan without batch dimensions"))
   p.core
 end
-
-check_size(a, sz, what) = size(a) == sz ||
-  throw(DimensionMismatch("$what has size $(size(a)), the plan expects $sz"))
 
 # the stage functions take (p, input, output) or (p, array)
 function check_stage(p, f, g, fHat)

@@ -14,14 +14,19 @@ halo(W) = (fld(W, 2), cld(W, 2))
   u >= Ñ ? u - Ñ : u
 end
 
-# Offset into the padded grid (index of support point 0 minus 1) and the window weights of node x
-# in one dimension. The first support node l0 lies in [1 − cld(W, 2), Ñ − fld(W, 2)].
-@inline function support(K::SymKernel{W,H,NE,NO,T}, x, Ñ::Int) where {W,H,NE,NO,T}
+# Offset into the padded grid (index of support point 0 minus 1) and the position s = 2t − 1 of
+# node x in its window pieces (t the fractional grid offset), in one dimension. The first support
+# node l0 lies in [1 − cld(W, 2), Ñ − fld(W, 2)].
+@inline function support_offset(x, Ñ::Int, W, ::Type{T}) where {T}
   v = gridpos(x, Ñ) - W / 2
   f = floor(v)
-  t = T(v - f)
-  l0 = unsafe_trunc(Int, f) + 1
-  l0 + fld(W, 2), weights(K, 2t - one(T))
+  unsafe_trunc(Int, f) + 1 + fld(W, 2), 2 * T(v - f) - one(T)
+end
+
+# Offset and window weights of node x in one dimension.
+@inline function support(K::SymKernel{W,H,NE,NO,T}, x, Ñ::Int) where {W,H,NE,NO,T}
+  off, s = support_offset(x, Ñ, W, T)
+  off, weights(K, s)
 end
 
 # Kept modes −N÷2 … N−N÷2−1 sit in the two corners of the oversampled grid (1-based ranges).

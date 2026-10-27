@@ -148,20 +148,22 @@ resample_adjoint!(gp, K, b::Binned{D}, vals, Ñ, L, bufs) where {D} =
 
 # Halo of the padded grid, h = halo(W): fill it periodically from the interior before resampling,
 # fold it back onto the interior after the adjoint resampling. One dimension after the other (this
-# covers edges and corners), threaded over another dimension.
-function halo_chunks(gp, d, nthreads)
-  e = d == ndims(gp) ? 1 : ndims(gp)
+# covers edges and corners), threaded over another dimension. `dims` are the dimensions with a halo
+# (2:ndims for the batch-first grid of the batch kernels).
+function halo_chunks(gp, d, nthreads, dims)
+  nd = ndims(gp)
+  e = d != nd ? nd : first(dims) != d ? first(dims) : 1
   e, chunks(axes(gp, e), nthreads)
 end
-function fill_halo!(gp, h::Tuple, nthreads)
-  for d in 1:ndims(gp)
+function fill_halo!(gp, h::Tuple, nthreads, dims=1:ndims(gp))
+  for d in dims
     Ñ = size(gp, d) - h[1] - h[2]
     if ndims(gp) == 1
       copyto!(view(gp, 1:h[1]), view(gp, Ñ+1:Ñ+h[1]))
       copyto!(view(gp, Ñ+h[1]+1:Ñ+h[1]+h[2]), view(gp, h[1]+1:h[1]+h[2]))
       continue
     end
-    e, cs = halo_chunks(gp, d, nthreads)
+    e, cs = halo_chunks(gp, d, nthreads, dims)
     @maybe_threads length(cs) for c in cs
       g = selectdim(gp, e, c)
       copyto!(selectdim(g, d, 1:h[1]), selectdim(g, d, Ñ+1:Ñ+h[1]))
@@ -170,15 +172,15 @@ function fill_halo!(gp, h::Tuple, nthreads)
   end
   gp
 end
-function fold_halo!(gp, h::Tuple, nthreads)
-  for d in ndims(gp):-1:1
+function fold_halo!(gp, h::Tuple, nthreads, dims=1:ndims(gp))
+  for d in reverse(dims)
     Ñ = size(gp, d) - h[1] - h[2]
     if ndims(gp) == 1
       view(gp, Ñ+1:Ñ+h[1]) .+= view(gp, 1:h[1])
       view(gp, h[1]+1:h[1]+h[2]) .+= view(gp, Ñ+h[1]+1:Ñ+h[1]+h[2])
       continue
     end
-    e, cs = halo_chunks(gp, d, nthreads)
+    e, cs = halo_chunks(gp, d, nthreads, dims)
     @maybe_threads length(cs) for c in cs
       g = selectdim(gp, e, c)
       selectdim(g, d, Ñ+1:Ñ+h[1]) .+= selectdim(g, d, 1:h[1])
@@ -188,3 +190,5 @@ function fold_halo!(gp, h::Tuple, nthreads)
   gp
 end
 interior(gp, h::Tuple) = view(gp, map(n -> h[1]+1:n-h[2], size(gp))...)
+# the batch-first grid: all of dimension 1
+interior_b(gp, h::Tuple) = view(gp, :, map(n -> h[1]+1:n-h[2], Base.tail(size(gp)))...)

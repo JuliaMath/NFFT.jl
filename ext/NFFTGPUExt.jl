@@ -14,7 +14,7 @@
 module NFFTGPUExt
 
 using NFFT, NFFT.AbstractNFFTs
-using NFFT: SymKernel, PolyKernel, halo, gridpos, weights, resample_node, kernel_ft, mirror
+using NFFT: halo, gridpos, weights, resample_node, mirror
 using NFFT.FFTW: plan_fft!, plan_bfft!, plan_rfft, plan_brfft
 using LinearAlgebra: mul!
 using GPUArrays: AbstractGPUArray
@@ -67,17 +67,13 @@ end
 
 # Nodes k (CPU) on a periodic grid of Ñ points per dimension (`gridpos`), padded grid of size P.
 function Nodes(storage, k::Matrix, Ñ::NTuple{D,Int}, P::NTuple{D,Int}, W, φ, ::Type{T}) where {D,T}
-  K = SymKernel(PolyKernel(φ, W, W + 3; T))
+  K = NFFT.make_kernel(φ, W, T)
   J = size(k, 2)
   offs = Matrix{Int32}(undef, D, J)
   ss = Matrix{T}(undef, D, J)
   Threads.@threads for j in 1:J
     for d in 1:D
-      # as `support` in geometry.jl
-      v = gridpos(k[d, j], Ñ[d]) - W / 2
-      f = floor(v)
-      offs[d, j] = unsafe_trunc(Int, f) + 1 + fld(W, 2)
-      ss[d, j] = 2 * T(v - f) - one(T)
+      offs[d, j], ss[d, j] = NFFT.support_offset(k[d, j], Ñ[d], W, T)
     end
   end
   # binned order: work-items with neighbouring indices touch neighbouring parts of the grid
@@ -321,7 +317,7 @@ end
 
 function NFFT.device_core(storage::Type{<:AbstractGPUArray}, k::Matrix, N::NTuple{D,Int}, Ñ::NTuple{D,Int}, W, φ,
                           ::Type{T}, nthreads, L1, L3) where {D,T}
-  invphi = ntuple(d -> T.(1 ./ kernel_ft(φ, W, N[d], Ñ[d]; nthreads)), D)
+  invphi = NFFT.inv_kernel_ft(φ, W, N, Ñ, T, nthreads)
   nd = Nodes(storage, k, Ñ, Ñ .+ W, W, φ, T)
   gf = storage(zeros(Complex{T}, Ñ..., L1 * L3))
   backend = KA.get_backend(gf)
@@ -415,8 +411,7 @@ end
 function NFFT.device_rnfft_core(storage::Type{<:AbstractGPUArray}, k::Matrix, N::NTuple{D,Int}, Ñ::NTuple{D,Int},
                                 W, φ, ::Type{T}, nthreads, L1, L3) where {D,T}
   Nh = N[1] ÷ 2 + 1
-  phi1 = kernel_ft(φ, W, 2Nh, Ñ[1]; nthreads)[Nh+1:2Nh]          # modes −Nh…Nh−1, keep 0…Nh−1
-  invphi = ntuple(d -> d == 1 ? T.(1 ./ phi1) : T.(1 ./ kernel_ft(φ, W, N[d], Ñ[d]; nthreads)), D)
+  invphi = NFFT.rnfft_invphi(φ, W, N, Ñ, T, nthreads)
   nd = Nodes(storage, k, Ñ, Ñ .+ W, W, φ, T)
   gf = storage(zeros(T, Ñ..., L1 * L3))
   backend = KA.get_backend(gf)
@@ -479,9 +474,6 @@ function NFFT.adjoint_core!(h, c::RGPUCore{D}, vals) where {D}
 end
 
 # the core handles all batch dimensions at once
-NFFT.slice_cores(c::RGPUCore, Nd, J, L) = Any[]
-NFFT.rnfft_loop!(c::RGPUCore, gr, hr, L1, L3, Dd) = NFFT.trafo_core!(gr, c, hr)
-NFFT.rnfft_adjoint_loop!(c::RGPUCore, hr, gr, L1, L3, Dd) = NFFT.adjoint_core!(hr, c, gr)
 
 ## NFCT, NFST (see real.jl): stored points F of the even/odd extension, DCT-I/DST-I per dimension
 
@@ -506,16 +498,7 @@ nstored(S, Ñ) = S === :cos ? Ñ .+ 1 : Ñ .- 1
 function NFFT.device_real_core(::Val{S}, storage::Type{<:AbstractGPUArray}, k::Matrix, N::NTuple{D,Int},
                                Ñv::NTuple{D,Int}, W, φ, ::Type{T}, nthreads, L1, L3) where {S,D,T}
   Ñ = Ñv .÷ 2
-  # as in RealCore (real.jl)
-  phihat = ntuple(D) do d
-    if S === :cos
-      kernel_ft(φ, W, 2N[d], Ñv[d]; nthreads)[N[d]+1:2N[d]]
-    else
-      kernel_ft(φ, W, 2N[d] + 2, Ñv[d]; nthreads)[N[d]+3:2N[d]+2]
-    end
-  end
-  cadj = map(p -> T.(1 ./ (2 .* p)), phihat)
-  cfwd = S === :cos ? map(p -> T.([1 / p[1]; 1 ./ (2 .* p[2:end])]), phihat) : cadj
+  cfwd, cadj = NFFT.real_factors(Val(S), φ, W, N, Ñv, T, nthreads)
   nd = Nodes(storage, k, Ñv, (Ñ .+ 1) .+ W, W, φ, T)
   F = storage(zeros(T, nstored(S, Ñ)..., L1 * L3))
   backend = KA.get_backend(F)
@@ -663,8 +646,5 @@ function NFFT.adjoint_core!(f, c::RealGPUCore{S,D}, vals) where {S,D}
 end
 
 # the core handles all batch dimensions at once
-NFFT.slice_cores(c::RealGPUCore, Nd, J, L) = Any[]
-NFFT.real_transform!(p, c::RealGPUCore, fHat, f) = NFFT.trafo_core!(fHat, c, f)
-NFFT.real_transform_adjoint!(p, c::RealGPUCore, f, fHat) = NFFT.adjoint_core!(f, c, fHat)
 
 end

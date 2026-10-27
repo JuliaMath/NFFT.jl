@@ -17,6 +17,12 @@ function PolyKernel(φ, W, P; T=Float64)
   PolyKernel{W,P + 1,T}(ntuple(k -> SVector{W,T}(C[k, :]), P + 1))
 end
 
+# The window kernel of the resampling (polynomial degree W+3, accurate to the window itself) and the
+# correction factors 1/φ̂ of the modes −N÷2 … N−N÷2−1 per dimension.
+make_kernel(φ, W, ::Type{T}) where {T} = SymKernel(PolyKernel(φ, W, W + 3; T))
+inv_kernel_ft(φ, W, N, Ñ, ::Type{T}, nthreads) where {T} =
+  ntuple(d -> T.(1 ./ kernel_ft(φ, W, N[d], Ñ[d]; nthreads)), length(N))
+
 # The window is symmetric: piece W−1−i at s equals piece i at −s. With wᵢ(s) = Eᵢ(s²) + s·Oᵢ(s²)
 # one Horner chain in s² over the first ⌈W/2⌉ pieces gives all weights (the even/odd evaluation of
 # ducc); for odd W the middle piece maps onto itself and is kept once.

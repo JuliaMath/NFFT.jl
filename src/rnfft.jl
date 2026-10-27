@@ -30,14 +30,18 @@ struct RNFFTCore{D,K<:SymKernel,T,Tk}
   nthreads::Int
 end
 
+# Correction factors: dimension 1 for the modes n₁ = 0 … N₁÷2, the others as in the NFFT.
+function rnfft_invphi(φ, W, N::NTuple{D,Int}, Ñ, ::Type{T}, nthreads) where {D,T}
+  Nh = N[1] ÷ 2 + 1
+  phi1 = kernel_ft(φ, W, 2Nh, Ñ[1]; nthreads)[Nh+1:2Nh]          # modes −Nh…Nh−1, keep 0…Nh−1
+  ntuple(d -> d == 1 ? T.(1 ./ phi1) : T.(1 ./ kernel_ft(φ, W, N[d], Ñ[d]; nthreads)), D)
+end
+
 function RNFFTCore(k::AbstractMatrix, N::NTuple{D,Int}, Ñ::NTuple{D,Int}, W, φ, ::Type{T}, fft, B, nthreads;
                    binned=nothing, kernel=nothing, invphi=nothing) where {D,T}
-  K = kernel === nothing ? SymKernel(PolyKernel(φ, W, W + 3; T)) : kernel
+  K = kernel === nothing ? make_kernel(φ, W, T) : kernel
   Nh = N[1] ÷ 2 + 1
-  if invphi === nothing
-    phi1 = kernel_ft(φ, W, 2Nh, Ñ[1]; nthreads)[Nh+1:2Nh]          # modes −Nh…Nh−1, keep 0…Nh−1
-    invphi = ntuple(d -> d == 1 ? T.(1 ./ phi1) : T.(1 ./ kernel_ft(φ, W, N[d], Ñ[d]; nthreads)), D)
-  end
+  invphi = invphi === nothing ? rnfft_invphi(φ, W, N, Ñ, T, nthreads) : invphi
   B = B === nothing ? default_tile(D, W) : B
   binned = binned === nothing ? Binned(k, Ñ, B, nthreads) : binned
   gp = zeros(T, Ñ .+ W)
@@ -60,12 +64,11 @@ function RNFFTCore(k::AbstractMatrix, N::NTuple{D,Int}, Ñ::NTuple{D,Int}, W, φ
     TileLocks(size(gp), B), task_buffers(T, ntuple(_ -> B + W + 1, D), nthreads), fft.flags, nthreads)
 end
 
-function Base.copy(c::RNFFTCore{D,K,T}) where {D,K,T}
-  RNFFTCore(zeros(0, 0), c.N, c.Ñ, c.W, nothing, T, FFTWBackend(flags=c.flags), c.B, c.nthreads;
+copy_core(c::RNFFTCore{D,K,T}, nthreads) where {D,K,T} =
+  RNFFTCore(zeros(0, 0), c.N, c.Ñ, c.W, nothing, T, FFTWBackend(flags=c.flags), c.B, nthreads;
             binned=c.binned, kernel=c.kernel, invphi=c.invphi)
-end
 
-nodetype(::Binned{D,T}) where {D,T} = T
+slice_size(c::RNFFTCore) = (c.Nh, Base.tail(c.N)...)
 
 # the part of an array in a chunk of its last dimension (all of it in 1D)
 box(x::AbstractArray{<:Any,1}, r) = x
@@ -136,18 +139,7 @@ RNFFT plan of NFFT.jl (real values at the nodes), created by `plan_rnfft(k, N; k
 [`plan_rnfft`](@ref). Options as for [`NFFTPlan`](@ref); batch dimensions loop over the slices.
 """
 mutable struct RNFFTPlan{T,D,R} <: AbstractRNFFTPlan{T,D,R}
-  N::NTuple{D,Int}                     # logical size
-  Nin::NTuple{D,Int}                   # size of the half array
-  NOut::NTuple{R,Int}
-  dims::UnitRange{Int}
-  k::AbstractMatrix
-  kernel::KernelEntry
-  accuracy::Float64
-  options::GenericOptions{T}
-  fft::AbstractFFTBackend
-  tilesize::Union{Nothing,Int}
-  core::Any
-  slicecores::Vector{Any}              # single-threaded cores, one per task, for many slices
+  @plan_fields
 end
 
 function AbstractNFFTs.plan_rnfft(b::NFFTBackend, k::AbstractMatrix, N::Dims{D}; kwargs...) where {D}
@@ -157,34 +149,14 @@ function AbstractNFFTs.plan_rnfft(b::NFFTBackend, k::AbstractMatrix, N::Dims{D};
 end
 
 RNFFTPlan(k::AbstractVecOrMat, N; kwargs...) = plan_rnfft(NFFTBackend(), k, N; kwargs...)
+RNFFTPlan(k::AbstractMatrix, N::NTuple{D,Int}, g::GenericOptions; kwargs...) where {D} =
+  fast_plan(RNFFTPlan, k, N, g; kwargs...)
 
-function RNFFTPlan(k::AbstractMatrix, N::NTuple{D,Int}, g::GenericOptions{T}; window=:auto, W=nothing,
-                   σ=nothing, fft=nothing, tilesize=nothing) where {D,T}
-  fft = cpu_options(g.storage, fft, tilesize)
-  dims = g.dims
-  J = size(k, 2)
-  kernel, acc = select_kernel(window, W, σ, g.reltol, N[dims], J, T)
-  d1 = first(dims)
-  Nin = Base.setindex(N, N[d1] ÷ 2 + 1, d1)
-  NOut = (N[1:d1-1]..., J, N[last(dims)+1:end]...)
-  core = rnfft_core(k, N[dims], kernel, T, fft, tilesize, g.nthreads, g.storage, batch_sizes(N, dims)...)
-  RNFFTPlan{T,D,length(NOut)}(N, Nin, NOut, dims, to_storage(g.storage, k, T), kernel, acc, g, fft, tilesize, core,
-                              slice_cores(core, N[dims], J, prod(batch_sizes(N, dims))))
-end
+input_size(::Type{<:RNFFTPlan}, N, dims) = Base.setindex(N, N[first(dims)] ÷ 2 + 1, first(dims))
 
-# Many or small slices run in parallel on single-threaded cores (`use_slices`); a small transform
-# cannot use many threads (OCT, 512 A-scans of 2048 samples: 100 ms one after the other, 2 ms in
-# parallel).
-slice_cores(c::RNFFTCore, Nd, J, L) = use_slices(L, J + prod(Nd), c.nthreads) ? single_cores(c, L) : Any[]
-
-single_core(c::RNFFTCore{D,K,T}) where {D,K,T} =
-  RNFFTCore(zeros(0, 0), c.N, c.Ñ, c.W, nothing, T, FFTWBackend(flags=c.flags), c.B, 1;
-            binned=c.binned, kernel=c.kernel, invphi=c.invphi)
-
-function rnfft_core(k, Nd, kernel::KernelEntry, ::Type{T}, fft, tilesize, nthreads, storage=Array, L1=1, L3=1) where {T}
-  k = k isa Array ? k : Array(k)
-  check_nodes(k)
-  φ = window_function(kernel.window, kernel.W, kernel.β, kernel.e0)
+function make_core(::Type{<:RNFFTPlan}, k, Nd, kernel::KernelEntry, ::Type{T}, fft, tilesize, nthreads, storage,
+                   L1, L3) where {T}
+  φ = window_function(kernel)
   Ñ = grid_size(kernel.σ, Nd, kernel.W)
   storage <: Array || return device_rnfft_core(storage, k, Nd, Ñ, kernel.W, φ, T, nthreads, L1, L3)
   RNFFTCore(k, Nd, Ñ, kernel.W, φ, T, fft, tilesize, nthreads)
@@ -192,75 +164,3 @@ end
 
 # Core for data on a device (GPU array types; the GPU extension), handling all batch dimensions.
 device_rnfft_core(storage, args...) = device_core(storage)
-
-AbstractNFFTs.size_in(p::RNFFTPlan) = p.Nin
-AbstractNFFTs.size_out(p::RNFFTPlan) = p.NOut
-AbstractNFFTs.nodes(p::RNFFTPlan) = p.k
-AbstractNFFTs.accuracy(p::RNFFTPlan) = p.accuracy
-parameters(p::RNFFTPlan) = (window=p.kernel.window, W=p.kernel.W, σ=p.kernel.σ)
-
-function Base.copy(p::RNFFTPlan{T,D,R}) where {T,D,R}
-  core = copy(p.core)
-  RNFFTPlan{T,D,R}(p.N, p.Nin, p.NOut, p.dims, p.k, p.kernel, p.accuracy, p.options, p.fft, p.tilesize, core,
-                   slice_cores(core, p.N[p.dims], size(p.k, 2), prod(batch_sizes(p.N, p.dims))))
-end
-
-function AbstractNFFTs.nodes!(p::RNFFTPlan{T}, k::AbstractMatrix) where {T}
-  size(k, 1) == length(p.dims) || throw(DimensionMismatch("nodes must have $(length(p.dims)) rows"))
-  p.core = rnfft_core(k, p.N[p.dims], p.kernel, T, p.fft, p.tilesize, p.options.nthreads, p.options.storage,
-                      batch_sizes(p.N, p.dims)...)
-  p.slicecores = slice_cores(p.core, p.N[p.dims], size(k, 2), prod(batch_sizes(p.N, p.dims)))
-  p.k = to_storage(p.options.storage, k, T)
-  p.NOut = (p.N[1:first(p.dims)-1]..., size(k, 2), p.N[last(p.dims)+1:end]...)
-  p
-end
-
-function Base.show(io::IO, p::RNFFTPlan{T}) where {T}
-  e = p.kernel
-  print(io, "RNFFTPlan{$T} for a logical size $(p.N) along dims $(p.dims) at $(size(p.k, 2)) nodes: ",
-        "$(nameof(typeof(e.window))) window, W = $(e.W), σ = $(e.σ), predicted error $(p.accuracy)")
-end
-
-function rnfft_views(p::RNFFTPlan, h, fHat)
-  size(h) == p.Nin || throw(DimensionMismatch("the half array has size $(size(h)), the plan expects $(p.Nin)"))
-  size(fHat) == p.NOut || throw(DimensionMismatch("the array at the nodes has size $(size(fHat)), the plan expects $(p.NOut)"))
-  L1, L3 = batch_sizes(p.N, p.dims)
-  reshape(h, L1, p.Nin[p.dims]..., L3), reshape(fHat, L1, size(p.k, 2), L3), L1, L3, length(p.dims)
-end
-
-function LinearAlgebra.mul!(fHat::AbstractArray, p::RNFFTPlan, h::AbstractArray)
-  hr, gr, L1, L3, Dd = rnfft_views(p, h, fHat)
-  if isempty(p.slicecores)
-    rnfft_loop!(p.core, gr, hr, L1, L3, Dd)
-  else
-    slices_parallel(p.slicecores, L1, L3) do c, a, b
-      trafo_core!(view(gr, a, :, b), c, view(hr, a, ntuple(_ -> Colon(), Dd)..., b))
-    end
-  end
-  fHat
-end
-
-function LinearAlgebra.mul!(h::AbstractArray, pl::Adjoint{Complex{T},<:RNFFTPlan{T}}, fHat::AbstractArray) where {T}
-  p = pl.parent
-  hr, gr, L1, L3, Dd = rnfft_views(p, h, fHat)
-  if isempty(p.slicecores)
-    rnfft_adjoint_loop!(p.core, hr, gr, L1, L3, Dd)
-  else
-    slices_parallel(p.slicecores, L1, L3) do c, a, b
-      adjoint_core!(view(hr, a, ntuple(_ -> Colon(), Dd)..., b), c, view(gr, a, :, b))
-    end
-  end
-  h
-end
-
-# function barrier into code specialised on the kernel; batch dimensions loop over the slices
-function rnfft_loop!(c, gr, hr, L1, L3, Dd)
-  for b in 1:L3, a in 1:L1
-    trafo_core!(view(gr, a, :, b), c, view(hr, a, ntuple(_ -> Colon(), Dd)..., b))
-  end
-end
-function rnfft_adjoint_loop!(c, hr, gr, L1, L3, Dd)
-  for b in 1:L3, a in 1:L1
-    adjoint_core!(view(hr, a, ntuple(_ -> Colon(), Dd)..., b), c, view(gr, a, :, b))
-  end
-end

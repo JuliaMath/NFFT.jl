@@ -18,14 +18,13 @@ struct KernelEntry
   amp::Float64        # amplification of the resampling correction, φ̂(0)/φ̂(1/(2σ))
 end
 
+window_function(e::KernelEntry) = window_function(e.window, e.W, e.β, e.e0)
+
 # The resampling correction multiplies the modes at the edge of the band by up to A = φ̂(0)/φ̂(1/(2σ)),
 # and with them the rounding errors of the grid values: the error grows by ≈ 10·eps(T)·A (Float32,
 # W = 10, σ = 1.2: A = 140, measured 1.6e-4 for nodes on grid points). Large for small σ and large W.
 function amplification(window, W, σ, β, e0)
-  φ = window_function(window, W, β, e0)
-  x, w = gausslegendre(2W + 20)
-  z = x .* (W / 2); wz = w .* (W / 2) .* φ.(z)
-  φ̂(ξ) = sum(wz[q] * cospi(2ξ * z[q]) for q in eachindex(z))
+  φ̂ = window_quadrature(window_function(window, W, β, e0), W)
   φ̂(0.0) / φ̂(1 / (2σ))
 end
 

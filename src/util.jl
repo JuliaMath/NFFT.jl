@@ -85,4 +85,4 @@ end
 # kernels; 2D 256², J = 2·10⁵, 8 slices: adjoint 1.6× slower.
 use_slices(L, work, nthreads) = nthreads > 1 && (L >= 4nthreads || (L >= nthreads && work <= 2^15))
 
-single_cores(c, L) = Any[single_core(c) for _ in 1:min(c.nthreads, L)]
+single_cores(c, L) = [copy_core(c, 1) for _ in 1:min(c.nthreads, L)]
