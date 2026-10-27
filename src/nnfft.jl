@@ -26,7 +26,8 @@ for targets `k` (D × J) and sources `y` (D × N), arbitrary real coordinates:
 
 The cost grows with the product of the extents of `k` and `y` (the size of the inner NFFT is about
 4σ²·Y·K per dimension), not with their numbers. Generic options `reltol`, `eltype`, `storage`,
-`nthreads` and the options of [`NFFTPlan`](@ref) (`window`, `W`, `σ` for the inner NFFT).
+`nthreads` (no `dims`); restrictions of the inner NFFT `window` (`:auto`, `KaiserBessel()` or
+`ExpSemicircle()`), `W` and `σ`, and its FFT backend `fft`, as for [`NFFTPlan`](@ref).
 """
 mutable struct NNFFTPlan{T,D} <: AbstractNNFFTPlan{T,1,1}
   N::Int                       # number of sources
@@ -79,7 +80,7 @@ function nnfft_plan(::Val{D}, k, y, kc, yc, g::GenericOptions{T}; window, W, σ,
   h = map(x -> x > 0 ? 1 / (2σ1 * x) : 1.0, K)
   # the outer grid as an NFFT core: source y′/h sits at grid position y′/h + n÷2
   ys = Matrix{Float64}(undef, D, N)
-  Threads.@threads for l in 1:N
+  @maybe_threads g.nthreads for l in 1:N
     for d in 1:D
       x = (yc[d, l] - y0[d]) / (h[d] * n[d]) + (n[d] ÷ 2) / n[d]
       ys[d, l] = x >= 0.5 ? x - 1 : x
@@ -91,7 +92,7 @@ function nnfft_plan(::Val{D}, k, y, kc, yc, g::GenericOptions{T}; window, W, σ,
     device_core(g.storage, ys, n, n, W1, φ, T, g.nthreads, 1, 1)
   # inner NFFT at h k′ in Float64 (its grid positions are computed from these)
   xs = Matrix{Float64}(undef, D, J)
-  Threads.@threads for j in 1:J
+  @maybe_threads g.nthreads for j in 1:J
     for d in 1:D
       xs[d, j] = (kc[d, j] - k0[d]) * h[d]
     end
@@ -103,11 +104,11 @@ function nnfft_plan(::Val{D}, k, y, kc, yc, g::GenericOptions{T}; window, W, σ,
   # phases and the division by φ̂ in Float64; |h k′| ≤ 1/(2σ₁)
   ft = WindowFT(φ, W1, 1 / (2σ1))
   pre = Vector{ComplexF64}(undef, N)
-  Threads.@threads for l in 1:N
+  @maybe_threads g.nthreads for l in 1:N
     pre[l] = cispi(-2 * sum(ntuple(d -> k0[d] * (yc[d, l] - y0[d]), Val(D))))
   end
   post = Vector{ComplexF64}(undef, J)
-  Threads.@threads for j in 1:J
+  @maybe_threads g.nthreads for j in 1:J
     post[j] = cispi(-2 * sum(ntuple(d -> kc[d, j] * y0[d], Val(D)))) / prod(ntuple(d -> ft(abs(xs[d, j])), Val(D)))
   end
   S = g.storage
@@ -123,6 +124,8 @@ end
 # directions). `window`, `W`, `σ` restrict the inner kernel.
 function choose_nnfft(reltol, Y::NTuple{D}, K::NTuple{D}, N, J, ::Type{T}; window=:auto, W=nothing, σ=nothing) where {D,T}
   check_window_options(W, σ)
+  window === :auto || window isa Union{KaiserBessel,ExpSemicircle} ||
+    throw(ArgumentError("window must be :auto, KaiserBessel() or ExpSemicircle(), got $window"))
   a, a1, b, c = COST_COEF[min(D, 3)]
   grid(e1) = ntuple(d -> smooth_size(ceil(Int, 4 * e1.σ * Y[d] * K[d]) + e1.W + 2), Val(D))
   inner = filter(KERNEL_TABLE) do e

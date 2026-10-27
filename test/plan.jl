@@ -50,8 +50,9 @@
     p = plan_nfft(k, N; window=ExpSemicircle())
     @test p.kernel.window == ExpSemicircle()
     for tol in (1e-4, 1e-8, 1e-12)
-      @test accuracy(plan_nfft(k, N; reltol=tol)) <= tol || tol < 1e-11
+      @test accuracy(plan_nfft(k, N; reltol=tol)) <= tol
     end
+    @test accuracy(plan_nfft(k, N; reltol=1e-16)) < 1e-13         # below the floor: the most accurate kernel
     @test eltype(plan_nfft(k, N; eltype=Float32)) == ComplexF32
     # a custom window with explicit width and oversampling
     gauss = CustomWindow((z, W) -> abs(z) < W / 2 ? exp(-(2z / W)^2 * 9) : 0.0)

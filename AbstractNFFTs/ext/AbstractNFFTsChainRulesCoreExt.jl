@@ -1,7 +1,7 @@
 module AbstractNFFTsChainRulesCoreExt
 
 using AbstractNFFTs, LinearAlgebra
-isdefined(Base, :get_extension) ? (import ChainRulesCore) : (import ..ChainRulesCore)
+import ChainRulesCore
 
 const NT = ChainRulesCore.NoTangent
 

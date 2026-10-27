@@ -75,7 +75,7 @@ function check_options(backend, kwargs, supported)
   unknown = setdiff(keys(kwargs), supported)
   isempty(unknown) || throw(ArgumentError(
     "$(nameof(typeof(backend))) does not support the option(s) $(join(unknown, ", ")). " *
-    "Generic options: reltol, dims, eltype, storage, nthreads. " *
+    "Generic options: $(join(fieldnames(GenericOptions), ", ")). " *
     "Options of this implementation: $(join(supported, ", "))."))
   nothing
 end

@@ -4,7 +4,7 @@
 using NFFT, NFFTTools, Test, Random, LinearAlgebra
 using NFFT: NDFTPlan
 
-relerr(a, b) = norm(a - b) / norm(b)
+include("contract.jl")                       # relerr, allowed
 
 @testset "GPU $arrayType" for arrayType in arrayTypes
   @testset "$T, N = $N" for T in floatTypes, N in [(256,), (32, 32), (12, 12, 12)]

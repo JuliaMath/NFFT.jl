@@ -1,6 +1,5 @@
 @testset "NFCT and NFST" begin
-  rng = MersenneTwister(7)
-  relerr(a, b) = norm(a - b) / norm(b)
+  rng = Xoshiro(7)
 
   @testset "$(nameof(P)) $N $T" for (P, Pd) in ((NFCTPlan, NDCTPlan), (NFSTPlan, NDSTPlan)),
                                       N in ((1,), (2,), (64,), (33,), (16, 20), (8, 9, 10)),
@@ -17,10 +16,12 @@
     f = randn(rng, T, N); fHat = randn(rng, T, J)
     y = p * f
     @test eltype(y) == T
-    @test relerr(y, pd * Float64.(f)) < max(10accuracy(p), 10eps(T))
+    @test relerr(y, pd * Float64.(f)) < allowed(accuracy(p), T, N)
     g = transpose(p) * fHat
     @test size(g) == N
-    @test relerr(g, transpose(pd) * Float64.(fHat)) < max(10accuracy(p), 10eps(T))
+    # relative to the typical size of the result: for N = (1,) the single sum can cancel
+    gd = transpose(pd) * Float64.(fHat)
+    @test norm(g - gd) / max(norm(gd), norm(fHat) * sqrt(prod(N)) / 2) < allowed(accuracy(p), T, N)
     @test abs(dot(fHat, y) - dot(g, f)) < 100eps(T) * norm(fHat) * norm(y)
   end
 

@@ -7,7 +7,6 @@
   N = (2Nz,)
   λ = Array{Complex{T}}(undef, N)
   trj = zeros(T, 1, 2)
-  p = plan_nfft(trj, N)
   trj[1, :] .= 0.008333333
   p = plan_nfft(trj, N)
   mul!(λ, adjoint(p), ones(Complex{T}, size(trj, 2)))

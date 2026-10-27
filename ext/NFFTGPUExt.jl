@@ -53,7 +53,7 @@ struct Nodes{K,O,S,P,TL}
   tiles::TL                  # Tiles: adjoint resampling by tiles; nothing: by atomic additions
 end
 
-strides(n) = (s = 1; map(x -> (r = s; s *= x; r), n))
+col_strides(n) = (s = 1; map(x -> (r = s; s *= x; r), n))
 
 # Tile edges for the adjoint resampling by tiles: at least W − 1, so that a tile needs the nodes of
 # its own bin and of the previous one per dimension; nothing in 1D (one work-item per node with
@@ -84,7 +84,7 @@ function Nodes(storage, k::Matrix, Ñ::NTuple{D,Int}, P::NTuple{D,Int}, W, φ, :
   Bt = tile_edges(D, W, T)
   B = Bt === nothing ? ntuple(_ -> D == 1 ? 1024 : 16, D) : Bt
   nt = cld.(P, B)
-  tstr = strides(nt)
+  tstr = col_strides(nt)
   tile = [1 + sum(ntuple(d -> (offs[d, j] ÷ B[d]) * tstr[d], D)) for j in 1:J]
   perm = sortperm(tile; alg=Base.Sort.DEFAULT_STABLE)
   counts = zeros(Int, prod(nt))
@@ -92,7 +92,7 @@ function Nodes(storage, k::Matrix, Ñ::NTuple{D,Int}, P::NTuple{D,Int}, W, φ, :
     counts[t] += 1
   end
   tileptr = cumsum([1; counts])
-  tiles = Bt === nothing ? nothing : Tiles(B, nt, tstr, strides(B), storage(Int32.(tileptr)))
+  tiles = Bt === nothing ? nothing : Tiles(B, nt, tstr, col_strides(B), storage(Int32.(tileptr)))
   Nodes(W, K, storage(offs[:, perm]), storage(ss[:, perm]), storage(Int32.(perm)), tiles)
 end
 
@@ -266,9 +266,11 @@ end
 ## periodic padding (NFFT, RNFFT)
 
 # Padded grids from the grids: every padded point reads its periodic partner (interior and halo).
+@inline periodic(I, h, Ñ) = map((i, ñ) -> mod(i - 1 - h, ñ) + 1, I, Ñ)
+
 @kernel function pad_kernel!(gp, @Const(gf), h::Int, ::Val{D}) where {D}
   I = Tuple(@index(Global, Cartesian))
-  src = map((i, ñ) -> mod(i - 1 - h, ñ) + 1, front(I, Val(D)), front(size(gf), Val(D)))
+  src = periodic(front(I, Val(D)), h, front(size(gf), Val(D)))
   @inbounds gp[I...] = gf[src..., I[D+1]]
 end
 
@@ -298,7 +300,7 @@ function check_device(backend, xs...)
 end
 
 nbatch(c) = c.L1 * c.L3
-values(c, v) = reshape(v, c.L1, :, c.L3)
+node_values(c, v) = reshape(v, c.L1, :, c.L3)
 
 ## NFFT
 
@@ -343,7 +345,7 @@ end
   for d in 1:D
     @inbounds c *= invphi[d][m[d]]
   end
-  gi = map((i, n, ñ) -> mod(i - 1 - n ÷ 2, ñ) + 1, m, N, front(size(gf), Val(D)))
+  gi = map(NFFT.gridindex, m, N, front(size(gf), Val(D)))
   if adjoint
     @inbounds f[a, m..., b] = c * gf[gi..., l]
   else
@@ -366,13 +368,13 @@ function NFFT.trafo_core!(out, c::GPUCore, f)
   check_device(c.backend, out, f)
   correction!(c, c.gf, modes(c, f))
   c.pf * c.gf
-  resampling!(c, values(c, out), c.gf)
+  resampling!(c, node_values(c, out), c.gf)
   out
 end
 
 function NFFT.adjoint_core!(f, c::GPUCore, vals)
   check_device(c.backend, f, vals)
-  resampling_adjoint!(c, c.gf, values(c, vals))
+  resampling_adjoint!(c, c.gf, node_values(c, vals))
   c.pb * c.gf
   correction_adjoint!(c, modes(c, f), c.gf)
   f
@@ -385,9 +387,9 @@ NFFT.correction_stage!(c::GPUCore, g, f) =
 NFFT.correction_adjoint_stage!(c::GPUCore, f, g) =
   (check_device(c.backend, f, g); correction_adjoint!(c, modes(c, f), grids(g)); f)
 NFFT.resampling_stage!(c::GPUCore, fHat, g) =
-  (check_device(c.backend, fHat, g); resampling!(c, values(c, fHat), grids(g)); fHat)
+  (check_device(c.backend, fHat, g); resampling!(c, node_values(c, fHat), grids(g)); fHat)
 NFFT.resampling_adjoint_stage!(c::GPUCore, g, fHat) =
-  (check_device(c.backend, g, fHat); resampling_adjoint!(c, grids(g), values(c, fHat)); g)
+  (check_device(c.backend, g, fHat); resampling_adjoint!(c, grids(g), node_values(c, fHat)); g)
 
 ## RNFFT (see rnfft.jl): half spectra, backward FFTs along 2…D, c2r FFT along 1 into real grids
 
@@ -445,7 +447,7 @@ modes(c::RGPUCore, h) = reshape(h, c.L1, c.Nh, Base.tail(c.N)..., c.L3)
   for d in 1:D
     @inbounds c *= invphi[d][m[d]]
   end
-  gi = (m[1], map((i, n, ñ) -> mod(i - 1 - n ÷ 2, ñ) + 1, Base.tail(m), Base.tail(N), Base.tail(front(size(H), Val(D))))...)
+  gi = (m[1], map(NFFT.gridindex, Base.tail(m), Base.tail(N), Base.tail(front(size(H), Val(D))))...)
   if adjoint
     @inbounds h[a, m..., b] = c * conj(H[gi..., l])
   else
@@ -461,13 +463,13 @@ function NFFT.trafo_core!(out, c::RGPUCore{D}, h) where {D}
   D > 1 && c.pb * c.H
   mul!(c.gf, c.c2r, c.H)
   pad!(c.backend, c.gp, c.gf, c.W, Val(D))
-  resample!(c.backend, c.nodes, values(c, out), c.gp, c.L1, Val(D))
+  resample!(c.backend, c.nodes, node_values(c, out), c.gp, c.L1, Val(D))
   out
 end
 
 function NFFT.adjoint_core!(h, c::RGPUCore{D}, vals) where {D}
   check_device(c.backend, h, vals)
-  resample_adjoint!(c.backend, c.nodes, c.gp, values(c, vals), c.L1, Val(D))
+  resample_adjoint!(c.backend, c.nodes, c.gp, node_values(c, vals), c.L1, Val(D))
   unpad!(c.backend, c.gf, c.gp, c.W, Val(D))
   mul!(c.H, c.r2c, c.gf)
   D > 1 && c.pf * c.H
@@ -645,13 +647,13 @@ function NFFT.trafo_core!(out, c::RealGPUCore{S,D}, f) where {S,D}
     r2r!(c, d)
   end
   launch(c.backend, pad_mirror_kernel!, c.gp, c.F, c.Ñ, halo(c.W)[1], Val(D), Val(S); ndrange=size(c.gp))
-  resample!(c.backend, c.nodes, values(c, out), c.gp, c.L1, Val(D))
+  resample!(c.backend, c.nodes, node_values(c, out), c.gp, c.L1, Val(D))
   out
 end
 
 function NFFT.adjoint_core!(f, c::RealGPUCore{S,D}, vals) where {S,D}
   check_device(c.backend, f, vals)
-  resample_adjoint!(c.backend, c.nodes, c.gp, values(c, vals), c.L1, Val(D))
+  resample_adjoint!(c.backend, c.nodes, c.gp, node_values(c, vals), c.L1, Val(D))
   launch(c.backend, fold_mirror_kernel!, c.F, c.gp, c.Ñ, halo(c.W)[1], Val(D), Val(S); ndrange=size(c.F))
   for d in 1:D
     r2r!(c, d)

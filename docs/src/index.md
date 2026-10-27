@@ -43,8 +43,8 @@ g = adjoint(p) * fHat                # adjoint NFFT: nodes → equidistant
   resampling can be called one by one, for example to embed the NFFT into a Toeplitz approach or to
   profile it.
 - **One interface for several implementations.** `AbstractNFFTs.jl` defines plans, options and
-  operations; NFFT.jl is one implementation, wrappers for FINUFFT and NFFT3 are others. Code written
-  against the interface runs with each of them.
+  operations; NFFT.jl and NonuniformFFTs.jl implement it. Code written against the interface runs
+  with each of them.
 
 ## Installation
 

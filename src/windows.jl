@@ -53,9 +53,8 @@ end
 
 es_window(z, W, β, e0) = (t = 1 - (2z / W)^2; t > 0 ? exp(β * (t^e0 - 1)) : zero(z))
 
-table_name(::KaiserBessel) = "kb"
-table_name(::ExpSemicircle) = "es"
-table_window(name::AbstractString) = name == "kb" ? KaiserBessel() : ExpSemicircle()
+table_window(name::AbstractString) = name == "kb" ? KaiserBessel() : name == "es" ? ExpSemicircle() :
+  error("unknown window $name in the kernel table")
 
 # The function z ↦ φ(z) for a table entry or a custom window.
 window_function(::KaiserBessel, W, β, e0) = z -> kb_window(z, W, β)

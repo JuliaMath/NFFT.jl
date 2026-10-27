@@ -29,9 +29,9 @@ function no_backend_error()
 end
 
 """
-  AbstractFTPlan{T,D,R}
+    AbstractFTPlan{T,D,R}
 
-Abstract type for any NFFT-like plan (NFFT, NFFT, NFCT, NFST).
+Abstract type for any NFFT-like plan (NFFT, NNFFT, RNFFT, NFCT, NFST).
 * T is the element type (Float32/Float64)
 * D is the number of dimensions of the input array.
 * R is the number of dimensions of the output array.
@@ -39,7 +39,7 @@ Abstract type for any NFFT-like plan (NFFT, NFFT, NFCT, NFST).
 abstract type AbstractFTPlan{T,D,R} end
 
 """
-  AbstractRealFTPlan{T,D,R}
+    AbstractRealFTPlan{T,D,R}
 
 Abstract type for either an NFCT plan or an NFST plan.
 * T is the element type (Float32/Float64)
@@ -49,7 +49,7 @@ Abstract type for either an NFCT plan or an NFST plan.
 abstract type AbstractRealFTPlan{T,D,R} <: AbstractFTPlan{T,D,R} end
 
 """
-  AbstractComplexFTPlan{T,D,R}
+    AbstractComplexFTPlan{T,D,R}
 
 Abstract type for either an NFFT plan or an NNFFT plan.
 * T is the element type (Float32/Float64)
@@ -60,7 +60,7 @@ abstract type AbstractComplexFTPlan{T,D,R} <: AbstractFTPlan{T,D,R} end
 
 
 """
-  AbstractNFFTPlan{T,D,R}
+    AbstractNFFTPlan{T,D,R}
 
 Abstract type for an NFFT plan.
 * T is the element type (Float32/Float64)
@@ -70,7 +70,7 @@ Abstract type for an NFFT plan.
 abstract type AbstractNFFTPlan{T,D,R} <: AbstractComplexFTPlan{T,D,R} end
 
 """
-  AbstractNFCTPlan{T,D,R}
+    AbstractNFCTPlan{T,D,R}
 
 Abstract type for an NFCT plan.
 * T is the element type (Float32/Float64)
@@ -80,7 +80,7 @@ Abstract type for an NFCT plan.
 abstract type AbstractNFCTPlan{T,D,R} <: AbstractRealFTPlan{T,D,R} end
 
 """
-  AbstractNFSTPlan{T,D,R}
+    AbstractNFSTPlan{T,D,R}
 
 Abstract type for an NFST plan.
 * T is the element type (Float32/Float64)
@@ -90,7 +90,7 @@ Abstract type for an NFST plan.
 abstract type AbstractNFSTPlan{T,D,R} <: AbstractRealFTPlan{T,D,R} end
 
 """
-  AbstractNNFFTPlan{T,D,R}
+    AbstractNNFFTPlan{T,D,R}
 
 Abstract type for an NNFFT plan.
 * T is the element type (Float32/Float64)
@@ -100,7 +100,7 @@ Abstract type for an NNFFT plan.
 abstract type AbstractNNFFTPlan{T,D,R} <: AbstractComplexFTPlan{T,D,R} end
 
 """
-  AbstractRNFFTPlan{T,D,R}
+    AbstractRNFFTPlan{T,D,R}
 
 Abstract type for an NFFT plan with real values at the nodes (the NFFT counterpart of FFTW's
 `brfft`/`rfft`): the direct transform maps the half `n₁ ≥ 0` of the complex coefficients to
@@ -151,7 +151,7 @@ size_out(p::Adjoint{Complex{T},<:AbstractComplexFTPlan{T,D,R}}) where {T,D,R} = 
 size_in(p::Transpose{T,<:AbstractRealFTPlan{T,D,R}}) where {T,D,R} = size_out(p.parent)
 size_out(p::Transpose{T,<:AbstractRealFTPlan{T,D,R}}) where {T,D,R} = size_in(p.parent)
 
-# The following are required both, because there seem to be special array handling in base
+# Transpose and Adjoint are AbstractMatrix: without the text/plain method, the REPL prints them as arrays.
 function Base.show(io::IO, mime::MIME{Symbol("text/plain")}, p::Transpose{T,<:AbstractRealFTPlan{T,D,R}}) where {T,D,R}
   print(io, "Transposed ")
   print(io, p.parent)
@@ -188,24 +188,21 @@ end
 """
     mul!(fHat, p, f) -> fHat
 
-Inplace NFFT/NFCT/NFST/NNFFT transforming the `D` dimensional array `f` to the `R` dimensional array `fHat`.
-The transformation is applied along `D-R+1` dimensions specified in the plan `p`.
+In-place transform of `f` (size `size_in(p)`) into `fHat` (size `size_out(p)`).
 """
 @mustimplement LinearAlgebra.mul!( fHat::AbstractArray, p::AbstractFTPlan{T}, f::AbstractArray) where {T}
 
 """
     mul!(f, p, fHat) -> f
 
-Inplace adjoint NFFT/NNFFT transforming the `R` dimensional array `fHat` to the `D` dimensional array `f`.
-The transformation is applied along `D-R+1` dimensions specified in the plan `p`.
+In-place adjoint transform of `fHat` (size `size_out(p)`) into `f` (size `size_in(p)`).
 """
 @mustimplement LinearAlgebra.mul!(f::AbstractArray, p::Adjoint{Complex{T},<:AbstractComplexFTPlan{T}}, fHat::AbstractArray) where {T}
 
 """
     mul!(f, p, fHat) -> f
 
-Inplace transposed NFCT/NFST transforming the `R` dimensional array `fHat` to the `D` dimensional array `f`.
-The transformation is applied along `D-R+1` dimensions specified in the plan `p`.
+In-place transposed NFCT/NFST of `fHat` (size `size_out(p)`) into `f` (size `size_in(p)`).
 """
 @mustimplement LinearAlgebra.mul!(f::AbstractArray, p::Transpose{T,<:AbstractRealFTPlan{T}}, fHat::AbstractArray) where {T}
 
@@ -242,9 +239,6 @@ Nodes of the plan `p` (a d × J matrix).
 """
 @mustimplement nodes(p::AbstractFTPlan)
 
-## Optional interface ##
-# The following methods can but don't need to be implemented.
-
 """
     accuracy(p) -> Float64
 
@@ -253,6 +247,7 @@ requested `reltol` turned into.
 """
 @mustimplement accuracy(p::AbstractFTPlan)
 
+## Optional interface ##
 # Stage interface for implementations built from the three steps of Knopp et al. 2023:
 # resampling correction → FFT → resampling (direct), and the adjoint steps in reverse order.
 # The equidistant oversampled array `g` has size `oversampled_size(p)`.
@@ -260,8 +255,8 @@ requested `reltol` turned into.
 """
     oversampled_size(p) -> NTuple
 
-Size of the oversampled equidistant array the FFT of plan `p` acts on (batch dimensions of a
-plan with `dims` included).
+Size of the oversampled equidistant array the FFT of plan `p` acts on. The stage interface is
+defined for plans without batch dimensions; an implementation throws an `ArgumentError` for others.
 """
 @mustimplement oversampled_size(p::AbstractNFFTPlan)
 

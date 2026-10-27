@@ -58,11 +58,12 @@ end
 relerr(x, y) = norm(x - y) / norm(y)
 
 # Relative error the contract allows for a requested `reltol`: a factor `slack` above it, but not
-# below what the precision allows: rounding in the FFT grows like log2 of the grid size, and node
+# below what the precision allows: rounding grows like log2 of the grid size (at least 100 eps(T)
+# for tiny transforms), and node
 # coordinates given in Float64 limit the phase to ≈ eps(Float64)·max(N) (this floor is the same for
 # every implementation; data precision T does not change it if positions are reduced in Float64).
 allowed(reltol, T, N; slack=10) =
-  max(slack * reltol, 20 * eps(T) * log2(prod(N)) + 2 * eps(Float64) * maximum(N))
+  max(slack * reltol, 20 * eps(T) * max(log2(prod(N)), 5) + 2 * eps(Float64) * maximum(N))
 
 random_nodes(rng, T, D, J) = T.(rand(rng, D, J) .- 0.5)
 

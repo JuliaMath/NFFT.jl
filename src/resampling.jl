@@ -10,7 +10,7 @@
     jt = Base.tail(off) .+ Tuple(It)
     acc = zero(C)
     @simd for i in 1:W
-      # @inbounds on the statement itself: on the outer loop it did not reach into @simd
+      # @inbounds on the statement itself: on the outer loop it does not reach into @simd
       @inbounds acc += ws[1][i] * g[off[1]+i, jt...]
     end
     s += wt * acc
@@ -31,9 +31,9 @@ end
   g
 end
 
-# Resampling from a private copy of each tile with its halo: reading the global grid directly
-# made the time depend on the grid strides through cache set conflicts (3D, W = 10: 8.3–13.7 ms
-# for Ñ = 96…128); the compact buffer removes that dependence.
+# Resampling from a private copy of each tile with its halo: read directly from the global grid,
+# the time depends on the grid strides through cache set conflicts (3D, W = 10: 8.3–13.7 ms for
+# Ñ = 96…128); from the compact buffer it does not.
 function resample!(out, gp, K::SymKernel{W}, b::Binned{D}, Ñ, bufs) where {W,D}
   ntile = length(b.tileptr) - 1
   next = Threads.Atomic{Int}(1)
@@ -59,7 +59,7 @@ end
 
 # Add a private buffer (padded indices o+1 … o+size(buf)) to the grid, locking each overlapped lock
 # tile separately (one lock at a time, so no ordering problem). Explicit SIMD loop along the first
-# dimension: a CartesianIndices loop over the box did not vectorise.
+# dimension: a CartesianIndices loop over the box does not vectorise.
 function flush!(gp, buf, o::NTuple{D,Int}, L::TileLocks{D}) where {D}
   B = L.B
   lo = o .+ 1
@@ -77,9 +77,9 @@ function flush!(gp, buf, o::NTuple{D,Int}, L::TileLocks{D}) where {D}
   end
 end
 
-# Adjoint resampling: each task takes the next tile, spreads it into a private zeroed buffer of edge
-# B+W+1 (it stays in L1/L2) and flushes it into the grid (ducc's scheme; checkerboard colouring of
-# tiles without buffers was slower because neighbouring tiles reload shared halo rows).
+# Adjoint resampling: each task takes the next tile, adds its nodes into a private zeroed buffer of
+# edge B+W+1 (it stays in L1/L2) and flushes it into the grid (ducc's scheme; checkerboard colouring
+# of tiles without buffers is slower because neighbouring tiles reload shared halo rows).
 function resample_adjoint_tiles!(gp, K::SymKernel{W}, b::Binned{D}, vals, Ñ, L::TileLocks{D}, bufs) where {W,D}
   ntile = length(b.tileptr) - 1
   next = Threads.Atomic{Int}(1)

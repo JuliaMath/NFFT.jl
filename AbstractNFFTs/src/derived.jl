@@ -98,87 +98,70 @@ plan_nnfft(::Missing, args...; kwargs...) = no_backend_error()
 ###############################################
 
 """
-    nfft(k, f, rest...; kwargs...)
-    nfft(backend, k, f, rest...; kwargs...)
+    nfft(k, f; kwargs...)
+    nfft(backend, k, f; kwargs...)
 
-calculates the nfft of the array `f` for the nodes contained in the matrix `k`
-The output is a vector of length M=`size(nodes,2)`.
+NFFT of the array `f` at the nodes `k` (`D × J`, a vector for `D = 1`), with a plan made for this
+call: `plan_nfft(backend, k, size(f); kwargs...) * f`. For repeated transforms at the same nodes,
+make the plan once.
 
-Uses the active AbstractNFFTs `backend` if no `backend` argument is provided. Backends can be activated with `BackendModule.activate!()`.
-Backends can also be set with a scoped value overriding the current active backend within a scope:
+Without `backend` the active backend is used. A package activates itself with
+`BackendModule.activate!()`, and a scoped value overrides the active backend within a scope:
 
 ```julia
 julia> NFFT.activate!()
 
-julia> nfft(k, f, rest...; kwargs...) # uses NFFT
+julia> nfft(k, f)                                   # uses NFFT
 
 julia> with(nfft_backend => NonuniformFFTs.backend()) do
-          nfft(k, f, rest...; kwargs...) # uses NonuniformFFTs
+          nfft(k, f)                                # uses NonuniformFFTs
        end
 ```
 """
 nfft
+
 """
-    nfft_adjoint(k, N, fHat, rest...; kwargs...)
-    nfft_adjoint(backend, k, N, fHat, rest...; kwargs...)
+    nfft_adjoint(k, N, fHat; kwargs...)
+    nfft_adjoint(backend, k, N, fHat; kwargs...)
 
-calculates the adjoint nfft of the vector `fHat` for the nodes contained in the matrix `k`.
-The output is an array of size `N`.
-
-Uses the active AbstractNFFTs `backend` if no `backend` argument is provided. Backends can be activated with `BackendModule.activate!()`.
-Backends can also be set with a scoped value overriding the current active backend within a scope:
-
-```julia
-julia> NFFT.activate!()
-
-julia> nfft_adjoint(k, N, fHat, rest...; kwargs...) # uses NFFT
-
-julia> with(nfft_backend => NonuniformFFTs.backend()) do
-          nfft_adjoint(k, N, fHat, rest...; kwargs...) # uses NonuniformFFTs
-       end
-```
+Adjoint NFFT of the values `fHat` at the nodes `k`, an array of size `N`:
+`adjoint(plan_nfft(backend, k, N; kwargs...)) * fHat`. Backend as for [`nfft`](@ref).
 """
 nfft_adjoint
 
 """
-    nfct(k, f, rest...; kwargs...)
-    nfct(backend, k, f, rest...; kwargs...)
+    nfct(k, f; kwargs...)
+    nfct(backend, k, f; kwargs...)
 
-calculates the nfct of the array `f` for the nodes contained in the matrix `k`
-The output is a vector of length M=`size(nodes,2)`.
-
-Uses the active AbstractNFFTs `backend` if no `backend` argument is provided. Backends can be activated with `BackendModule.activate!()`.
+NFCT of the real array `f` at the nodes `k` in ``[0, 1/2]^D``: `plan_nfct(backend, k, size(f); kwargs...) * f`.
+Backend as for [`nfft`](@ref).
 """
 nfct
+
 """
-    nfct_transpose(k, N, fHat, rest...; kwargs...)
-    nfct_transpose(backend, k, N, fHat, rest...; kwargs...)
+    nfct_transpose(k, N, fHat; kwargs...)
+    nfct_transpose(backend, k, N, fHat; kwargs...)
 
-calculates the transpose nfct of the vector `fHat` for the nodes contained in the matrix `k`.
-The output is an array of size `N`.
-
-Uses the active AbstractNFFTs `backend` if no `backend` argument is provided. Backends can be activated with `BackendModule.activate!()`.
+Transposed NFCT of the values `fHat` at the nodes `k`, an array of size `N`:
+`transpose(plan_nfct(backend, k, N; kwargs...)) * fHat`. Backend as for [`nfft`](@ref).
 """
 nfct_transpose
 
 """
-    nfst(k, f, rest...; kwargs...)
-    nfst(backend, k, f, rest...; kwargs...)
+    nfst(k, f; kwargs...)
+    nfst(backend, k, f; kwargs...)
 
-calculates the nfst of the array `f` for the nodes contained in the matrix `k`
-The output is a vector of length M=`size(nodes,2)`.
-
-Uses the active AbstractNFFTs `backend` if no `backend` argument is provided. Backends can be activated with `BackendModule.activate!()`.
+NFST of the real array `f` at the nodes `k` in ``[0, 1/2]^D``: `plan_nfst(backend, k, size(f); kwargs...) * f`.
+Backend as for [`nfft`](@ref).
 """
 nfst
+
 """
-    nfst_transpose(k, N, fHat, rest...; kwargs...)
-    nfst_transpose(backend, k, N, fHat, rest...; kwargs...)
+    nfst_transpose(k, N, fHat; kwargs...)
+    nfst_transpose(backend, k, N, fHat; kwargs...)
 
-calculates the transpose nfst of the vector `fHat` for the nodes contained in the matrix `k`.
-The output is an array of size `N`.
-
-Uses the active AbstractNFFTs `backend` if no `backend` argument is provided. Backends can be activated with `BackendModule.activate!()`.
+Transposed NFST of the values `fHat` at the nodes `k`, an array of size `N`:
+`transpose(plan_nfst(backend, k, N; kwargs...)) * fHat`. Backend as for [`nfft`](@ref).
 """
 nfst_transpose
 
@@ -212,15 +195,13 @@ end
 ############################
 
 """
-        *(p, f) -> fHat
+    *(p, f) -> fHat
+    *(adjoint(p), fHat) -> f
+    *(transpose(p), fHat) -> f
 
-For a **non**-directional `D` dimensional plan `p` this calculates the NFFT/NNFFT of a `D` dimensional array `f` of size `N`.
-`fHat` is a vector of length `M`.
-(`M` and `N` are defined in the plan creation)
-
-For a **directional** `D` dimensional plan `p` both `f` and `fHat` are `D`
-dimensional arrays, and the dimension specified in the plan creation is
-affected.
+Apply a plan, its adjoint (NFFT, NNFFT, RNFFT) or its transpose (NFCT, NFST) and return a new
+array. `f` has size `size_in(p)` and `fHat` size `size_out(p)`; batch dimensions (`dims`) are part
+of both. `mul!` writes into a given array instead.
 """
 function Base.:*(p::AbstractComplexFTPlan{T}, f::AbstractArray{Complex{U},D}) where {T,U,D}
   fHat = similar(f, Complex{T}, size_out(p))
@@ -249,18 +230,6 @@ function Base.:*(p::Adjoint{Complex{T},<:AbstractRNFFTPlan{T}}, fHat::AbstractMa
   return h
 end
 
-"""
-        *(p::Adjoint{T,<:AbstractFTPlan{T}}, fHat) -> f
-
-For a **non**-directional `D` dimensional plan `p` this calculates the adjoint NFFT/NNFFT of a length `M` vector `fHat`
-`f` is a `D` dimensional array of size `N`.
-(`M` and `N` are defined in the plan creation)
-
-For a **directional** `D` dimensional plan `p` both `f` and `fHat` are `D`
-dimensional arrays, and the dimension specified in the plan creation is
-affected.
-"""
-
 function Base.:*(p::Adjoint{Complex{T},<:AbstractComplexFTPlan{T}}, fHat::AbstractArray{Complex{U},D}) where {T,U,D}
   f = similar(fHat, Complex{T}, size_out(p))
   mul!(f, p, fHat)
@@ -279,36 +248,11 @@ function Base.:*(p::Adjoint{Complex{T},<:AbstractComplexFTPlan{T}}, fHat::Abstra
   return f
 end
 
-
-
-"""
-        *(p, f) -> fHat
-
-For a **non**-directional `D` dimensional plan `p` this calculates the NFCT/NFST of a `D` dimensional array `f` of size `N`.
-`fHat` is a vector of length `M`.
-(`M` and `N` are defined in the plan creation)
-
-For a **directional** `D` dimensional plan `p` both `f` and `fHat` are `D`
-dimensional arrays, and the dimension specified in the plan creation is
-affected.
-"""
 function Base.:*(p::AbstractRealFTPlan{T}, f::AbstractArray{U,D}) where {T,U,D}
   fHat = similar(f, T, size_out(p))
   mul!(fHat, p, f)
   return fHat
 end
-
-"""
-        *(p::Transpose{T,AbstractRealFTPlan{T}}, fHat) -> f
-
-For a **non**-directional `D` dimensional plan `p` this calculates the adjoint NFCT/NFST of a length `M` vector `fHat`
-`f` is a `D` dimensional array of size `N`.
-(`M` and `N` are defined in the plan creation)
-
-For a **directional** `D` dimensional plan `p` both `f` and `fHat` are `D`
-dimensional arrays, and the dimension specified in the plan creation is
-affected.
-"""
 
 function Base.:*(p::Transpose{T,<:AbstractRealFTPlan{T}}, fHat::AbstractArray{U,D}) where {T,U,D}
   f = similar(fHat, T, size_out(p))

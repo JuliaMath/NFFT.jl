@@ -43,23 +43,21 @@ end
 # (:fwd zero input outside the kept modes, :bwd only the kept outputs needed); they differ for the
 # RNFFT. With `fftw_threads`, a single pass is threaded by FFTW instead of split into boxes.
 function PassFFT(fft::FFTWBackend, x::AbstractArray{T,D}, N::NTuple{D,Int}; dir=:fwd, pattern=dir,
-                 prune=true, nthreads=Threads.nthreads(), tdims=1:D,
-                 fftw_threads=length(tdims) == 1) where {T,D}
+                 nthreads=Threads.nthreads(), tdims=1:D, fftw_threads=length(tdims) == 1) where {T,D}
   Ñ = size(x)
-  onepass = fftw_threads
   order = pattern == :fwd ? reverse(tdims) : tdims
   plans, boxes = Vector{Any}[], Vector{NTuple{D,UnitRange{Int}}}[]
   for d in order
-    sets = ntuple(k -> (prune && k < d && k in tdims) ? filter(!isempty, keptranges(N[k], Ñ[k])) : (1:Ñ[k],), D)
+    sets = ntuple(k -> (k < d && k in tdims) ? filter(!isempty, keptranges(N[k], Ñ[k])) : (1:Ñ[k],), D)
     bxs = vec(collect(Iterators.product(sets...)))
     # split each box along the outermost dimension other than d
-    s = onepass ? 0 : d == D ? D - 1 : D
+    s = fftw_threads ? 0 : d == D ? D - 1 : D
     pb = s == 0 ? bxs : NTuple{D,UnitRange{Int}}[]
     s == 0 || for b in bxs, c in chunks(b[s], cld(nthreads, length(bxs)))
       push!(pb, Base.setindex(b, c, s))
     end
     push!(boxes, pb)
-    push!(plans, with_fftw_threads(onepass ? nthreads : 1) do
+    push!(plans, with_fftw_threads(fftw_threads ? nthreads : 1) do
       Any[dir == :fwd ? FFTW.plan_fft!(view(x, b...), d; flags=fft.flags) :
                         FFTW.plan_bfft!(view(x, b...), d; flags=fft.flags) for b in pb]
     end)

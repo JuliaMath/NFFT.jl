@@ -1,6 +1,5 @@
 @testset "RNFFT" begin
-  rng = MersenneTwister(11)
-  relerr(a, b) = norm(a - b) / norm(b)
+  rng = Xoshiro(11)
   # f̂_j = Re Σ_{n₁=0}^{N₁÷2} Σ_{n'} h_n exp(−2πi n·k_j), the other dimensions centred
   modes(I, N) = ntuple(d -> d == 1 ? I[1] - 1 : I[d] - 1 - N[d] ÷ 2, length(N))
   rdirect(k, N, h) = [sum(real(h[I] * cispi(-2 * sum(modes(I, N) .* Tuple(k[:, j])))) for I in CartesianIndices(h))
@@ -18,7 +17,7 @@
     h = randn(rng, Complex{T}, size_in(p)); y = randn(rng, T, J)
     fHat = p * h
     @test fHat isa Vector{T}
-    tol = max(10accuracy(p), 100eps(T))
+    tol = allowed(accuracy(p), T, N)
     @test relerr(fHat, rdirect(Float64.(T.(k)), N, h)) < tol
     g = adjoint(p) * y
     @test g isa Array{Complex{T},D}

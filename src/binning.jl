@@ -1,6 +1,6 @@
 # Nodes binned into tiles of edge B by a parallel counting sort. Tiles are numbered with the last
 # dimension running fastest, so a column of tiles along dimension D is a contiguous range of tiles
-# and of sorted nodes (the sliding spreading buffer walks such columns).
+# and of sorted nodes (the sliding buffer of the adjoint resampling walks such columns).
 struct Binned{D,T}
   xs::Vector{NTuple{D,T}}          # node coordinates in sorted order, in the precision given
   perm::Vector{Int}                # xs[q] is node perm[q] of the input
@@ -23,7 +23,7 @@ function Binned(k::AbstractMatrix{T}, Ñ::NTuple{D,Int}, B::Int, nthreads) where
   cks = chunks(1:J, nthreads)
   t = Vector{Int32}(undef, J)
   counts = zeros(Int, nt, length(cks))
-  Threads.@threads for c in eachindex(cks)
+  @maybe_threads nthreads for c in eachindex(cks)
     @inbounds for j in cks[c]
       ti = tile(j); t[j] = ti; counts[ti, c] += 1
     end
@@ -40,7 +40,7 @@ function Binned(k::AbstractMatrix{T}, Ñ::NTuple{D,Int}, B::Int, nthreads) where
   tileptr[nt+1] = acc
   perm = Vector{Int}(undef, J)
   xs = Vector{NTuple{D,T}}(undef, J)
-  Threads.@threads for c in eachindex(cks)
+  @maybe_threads nthreads for c in eachindex(cks)
     @inbounds for j in cks[c]
       ti = t[j]; q = pos[ti, c]; pos[ti, c] = q + 1
       perm[q] = j; xs[q] = ntuple(d -> k[d, j], D)
@@ -61,7 +61,7 @@ end
 # compromise on an M1 Max with 8 threads.
 default_tile(D, W) = D == 1 ? 1024 : D == 2 ? 64 : W <= 6 ? 16 : W <= 10 ? 12 : 10
 
-# One lock per tile of edge B of the padded grid, for flushing private spreading buffers.
+# One lock per tile of edge B of the padded grid, for flushing the private buffers of the adjoint resampling.
 struct TileLocks{D}
   locks::Array{Threads.SpinLock,D}
   B::Int

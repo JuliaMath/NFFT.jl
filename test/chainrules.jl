@@ -2,7 +2,6 @@ using Zygote: ChainRulesCore
 
 @testset "Chainrules" begin
   rng = Xoshiro(7)
-  rel(a, b) = norm(a - b) / norm(b)
   NT = ChainRulesCore.NoTangent()
 
   # (one-shot transform, its adjoint/transpose, plan, direct plan, data type, nodes)
@@ -24,18 +23,18 @@ using Zygote: ChainRulesCore
     @testset "$op $T N=$N" begin
       # gradient of ‖A x‖² is 2 Aᴴ A x
       g = 2 * (At * (A * x))
-      @test rel(Zygote.gradient(z -> sum(abs2, op(k, z; reltol=tol)), x)[1], g) < 10tol
-      @test rel(Zygote.gradient(z -> sum(abs2, p * z), x)[1], g) < 10tol
+      @test relerr(Zygote.gradient(z -> sum(abs2, op(k, z; reltol=tol)), x)[1], g) < 10tol
+      @test relerr(Zygote.gradient(z -> sum(abs2, p * z), x)[1], g) < 10tol
       gt = 2 * (A * (At * v))
-      @test rel(Zygote.gradient(z -> sum(abs2, op_t(k, N, z; reltol=tol)), v)[1], gt) < 10tol
-      @test rel(Zygote.gradient(z -> sum(abs2, pt * z), v)[1], gt) < 10tol
+      @test relerr(Zygote.gradient(z -> sum(abs2, op_t(k, N, z; reltol=tol)), v)[1], gt) < 10tol
+      @test relerr(Zygote.gradient(z -> sum(abs2, pt * z), v)[1], gt) < 10tol
 
       # forward mode: the tangent of the data is transformed
       Δx = dtype.(randn(rng, T, N))
-      @test rel(ChainRulesCore.frule((NT, NT, Δx), op, k, x)[2], A * Δx) < 10tol
-      @test rel(ChainRulesCore.frule((NT, NT, Δx), *, p, x)[2], A * Δx) < 10tol
+      @test relerr(ChainRulesCore.frule((NT, NT, Δx), op, k, x)[2], A * Δx) < 10tol
+      @test relerr(ChainRulesCore.frule((NT, NT, Δx), *, p, x)[2], A * Δx) < 10tol
       Δv = dtype.(randn(rng, T, M))
-      @test rel(ChainRulesCore.frule((NT, NT, NT, Δv), op_t, k, N, v)[2], At * Δv) < 10tol
+      @test relerr(ChainRulesCore.frule((NT, NT, NT, Δv), op_t, k, N, v)[2], At * Δv) < 10tol
     end
   end
 end

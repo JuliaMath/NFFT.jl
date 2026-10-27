@@ -6,10 +6,9 @@
 #
 # The batch dimension is processed in chunks of CH = min(L, 4) values held in registers
 # (SVector); the grid has Lp = CH·cld(L, CH) rows, the extra rows stay zero. Accumulating into
-# memory instead made every update wait for the previous one (store-to-load forwarding).
+# memory instead makes every update wait for the previous one (store-to-load forwarding).
 struct BatchCore{D,K<:SymKernel,T,Tk,D1,CH}
   L::Int
-  Lp::Int
   N::NTuple{D,Int}
   Ñ::NTuple{D,Int}
   W::Int
@@ -18,15 +17,13 @@ struct BatchCore{D,K<:SymKernel,T,Tk,D1,CH}
   invphi::NTuple{D,Vector{T}}
   binned::Binned{D,Tk}
   gp::Array{Complex{T},D1}          # (Lp, Ñ .+ W)
-  fwd::PassFFT{D1}
+  fwd::PassFFT{D1}                  # on the grid interior, in 1D on F
   bwd::PassFFT{D1}
   locks::TileLocks{D}
   bufs::Vector{Array{Complex{T},D1}} # tile buffers (Lp, B+W+1, …)
   # 1D: FFT buffer with the batch dimension last. A 1D FFT along dimension 2 of the batch-first grid
   # (stride Lp) is ≈ 3× slower than on contiguous columns (Ñ = 354294, L = 8: 11.6 vs 3.8 ms).
   F::Union{Nothing,Matrix{Complex{T}}}
-  fwdF::Any
-  bwdF::Any
   nthreads::Int
 end
 
@@ -42,18 +39,17 @@ function BatchCore(k::AbstractMatrix, N::NTuple{D,Int}, Ñ::NTuple{D,Int}, W, φ
   B = B === nothing ? batch_tile(D, W, Lp) : B
   gp = Array{Complex{T}}(undef, Lp, (Ñ .+ W)...)
   g = view(gp, :, map((n, h) -> h[1]+1:h[1]+n, Ñ, ntuple(_ -> halo(W), D))...)
-  Nf = (Lp, N...)
-  F = fwdF = bwdF = nothing
   if D == 1
     F = Matrix{Complex{T}}(undef, Ñ[1], Lp)
-    fwdF, bwdF = with_fftw_threads(nthreads) do
-      FFTW.plan_fft!(F, 1; flags=fft.flags), FFTW.plan_bfft!(F, 1; flags=fft.flags)
-    end
+    x, Nf, tdims = F, (N[1], Lp), 1:1
+  else
+    F = nothing
+    x, Nf, tdims = g, (Lp, N...), 2:D+1
   end
-  BatchCore{D,typeof(K),T,eltype(k),D + 1,CH}(L, Lp, N, Ñ, W, B, K, invphi, Binned(k, Ñ, B, nthreads), gp,
-    PassFFT(fft, g, Nf; dir=:fwd, nthreads, tdims=2:D+1), PassFFT(fft, g, Nf; dir=:bwd, nthreads, tdims=2:D+1),
+  BatchCore{D,typeof(K),T,eltype(k),D + 1,CH}(L, N, Ñ, W, B, K, invphi, Binned(k, Ñ, B, nthreads), gp,
+    PassFFT(fft, x, Nf; dir=:fwd, nthreads, tdims), PassFFT(fft, x, Nf; dir=:bwd, nthreads, tdims),
     TileLocks(Ñ .+ W, B), task_buffers(Complex{T}, (Lp, ntuple(_ -> B + W + 1, D)...), nthreads),
-    F, fwdF, bwdF, nthreads)
+    F, nthreads)
 end
 
 interior_b(c::BatchCore{D}) where {D} = view(c.gp, :, ntuple(d -> halo(c.W)[1]+1:halo(c.W)[1]+c.Ñ[d], D)...)
@@ -65,7 +61,7 @@ function halo_b!(gp, h, fold::Bool, nthreads)
     Ñ = size(gp, d) - h[1] - h[2]
     e = d == nd ? 2 : nd
     e == d && (e = 1)                                  # 1D NFFT: split along the batch dimension
-    Threads.@threads for c in chunks(axes(gp, e), nthreads)
+    @maybe_threads nthreads for c in chunks(axes(gp, e), nthreads)
       g = selectdim(gp, e, c)
       lo, hi = selectdim(g, d, 1:h[1]), selectdim(g, d, Ñ+h[1]+1:Ñ+h[1]+h[2])
       if fold
@@ -82,7 +78,7 @@ end
 
 function correction_b!(g, f, c::BatchCore{D}, adjoint::Bool) where {D}
   N, Ñ, L = c.N, c.Ñ, c.L
-  Threads.@threads for r in chunks(1:N[D], c.nthreads)
+  @maybe_threads c.nthreads for r in chunks(1:N[D], c.nthreads)
     @inbounds for il in r
       jl = gridindex(il, N[D], Ñ[D]); cl = c.invphi[D][il]
       for I in CartesianIndices(Base.front(N))
@@ -104,7 +100,7 @@ end
 # 1D: batch-last FFT buffer F (Ñ, Lp) ⇄ batch-first grid interior g (Lp, Ñ), blocked and threaded.
 function transpose_F!(g, F, toF::Bool, nthreads)
   Lp = size(F, 2)
-  Threads.@threads for r in chunks(axes(F, 1), 8nthreads)
+  @maybe_threads nthreads for r in chunks(axes(F, 1), 8nthreads)
     @inbounds for i in r, b in 1:Lp
       toF ? (F[i, b] = g[b, i]) : (g[b, i] = F[i, b])
     end
@@ -113,7 +109,7 @@ end
 
 function correction_F!(F, f, c::BatchCore, adjoint::Bool)
   N, Ñ, L = c.N[1], c.Ñ[1], c.L
-  Threads.@threads for r in chunks(1:N, c.nthreads)
+  @maybe_threads c.nthreads for r in chunks(1:N, c.nthreads)
     @inbounds for b in 1:L, il in r
       s = c.invphi[1][il]; jl = gridindex(il, N, Ñ)
       adjoint ? (f[b, il] = s * F[jl, b]) : (F[jl, b] = s * f[b, il])
@@ -152,27 +148,25 @@ end
 end
 
 function resample_b!(out, c::BatchCore{D,K,T,Tk,D1,CH}) where {D,K,T,Tk,D1,CH}
-  b, W, B, L = c.binned, c.W, c.B, c.L
+  b, L = c.binned, c.L
   ntile = length(b.tileptr) - 1; next = Threads.Atomic{Int}(1)
-  @sync for it in 1:min(length(c.bufs), ntile)
-    Threads.@spawn begin
-      buf = c.bufs[it]
-      fill!(buf, 0)
-      while (i = Threads.atomic_add!(next, 1)) <= ntile
-        t = b.order1[i]
-        r = b.tileptr[t]:b.tileptr[t+1]-1
-        isempty(r) && continue
-        o = b.origins[t]
-        hi = min.(o .+ size(buf)[2:end], size(c.gp)[2:end])
-        copyto!(view(buf, :, map((a, z) -> 1:z-a, o, hi)...), view(c.gp, :, map((a, z) -> a+1:z, o, hi)...))
-        @inbounds for q in r
-          sw = map(@inline((x, n) -> support(c.kernel, x, n)), b.xs[q], c.Ñ)
-          off = map(first, sw) .- o; ws = map(last, sw); col = b.perm[q]
-          for b0 in 0:CH:L-1
-            acc = resample_chunk(buf, b0, off, ws, Val(CH))
-            for j in 1:min(CH, L - b0)
-              out[b0+j, col] = acc[j]
-            end
+  tasks(min(length(c.bufs), ntile)) do it
+    buf = c.bufs[it]
+    fill!(buf, 0)
+    while (i = Threads.atomic_add!(next, 1)) <= ntile
+      t = b.order1[i]
+      r = b.tileptr[t]:b.tileptr[t+1]-1
+      isempty(r) && continue
+      o = b.origins[t]
+      hi = min.(o .+ size(buf)[2:end], size(c.gp)[2:end])
+      copyto!(view(buf, :, map((a, z) -> 1:z-a, o, hi)...), view(c.gp, :, map((a, z) -> a+1:z, o, hi)...))
+      @inbounds for q in r
+        sw = map(@inline((x, n) -> support(c.kernel, x, n)), b.xs[q], c.Ñ)
+        off = map(first, sw) .- o; ws = map(last, sw); col = b.perm[q]
+        for b0 in 0:CH:L-1
+          acc = resample_chunk(buf, b0, off, ws, Val(CH))
+          for j in 1:min(CH, L - b0)
+            out[b0+j, col] = acc[j]
           end
         end
       end
@@ -201,26 +195,24 @@ function flush_b!(gp, buf, o::NTuple{D,Int}, Lk::TileLocks{D}) where {D}
 end
 
 function resample_adjoint_b!(c::BatchCore{D,K,T,Tk,D1,CH}, vals) where {D,K,T,Tk,D1,CH}
-  b, W, B, L = c.binned, c.W, c.B, c.L
+  b, L = c.binned, c.L
   ntile = length(b.tileptr) - 1; next = Threads.Atomic{Int}(1)
-  @sync for it in 1:min(length(c.bufs), ntile)
-    Threads.@spawn begin
-      buf = c.bufs[it]
-      while (t = Threads.atomic_add!(next, 1)) <= ntile
-        r = b.tileptr[t]:b.tileptr[t+1]-1
-        isempty(r) && continue
-        o = b.origins[t]
-        fill!(buf, 0)
-        @inbounds for q in r
-          sw = map(@inline((x, n) -> support(c.kernel, x, n)), b.xs[q], c.Ñ)
-          off = map(first, sw) .- o; ws = map(last, sw); col = b.perm[q]
-          for b0 in 0:CH:L-1
-            v = SVector{CH,Complex{T}}(ntuple(j -> b0 + j <= L ? vals[b0+j, col] : zero(Complex{T}), Val(CH)))
-            resample_adjoint_chunk!(buf, b0, off, ws, v)
-          end
+  tasks(min(length(c.bufs), ntile)) do it
+    buf = c.bufs[it]
+    while (t = Threads.atomic_add!(next, 1)) <= ntile
+      r = b.tileptr[t]:b.tileptr[t+1]-1
+      isempty(r) && continue
+      o = b.origins[t]
+      fill!(buf, 0)
+      @inbounds for q in r
+        sw = map(@inline((x, n) -> support(c.kernel, x, n)), b.xs[q], c.Ñ)
+        off = map(first, sw) .- o; ws = map(last, sw); col = b.perm[q]
+        for b0 in 0:CH:L-1
+          v = SVector{CH,Complex{T}}(ntuple(j -> b0 + j <= L ? vals[b0+j, col] : zero(Complex{T}), Val(CH)))
+          resample_adjoint_chunk!(buf, b0, off, ws, v)
         end
-        flush_b!(c.gp, buf, o, c.locks)
       end
+      flush_b!(c.gp, buf, o, c.locks)
     end
   end
   c.gp
@@ -232,7 +224,7 @@ function trafo_batch!(out, c::BatchCore{D}, f) where {D}
   if D == 1
     threaded_fill!(c.F, 0, c.nthreads)
     correction_F!(c.F, f, c, false)
-    c.fwdF * c.F
+    apply!(c.fwd, c.F)
     transpose_F!(g, c.F, false, c.nthreads)
   else
     threaded_fill!(c.gp, 0, c.nthreads)
@@ -250,7 +242,7 @@ function adjoint_batch!(f, c::BatchCore{D}, vals) where {D}
   halo_b!(c.gp, h, true, c.nthreads)
   if D == 1
     transpose_F!(g, c.F, true, c.nthreads)
-    c.bwdF * c.F
+    apply!(c.bwd, c.F)
     correction_F!(c.F, f, c, true)
   else
     apply!(c.bwd, g)
@@ -262,7 +254,7 @@ end
 # Batch dimension last, data (M, L) ⇄ batch first (L, M), threaded over M.
 function transpose_ml!(dst, src, nthreads)
   M = size(src, 1); L = size(src, 2)
-  Threads.@threads for r in chunks(1:M, 8nthreads)
+  @maybe_threads nthreads for r in chunks(1:M, 8nthreads)
     @inbounds for m in r, b in 1:L
       dst[b, m] = src[m, b]
     end
@@ -271,7 +263,7 @@ function transpose_ml!(dst, src, nthreads)
 end
 function transpose_lm!(dst, src, nthreads)
   L = size(src, 1); M = size(src, 2)
-  Threads.@threads for r in chunks(1:M, 8nthreads)
+  @maybe_threads nthreads for r in chunks(1:M, 8nthreads)
     @inbounds for b in 1:L, m in r
       dst[m, b] = src[b, m]
     end

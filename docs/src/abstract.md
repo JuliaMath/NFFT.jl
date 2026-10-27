@@ -1,8 +1,8 @@
 # Abstract Interface
 
 `AbstractNFFTs.jl` defines what an NFFT plan is, independent of how it is computed. NFFT.jl is one
-implementation; wrappers make FINUFFT and NFFT3 available through the same interface, and
-NonuniformFFTs.jl implements it as well. Code written against the interface runs with each of them.
+implementation, NonuniformFFTs.jl is another; the wrappers of FINUFFT and NFFT3 in the NFFT.jl
+repository implement the interface of AbstractNFFTs 0.x. Code written against the interface runs with each of them.
 
 ![NFFT.jl package family](./assets/nfft_packages.svg)
 

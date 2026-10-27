@@ -115,7 +115,7 @@ batch_sizes(N, dims) = (prod(N[1:first(dims)-1]; init=1), prod(N[last(dims)+1:en
 
 # The plan is set up on the CPU (parameters, binning, window); a GPU core moves what the transforms
 # need to the device.
-function make_engine(k, N, dims, kernel::KernelEntry, ::Type{T}, fft, tilesize, nthreads, storage=Array) where {T}
+function make_engine(k, N, dims, kernel::KernelEntry, ::Type{T}, fft, tilesize, nthreads, storage) where {T}
   Nd = N[dims]; Dd = length(dims); J = size(k, 2)
   L1, L3 = batch_sizes(N, dims)
   k = k isa Array ? k : Array(k)
@@ -215,10 +215,7 @@ function Base.show(io::IO, p::NFFTPlan{T}) where {T}
         "$(nameof(typeof(e.window))) window, W = $(e.W), σ = $(e.σ), predicted error $(p.accuracy)")
 end
 
-function check_sizes(p, f, fHat)
-  size(f) == p.N || throw(DimensionMismatch("input has size $(size(f)), the plan expects $(p.N)"))
-  size(fHat) == p.NOut || throw(DimensionMismatch("output has size $(size(fHat)), the plan expects $(p.NOut)"))
-end
+check_sizes(p, f, fHat) = (check_size(f, p.N, "input"); check_size(fHat, p.NOut, "output"))
 
 # Batch dimensions before and after `dims`: the arrays are viewed as (L1, N[dims]..., L3) and
 # (L1, J, L3).

@@ -1,9 +1,7 @@
 # The window as W polynomial pieces of degree P in s = 2t − 1 ∈ [−1, 1], t the fractional grid
 # offset of a node. The weight of support point i (0-based) is φ(1 + i − W/2 − t).
 
-abstract type AbstractPolyKernel{W} end
-
-struct PolyKernel{W,P1,T} <: AbstractPolyKernel{W}
+struct PolyKernel{W,P1,T}
   coeffs::NTuple{P1,SVector{W,T}}   # coeffs[k][i]: coefficient of s^(k-1) for support point i
 end
 
@@ -22,7 +20,7 @@ end
 # The window is symmetric: piece W−1−i at s equals piece i at −s. With wᵢ(s) = Eᵢ(s²) + s·Oᵢ(s²)
 # one Horner chain in s² over the first ⌈W/2⌉ pieces gives all weights (the even/odd evaluation of
 # ducc); for odd W the middle piece maps onto itself and is kept once.
-struct SymKernel{W,H,NE,NO,T} <: AbstractPolyKernel{W}
+struct SymKernel{W,H,NE,NO,T}
   even::NTuple{NE,SVector{H,T}}
   odd::NTuple{NO,SVector{H,T}}
 end
@@ -54,8 +52,6 @@ end
   end
 end
 
-kernel_type(::SymKernel{W,H,NE,NO,T}) where {W,H,NE,NO,T} = T
-
 function gausslegendre(n)
   J = SymTridiagonal(zeros(n), [k / sqrt(4k^2 - 1) for k in 1:n-1])
   x, V = eigen(J)
@@ -72,7 +68,7 @@ function kernel_ft(φ, W, N, Ñ; nq=2W + 20, nc=32, nthreads=Threads.nthreads())
   N <= 4nc && (quad = window_quadrature(φ, W; nq); return [quad(k / Ñ) for k in ks])
   ft = WindowFT(φ, W, kmax / Ñ; nq, nc)
   out = Vector{Float64}(undef, N)
-  Threads.@threads for r in chunks(eachindex(ks), nthreads)
+  @maybe_threads nthreads for r in chunks(eachindex(ks), nthreads)
     for i in r
       out[i] = ft(abs(ks[i]) / Ñ)
     end

@@ -2,7 +2,7 @@ using NFFTTools: calculateToeplitzKernel, calculateToeplitzKernel!, convolveToep
 using FFTW
 
 @testset "Toeplitz" begin
-  rng = MersenneTwister(1)
+  rng = Xoshiro(1)
 
   # kernel against the explicit evaluation (2D, Float64)
   for Nx in (32, 33, 64)

@@ -279,8 +279,8 @@ array `f` of size `N`,
     NFCT: f̂_j = Σ_{n=0}^{N-1} f_n Π_d cos(2π n_d k_dj),   NFST: f̂_j = Σ_{n=1}^{N} f_n Π_d sin(2π n_d k_dj)
 
 (the array index of mode n is n + 1 for the NFCT and n for the NFST). `transpose(p)` is the
-transposed transform. Options as for [`NFFTPlan`](@ref) (without `tilesize` for batch dimensions;
-batch dimensions loop over the slices).
+transposed transform. Options as for [`NFFTPlan`](@ref); batch dimensions run as slices, in
+parallel or one after the other.
 """
 mutable struct NFCTPlan{T,D,R} <: AbstractNFCTPlan{T,D,R}
   N::NTuple{D,Int}

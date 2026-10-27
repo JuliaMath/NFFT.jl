@@ -23,7 +23,7 @@ using NFFTTools: sdc, sdc!
 
   # with work arrays only the task overhead of the threaded stages is allocated, far less than
   # one array of the problem size per iteration
-  k = rand(MersenneTwister(1), 2, 5000) .- 0.5
+  k = rand(Xoshiro(1), 2, 5000) .- 0.5
   p = plan_nfft(k, (128, 128))
   w = Vector{Float64}(undef, 5000)
   workg = Array{ComplexF64}(undef, oversampled_size(p))

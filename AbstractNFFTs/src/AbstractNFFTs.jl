@@ -1,7 +1,6 @@
 module AbstractNFFTs
 
 using LinearAlgebra
-using Printf
 
 # Remove this difference once 1.11 or higher becomes lower bound
 if VERSION >= v"1.11"
@@ -31,18 +30,5 @@ export DEFAULT_RELTOL, GenericOptions, generic_options, check_options
 include("misc.jl")
 include("interface.jl")
 include("derived.jl")
-
-
-@static if !isdefined(Base, :get_extension)
-  import Requires
-end
-   
-@static if !isdefined(Base, :get_extension)
-  function __init__()
-    Requires.@require ChainRulesCore = "d360d2e6-b24c-11e9-a2a3-2a2ae2dbcce4" begin
-      include("../ext/AbstractNFFTsChainRulesCoreExt.jl")
-    end
-  end
-end
 
 end
