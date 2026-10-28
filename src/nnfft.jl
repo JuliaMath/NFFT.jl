@@ -42,6 +42,7 @@ mutable struct NNFFTPlan{T,D,M} <: AbstractNNFFTPlan{T,M,M}
   y::AbstractMatrix
   ysrc::AbstractMatrix         # sources in full precision on the CPU, for nodes!
   outer::KernelEntry           # window of the spreading
+  inner::KernelEntry           # kernel of the inner NFFT
   n::NTuple{D,Int}             # grid of the spreading = modes of the inner NFFT
   accuracy::Float64
   options::GenericOptions{T}
@@ -52,7 +53,7 @@ end
 # cores), so the plan type does not depend on the kernels and the storage.
 struct NNFFTCore{C,P,V<:AbstractVector,G<:AbstractArray}
   spread::C                    # NFFT core on a grid of exactly n points (resampling only)
-  inner::P                     # NFFT plan of size n at the nodes h k′
+  inner::P                     # core of the NFFT of size n at the nodes h k′
   pre::V                       # exp(−2πi k₀·y′_l)
   post::V                      # exp(−2πi k_j·y₀) / Π_d φ̂(h_d k′_dj)
   g::G                         # spread grid (n...); empty on the CPU, where the core's grid is used
@@ -141,10 +142,11 @@ function nnfft_plan(::Val{D}, k, y, kc, yc, g::GenericOptions{T}, Nin::NTuple{M,
   S = g.storage
   store(v) = to_storage(S, Complex{T}.(v))
   dim = first(g.dims)
-  engine = NNFFTCore(core, inner, store(pre), store(post), to_storage(S, zeros(Complex{T}, S <: Array ? map(zero, n) : n)),
+  # the inner NFFT has no batch dimensions: its core is all a transform needs
+  engine = NNFFTCore(core, inner.core, store(pre), store(post), to_storage(S, zeros(Complex{T}, S <: Array ? map(zero, n) : n)),
                      to_storage(S, zeros(Complex{T}, N)), to_storage(S, zeros(Complex{T}, J)))
   NNFFTPlan{T,D,M}(N, J, Nin, Base.setindex(Nin, J, dim), dim, to_storage(S, k, T), to_storage(S, y, T), S <: Array ? y : yc,
-                   outer, n, acc.outer + outer.amp * accuracy(inner), g, engine)
+                   outer, inner.kernel, n, acc.outer + outer.amp * accuracy(inner), g, engine)
 end
 
 # Outer window e₁ (spreading) and inner NFFT kernel e₂ at the lowest predicted cost: e₁ with error
@@ -217,7 +219,7 @@ AbstractNFFTs.accuracy(p::NNFFTPlan) = p.accuracy
 
 function AbstractNFFTs.nodes!(p::NNFFTPlan{T,D}, k::AbstractMatrix) where {T,D}
   size(k, 1) == D || throw(DimensionMismatch("targets must have $D rows"))
-  q = NNFFTPlan(k, p.ysrc, p.options; N=p.Nin, parameters(p.core.inner)...)
+  q = NNFFTPlan(k, p.ysrc, p.options; N=p.Nin, window=p.inner.window, W=p.inner.W, σ=p.inner.σ)
   for f in fieldnames(NNFFTPlan)
     setfield!(p, f, getfield(q, f))
   end
@@ -226,7 +228,8 @@ end
 
 # A copy shares nodes, phases and correction factors and gets its own cores and buffers.
 Base.copy(p::NNFFTPlan{T,D,M}) where {T,D,M} =
-  NNFFTPlan{T,D,M}(p.N, p.J, p.Nin, p.NOut, p.dim, p.k, p.y, p.ysrc, p.outer, p.n, p.accuracy, p.options, copy(p.core))
+  NNFFTPlan{T,D,M}(p.N, p.J, p.Nin, p.NOut, p.dim, p.k, p.y, p.ysrc, p.outer, p.inner, p.n, p.accuracy, p.options,
+                   copy(p.core))
 Base.copy(c::NNFFTCore) =
   NNFFTCore(copy(c.spread), copy(c.inner), c.pre, c.post, similar(c.g), similar(c.fs), similar(c.fj))
 
@@ -254,7 +257,7 @@ end
 
 function nnfft!(fHat, c::NNFFTCore, f)
   c.fs .= f .* c.pre
-  mul!(fHat, c.inner, spread!(c.spread, c.g, c.fs))
+  trafo_core!(fHat, c.inner, spread!(c.spread, c.g, c.fs))
   fHat .*= c.post
 end
 
@@ -280,13 +283,13 @@ end
 
 function nnfft_adjoint!(f, c::NNFFTCore, fHat)
   c.fj .= fHat .* conj.(c.post)
-  interpolate!(c.spread, f, c.g, adjoint(c.inner), c.fj)
+  interpolate!(c.spread, f, c.g, c.inner, c.fj)
   f .*= conj.(c.pre)
 end
 
 # the adjoint of the inner NFFT and the resampling at the sources (on the CPU in place, as `spread!`)
 function interpolate!(c::NFFTCore, f, g, inner, fj)
-  mul!(interior(c.gp, halo(c.W)), inner, fj)
+  adjoint_core!(interior(c.gp, halo(c.W)), inner, fj)
   resample_interior!(c, f)
 end
-interpolate!(c, f, g, inner, fj) = (mul!(g, inner, fj); resampling_stage!(c, f, g); f)
+interpolate!(c, f, g, inner, fj) = (adjoint_core!(g, inner, fj); resampling_stage!(c, f, g); f)
