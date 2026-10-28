@@ -180,6 +180,63 @@ static int accuracy_real(int kind, int D, const int64_t *N, int64_t J, int64_t L
   return bad || !(e1 < 10 * reltol && e2 < 10 * reltol);
 }
 
+/* NNFFT against the direct sum fhat_j = sum_l f_l exp(-2 pi i k_j.y_l), batch (L1, ., L3), in double or
+   single precision */
+static int accuracy_nnfft(int D, int64_t J, int64_t N, int64_t L1, int64_t L3, double reltol, int f32, int nthreads) {
+  int64_t L = L1 * L3;
+  double *k = malloc(sizeof(double) * D * J), *y = malloc(sizeof(double) * D * N);
+  double complex *f = malloc(sizeof(double complex) * N * L), *g = malloc(sizeof(double complex) * N * L),
+                 *fh = malloc(sizeof(double complex) * J * L), *gh = malloc(sizeof(double complex) * J * L);
+  float complex *ff = malloc(sizeof(float complex) * N * L), *fhf = malloc(sizeof(float complex) * J * L);
+  for (int64_t i = 0; i < D * J; i++) k[i] = 6 * (urand() - 0.5) - 1;
+  for (int64_t i = 0; i < D * N; i++) y[i] = 20 * (urand() - 0.5) + 3;
+  for (int64_t i = 0; i < N * L; i++) f[i] = urand() - 0.5 + I * (urand() - 0.5);
+  int64_t p = f32 ? nfftjlf_nnfft_plan_create_many(D, J, k, N, y, L1, L3, reltol, nthreads)
+                  : nfftjl_nnfft_plan_create_many(D, J, k, N, y, L1, L3, reltol, nthreads);
+  if (p < 0) { printf("NNFFT plan failed\n"); return 1; }
+  /* direct sums, slice (a, b) */
+  for (int64_t b = 0; b < L3; b++)
+    for (int64_t a = 0; a < L1; a++)
+      for (int64_t j = 0; j < J; j++) {
+        double complex s = 0;
+        for (int64_t l = 0; l < N; l++) {
+          double x = 0; for (int d = 0; d < D; d++) x += k[d + D * j] * y[d + D * l];
+          s += f[a + L1 * (l + N * b)] * cexp(-2 * M_PI * I * x);
+        }
+        gh[a + L1 * (j + J * b)] = s;
+      }
+  double e1, e2;
+  if (f32) {
+    for (int64_t i = 0; i < N * L; i++) ff[i] = f[i];
+    nfftjlf_nnfft_trafo(p, ff, fhf);
+    for (int64_t i = 0; i < J * L; i++) fh[i] = fhf[i];
+  } else nfftjl_nnfft_trafo(p, f, fh);
+  e1 = relerr(fh, gh, J * L);
+  /* adjoint of gh against its direct sum */
+  for (int64_t b = 0; b < L3; b++)
+    for (int64_t a = 0; a < L1; a++)
+      for (int64_t l = 0; l < N; l++) {
+        double complex s = 0;
+        for (int64_t j = 0; j < J; j++) {
+          double x = 0; for (int d = 0; d < D; d++) x += k[d + D * j] * y[d + D * l];
+          s += gh[a + L1 * (j + J * b)] * cexp(2 * M_PI * I * x);
+        }
+        f[a + L1 * (l + N * b)] = s;
+      }
+  if (f32) {
+    for (int64_t i = 0; i < J * L; i++) fhf[i] = gh[i];
+    nfftjlf_nnfft_adjoint(p, fhf, ff);
+    for (int64_t i = 0; i < N * L; i++) g[i] = ff[i];
+  } else nfftjl_nnfft_adjoint(p, gh, g);
+  e2 = relerr(g, f, N * L);
+  printf("NNFFT%s, D = %d, J = %lld, N = %lld, batch %lld x %lld, reltol %.0e: error trafo %.1e, adjoint %.1e\n",
+         f32 ? " (float)" : "", D, J, N, L1, L3, reltol, e1, e2);
+  int bad = nfftjl_trafo(p, f, fh) != -1;   /* the NFFT functions reject it */
+  bad |= nfftjl_plan_destroy(p) != 0 || nfftjl_plan_destroy(p) != -1;
+  free(k); free(y); free(f); free(g); free(fh); free(gh); free(ff); free(fhf);
+  return bad || !(e1 < 10 * reltol && e2 < 10 * reltol);
+}
+
 int main(int argc, char **argv) {
   int nthreads = argc > 1 ? atoi(argv[1]) : 1, fail = 0;
   setvbuf(stdout, NULL, _IONBF, 0);
@@ -203,6 +260,10 @@ int main(int argc, char **argv) {
     fail |= accuracy_real(kind, 2, R2, 150, 3, 1e-9, nthreads);
     fail |= accuracy_real(kind, 3, R3, 100, 1, 1e-9, nthreads);
   }
+  fail |= accuracy_nnfft(1, 200, 150, 1, 1, 1e-9, 0, nthreads);
+  fail |= accuracy_nnfft(2, 200, 150, 2, 3, 1e-9, 0, nthreads);
+  fail |= accuracy_nnfft(3, 100, 120, 1, 1, 1e-9, 0, nthreads);
+  fail |= accuracy_nnfft(2, 200, 150, 1, 2, 1e-4, 1, nthreads);
   { /* a failing plan reports why */
     double kbad[] = {-0.25}; int64_t Nb[] = {8}; char msg[200];
     int64_t p = nfftjl_nfct_plan_create(1, Nb, 1, kbad, 1e-6, 1);

@@ -3,9 +3,10 @@
 !!! note "Experimental"
     `libnfftjl` is NFFT.jl compiled into a shared library with `juliac --trim`. It carries its
     Julia runtime; programs that use it need no Julia installation. It covers the NFFT, RNFFT,
-    NFCT and NFST and their adjoints in 1–3 dimensions, with batches, in single and double
-    precision (functions `nfftjl_rnfft_…`, `nfftjl_nfct_…`, `nfftjl_nfst_…`, see the header below); the table on the [home page](index.md) lists
-    what the Julia package offers beyond that. The interface may still change.
+    NFCT, NFST and NNFFT and their adjoints in 1–3 dimensions, with batches, in single and double
+    precision (functions `nfftjl_rnfft_…`, `nfftjl_nfct_…`, `nfftjl_nfst_…`, `nfftjl_nnfft_…`, see
+    the header below); the table on the [home page](index.md) lists what the Julia package offers
+    beyond that. The interface may still change.
 
 ## Building
 
@@ -72,6 +73,14 @@ computes both and checks the first values against the direct sum:
 : The same in single precision: data in `float complex`; the nodes and `reltol` stay `double`, and
   grid positions are computed from the nodes in double precision. A plan belongs to one precision:
   the functions of the other return −1.
+
+`nfftjl_nnfft_plan_create(D, J, k, N, y, reltol, nthreads)`, `nfftjl_nnfft_plan_create_many(D, J, k, N, y, L1, L3, reltol, nthreads)`
+: The NNFFT ``\hat f_j = \sum_l f_l e^{-2\pi i \bm k_j \cdot \bm y_l}`` from `N` sources `y` to `J`
+  targets `k` (both ``D \times`` count, column major, arbitrary real coordinates); data of
+  ``L_1 \times N \times L_3`` and ``L_1 \times J \times L_3`` complex values. The cost grows with
+  the product of the extents of `k` and `y`, not with `J` and `N` (see
+  [Non-equidistant in Both Domains](@ref)). `nfftjl_nnfft_trafo`, `nfftjl_nnfft_adjoint` and the
+  `nfftjlf_nnfft_…` functions as for the NFFT.
 
 `nfftjl_num_threads()`
 : The default number of threads of a plan: `NFFTJL_NUM_THREADS` if set, otherwise the number of

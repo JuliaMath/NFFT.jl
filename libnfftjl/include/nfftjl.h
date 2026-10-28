@@ -44,6 +44,17 @@ int64_t nfftjl_nfst_plan_create_many(int D, const int64_t *N, int64_t J, const d
                                      double reltol, int nthreads);
 int nfftjl_nfst_trafo(int64_t plan, const double *f, double *fhat);
 int nfftjl_nfst_adjoint(int64_t plan, const double *fhat, double *f);
+
+/* NNFFT (nonequispaced in both domains): fhat_j = sum_l f_l exp(-2 pi i k_j.y_l) for J targets
+   k[d + D*j] and N sources y[d + D*l], arbitrary real coordinates; the adjoint is
+   f_l = sum_j fhat_j exp(2 pi i k_j.y_l). The cost grows with the product of the extents of k and y,
+   not with J and N. _many: data of size L1 x N x L3 and L1 x J x L3. */
+int64_t nfftjl_nnfft_plan_create(int D, int64_t J, const double *k, int64_t N, const double *y, double reltol,
+                                 int nthreads);
+int64_t nfftjl_nnfft_plan_create_many(int D, int64_t J, const double *k, int64_t N, const double *y, int64_t L1,
+                                      int64_t L3, double reltol, int nthreads);
+int nfftjl_nnfft_trafo(int64_t plan, const double complex *f, double complex *fhat);
+int nfftjl_nnfft_adjoint(int64_t plan, const double complex *fhat, double complex *f);
 /* Plans of all transforms are released by nfftjl_plan_destroy. */
 
 /* The same in single precision (data in float complex; nodes and reltol stay double). */
@@ -68,6 +79,12 @@ int64_t nfftjlf_nfst_plan_create_many(int D, const int64_t *N, int64_t J, const 
                                       double reltol, int nthreads);
 int nfftjlf_nfst_trafo(int64_t plan, const float *f, float *fhat);
 int nfftjlf_nfst_adjoint(int64_t plan, const float *fhat, float *f);
+int64_t nfftjlf_nnfft_plan_create(int D, int64_t J, const double *k, int64_t N, const double *y, double reltol,
+                                  int nthreads);
+int64_t nfftjlf_nnfft_plan_create_many(int D, int64_t J, const double *k, int64_t N, const double *y, int64_t L1,
+                                       int64_t L3, double reltol, int nthreads);
+int nfftjlf_nnfft_trafo(int64_t plan, const float complex *f, float complex *fhat);
+int nfftjlf_nnfft_adjoint(int64_t plan, const float complex *fhat, float complex *f);
 /* The default number of threads of a plan: the environment variable NFFTJL_NUM_THREADS if set,
    otherwise the number of performance cores (Apple Silicon) or of all CPU threads (the library
    starts one Julia thread per CPU thread, which is also the upper limit for nthreads). Plans can be created and

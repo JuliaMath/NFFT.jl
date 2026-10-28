@@ -3,9 +3,9 @@
 !!! note "Experimental"
     The Python package `nfftjl` wraps `libnfftjl`, NFFT.jl compiled into a library with
     `juliac --trim` (see [C](c.md)). The wheel carries the library and its Julia runtime; no Julia
-    installation is needed to use it. It covers the NFFT, RNFFT, NFCT and NFST and their adjoints
-    in 1–3 dimensions, with batches, in single and double precision; the table on the [home page](index.md) lists what the Julia package offers
-    beyond that. The interface may still change.
+    installation is needed to use it. It covers the NFFT, RNFFT, NFCT, NFST and NNFFT and their
+    adjoints in 1–3 dimensions, with batches, in single and double precision; the table on the
+    [home page](index.md) lists what the Julia package offers beyond that. The interface may still change.
 
 ## Installation
 
@@ -87,6 +87,19 @@ give the shapes of their data:
 ```
 
 A plan whose nodes lie outside the range of its transform raises a `ValueError` with the reason.
+
+## Non-equidistant in both domains: NNFFT
+
+`nfftjl.NNFFTPlan(k, y, shape=None, reltol=1e-8, nthreads=None, dtype=numpy.complex128, axis=-1)`
+computes ``\hat f_j = \sum_l f_l e^{-2\pi i \bm k_j \cdot \bm y_l}`` for targets `k` (shape
+`(J, D)`) and sources `y` (shape `(N, D)`) with arbitrary real coordinates, and the adjoint. The
+cost grows with the product of the extents of `k` and `y`, not with `J` and `N`. With `shape`, the
+data have batch axes around `axis`, the axis of the sources, which the transform replaces by the
+`J` targets. It equals FINUFFT's type 3 with `x = 2π y`, `s = k`, `isign = -1`.
+
+```python
+{{include bindings/python/examples/nnfft.py}}
+```
 
 ## Batches
 

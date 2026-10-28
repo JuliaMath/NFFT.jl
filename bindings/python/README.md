@@ -1,8 +1,8 @@
 # nfftjl: NFFT.jl for Python
 
-The NFFT, RNFFT, NFCT and NFST of NFFT.jl as a Python package (experimental): a ctypes wrapper around `libnfftjl` (built
-from NFFT.jl with `juliac --trim`, see `../../libnfftjl/README.md`), with the library and its Julia
-runtime inside the wheel.
+The NFFT, RNFFT, NFCT, NFST and NNFFT of NFFT.jl as a Python package (experimental): a ctypes
+wrapper around `libnfftjl` (built from NFFT.jl with `juliac --trim`, see
+`../../libnfftjl/README.md`), with the library and its Julia runtime inside the wheel.
 No Julia installation is needed to use it.
 
 ```python
@@ -22,7 +22,7 @@ Build and test (macOS arm64 so far):
 ```
 ../../libnfftjl/build.sh                     # the library
 python3 -m venv .venv && .venv/bin/pip install numpy build wheel setuptools finufft
-PYTHON=.venv/bin/python ./build_wheel.sh     # → dist/nfftjl-…-macosx_…_arm64.whl (≈ 50 MB)
+PYTHON=.venv/bin/python ./build_wheel.sh     # → dist/nfftjl-…-macosx_…_arm64.whl (≈ 20 MB)
 pip install dist/*.whl
 python tests/test_nfftjl.py                  # direct sum, FINUFFT, Python threads
 python tests/bench.py 8                      # against FINUFFT

@@ -9,7 +9,8 @@
 
 Direct transform fhat_j = sum_l f_l exp(-2 pi i l.k_j), adjoint f_l = sum_j fhat_j exp(2 pi i l.k_j),
 with l_d = -N_d//2, ..., N_d - N_d//2 - 1 along axis d of f. RNFFTPlan, NFCTPlan and NFSTPlan are the
-transforms with real values at the nodes, the cosine and the sine transform.
+transforms with real values at the nodes, the cosine and the sine transform, NNFFTPlan the
+transform with arbitrary real nodes in both domains.
 """
 
 import ctypes
@@ -18,7 +19,7 @@ import sys
 
 import numpy as np
 
-__all__ = ["Plan", "RNFFTPlan", "NFCTPlan", "NFSTPlan", "num_threads"]
+__all__ = ["Plan", "RNFFTPlan", "NFCTPlan", "NFSTPlan", "NNFFTPlan", "num_threads"]
 
 _ext = {"darwin": ".dylib", "win32": ".dll"}.get(sys.platform, ".so")
 _lib = ctypes.CDLL(os.path.join(os.path.dirname(__file__), "_lib", "lib", "libnfftjl" + _ext))
@@ -32,7 +33,9 @@ _i64 = ctypes.c_int64
 def _functions(kind, real):
     prefix = ("nfftjl_" if real == np.float64 else "nfftjlf_") + ("" if kind == "nfft" else kind + "_")
     f = {name: getattr(_lib, prefix + name) for name in ("plan_create_many", "trafo", "adjoint")}
-    f["plan_create_many"].argtypes = [ctypes.c_int, _p, _i64, _p, _i64, _i64, ctypes.c_double, ctypes.c_int]
+    f["plan_create_many"].argtypes = ([ctypes.c_int, _i64, _p, _i64, _p, _i64, _i64, ctypes.c_double, ctypes.c_int]
+                                      if kind == "nnfft" else
+                                      [ctypes.c_int, _p, _i64, _p, _i64, _i64, ctypes.c_double, ctypes.c_int])
     f["plan_create_many"].restype = _i64
     for name in ("trafo", "adjoint"):
         f[name].argtypes = [_i64, _p, _p]
@@ -105,6 +108,9 @@ class _Plan:
         L3 = int(np.prod(self.shape[:a0], dtype=np.int64))
         self._h = self._f["plan_create_many"](D, ctypes.addressof(Nc), self.J, k.ctypes.data, L1, L3,
                                               reltol, nthreads)
+        self._check_plan()
+
+    def _check_plan(self):
         if self._h < 0:
             buf = ctypes.create_string_buffer(512)
             _lib.nfftjl_last_error(buf, len(buf))
@@ -220,3 +226,54 @@ class NFSTPlan(NFCTPlan):
     `numpy.float32`; the other arguments as for `Plan`.
     """
     _kind = "nfst"
+
+
+class NNFFTPlan(_Plan):
+    """NNFFT plan (nonequispaced in both domains): fhat_j = sum_l f_l exp(-2 pi i k_j.y_l) for
+    targets `k` (shape (J, D), or (J,) in 1D) and sources `y` (shape (N, D) or (N,)), arbitrary
+    real coordinates, D = 1, 2 or 3; the adjoint is f_l = sum_j fhat_j exp(2 pi i k_j.y_l). The cost
+    grows with the product of the extents of k and y, not with J and N.
+
+    `shape` is the shape of the data (default (N,)) and `axis` the axis of the sources in it; the
+    other axes are batch axes, and the result has the axis of length J in its place. `reltol`,
+    `nthreads` and `dtype` as for `Plan`.
+    """
+    _kind = "nnfft"
+
+    @staticmethod
+    def _eltypes(real):
+        return (np.complex128, np.complex128) if real == np.float64 else (np.complex64, np.complex64)
+
+    def __init__(self, k, y, shape=None, reltol=1e-8, nthreads=None, dtype=np.complex128, axis=-1):
+        dtype = np.dtype(dtype)
+        if dtype not in (np.dtype(np.complex128), np.dtype(np.complex64)):
+            raise ValueError(f"dtype must be complex128 or complex64, got {dtype}")
+        self.dtype = dtype
+        real = np.float64 if dtype == np.complex128 else np.float32
+        self.in_dtype = self.out_dtype = dtype
+        self._f = _functions(self._kind, real)
+        k = np.asarray(k, dtype=np.float64)
+        y = np.asarray(y, dtype=np.float64)
+        k = k[:, None] if k.ndim == 1 else k
+        y = y[:, None] if y.ndim == 1 else y
+        if k.ndim != 2 or y.ndim != 2 or k.shape[1] != y.shape[1] or not 1 <= k.shape[1] <= 3:
+            raise ValueError(f"targets and sources must have shapes (J, D) and (N, D), D = 1, 2 or 3, "
+                             f"got {k.shape} and {y.shape}")
+        D = k.shape[1]
+        self.J, self.N = k.shape[0], y.shape[0]
+        self.shape = (self.N,) if shape is None else ((int(shape),) if np.isscalar(shape) else tuple(int(n) for n in shape))
+        a = int(axis) % len(self.shape)
+        if self.shape[a] != self.N:
+            raise ValueError(f"axis {a} of the shape {self.shape} must have the N = {self.N} sources")
+        self.axis = a
+        self.in_shape = self.shape
+        self.out_shape = self.shape[:a] + (self.J,) + self.shape[a + 1:]
+        # Column major in the library (see _Plan): the axes after `axis` are the batch L1, those
+        # before it L3; the D x J and D x N node matrices are the rows of k and y in C order.
+        k = np.ascontiguousarray(k)
+        y = np.ascontiguousarray(y)
+        L1 = int(np.prod(self.shape[a + 1:], dtype=np.int64))
+        L3 = int(np.prod(self.shape[:a], dtype=np.int64))
+        nthreads = 0 if nthreads is None else int(nthreads)
+        self._h = self._f["plan_create_many"](D, self.J, k.ctypes.data, self.N, y.ctypes.data, L1, L3, reltol, nthreads)
+        self._check_plan()

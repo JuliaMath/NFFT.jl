@@ -1,4 +1,4 @@
-# C library of NFFT.jl, compiled with `juliac --trim`: NFFT, RNFFT, NFCT and NFST and their
+# C library of NFFT.jl, compiled with `juliac --trim`: NFFT, RNFFT, NFCT, NFST and NNFFT and their
 # adjoints in 1–3 dimensions, with batch dimensions, double and single precision, parameters chosen from NFFT.jl's kernel table. Interface in
 # include/nfftjl.h.
 #
@@ -238,6 +238,12 @@ function create(::Val{X}, ::Type{T}, ::Val{D}, Np::Ptr{Int64}, J::Int, kp::Ptr{F
   k = copy(unsafe_wrap(Array, kp, (D, J)))
   NFFT.check_nodes(plan_type(X), k)
   e = first(choose_kernels(reltol, NFFT.error_size(plan_type(X), N), J, T; Ncost=N)[1])
+  create_plan(Val(X), T, N, k, e, nthreads, L1, L3)
+end
+
+# A plan for the nodes k with the kernel of table entry e.
+function create_plan(::Val{X}, ::Type{T}, N::NTuple{D,Int}, k, e, nthreads, L1, L3) where {X,T,D}
+  J = size(k, 2)
   W = e.W
   st, parallel = strategy(X, D, N, J, L1, L3, nthreads)
   φ = TableWindow(e.window isa KaiserBessel, W, e.β, e.e0)
@@ -364,11 +370,15 @@ function plan_create(::Val{X}, ::Type{T}, D, N, J, k, reltol, nthreads, L1=1, L3
              nthreads > 0 ? min(Int(nthreads), Threads.nthreads()) : default_threads(), Int(L1), Int(L3))
     end
   catch e
-    # the message without a call on the exception of unknown type
-    m = e isa ArgumentError ? e.msg : e isa DimensionMismatch ? e.msg : e isa ErrorException ? e.msg : nothing
-    LAST_ERROR[] = m isa String ? m : "plan creation failed"
+    set_last_error(e)
     Int64(-1)
   end
+end
+
+# the message without a call on the exception of unknown type
+function set_last_error(e)
+  m = e isa ArgumentError ? e.msg : e isa DimensionMismatch ? e.msg : e isa ErrorException ? e.msg : nothing
+  LAST_ERROR[] = m isa String ? m : "plan creation failed"
 end
 
 # The message of the last failed plan creation, for nfftjl_last_error.
@@ -403,20 +413,154 @@ end
 
 function plan_destroy(h)
   try
-    x, _, t, _, _, _ = unhandle(h)
-    with_transform(x) do xv
-      with_type(t) do T
-        with_registry(h, xv, T) do reg, i
-          @lock REGISTRY_LOCK begin
-            (1 <= i <= length(reg) && reg[i] !== nothing) || return Cint(-1)
-            reg[i] = nothing
-            Cint(0)
-          end
+    first(unhandle(h)) == NNFFT_X ? nnfft_destroy(h) : destroy(h)
+  catch
+    Cint(-1)
+  end
+end
+
+function destroy(h)
+  x, _, t, _, _, _ = unhandle(h)
+  with_transform(x) do xv
+    with_type(t) do T
+      with_registry(h, xv, T) do reg, i
+        @lock REGISTRY_LOCK begin
+          (1 <= i <= length(reg) && reg[i] !== nothing) || return Cint(-1)
+          reg[i] = nothing
+          Cint(0)
         end
       end
     end
+  end
+end
+
+# The NNFFT: spreading of the sources with an outer window onto a grid of n points, an NFFT of size n
+# (a plan of the NFFT registries), and phases (see src/nnfft.jl of NFFT.jl). Its compiled branches
+# run over the width of the outer window only, those of the inner NFFT are the ones of the NFFT: one
+# per pair of widths would multiply the size of the library. Batches run one slice after the other
+# through the buffers of the plan. Handle as above with x = NNFFT_X and strategy 1, W the outer
+# width.
+const NNFFT_X = length(TRANSFORMS) + 1
+
+make_spread(::Type{T}, ys, n::NTuple{D,Int}, W, φ::F, kernel, nthreads) where {T,D,F} =
+  NFFTCore(ys, n, n, W, φ, T, nothing, nothing, nthreads; kernel)
+spread_type(T, D, W) = inferred(make_spread, Type{T}, Matrix{Float64}, NTuple{D,Int}, Int, TableWindow,
+                                kernel_type(T, W), Int)
+
+struct NNFFTEngine{C,T,D}
+  spread::C                    # core on the grid n, resampling only
+  inner::Int64                 # handle of the inner NFFT plan
+  pre::Vector{Complex{T}}
+  post::Vector{Complex{T}}
+  g::Array{Complex{T},D}       # grid n
+  fs::Vector{Complex{T}}       # one slice of sources
+  fj::Vector{Complex{T}}       # one slice of targets
+  L1::Int
+  L3::Int
+end
+
+for T in TS, D in DS, W in widths(T)
+  @eval const $(Symbol(:plans_nnfft_, T, :_, D, :_, W)) =
+    Union{Nothing,NNFFTEngine{spread_type($T, $D, $W),$T,$D}}[]
+end
+@generated nnfft_registry(::Type{T}, ::Val{D}, ::Val{W}) where {T,D,W} = Symbol(:plans_nnfft_, T, :_, D, :_, W)
+
+function create_nnfft(::Type{T}, ::Val{D}, J::Int, kp::Ptr{Float64}, N::Int, yp::Ptr{Float64}, reltol::Float64,
+                      nthreads::Int, L1::Int, L3::Int) where {T,D}
+  load_fftw()
+  (L1 >= 1 && L3 >= 1) || throw(ArgumentError("batch sizes must be positive"))
+  (J >= 0 && N >= 0) || throw(ArgumentError("numbers of nodes must not be negative"))
+  kc = copy(unsafe_wrap(Array, kp, (D, J)))
+  yc = copy(unsafe_wrap(Array, yp, (D, N)))
+  all(isfinite, kc) && all(isfinite, yc) || throw(ArgumentError("nodes must be finite"))
+  y0, Y = NFFT.centre(Val(D), yc)
+  k0, K = NFFT.centre(Val(D), kc)
+  outer, e2, n, _ = NFFT.choose_nnfft(reltol, Y, K, N, J, T)
+  φ = TableWindow(outer.window isa KaiserBessel, outer.W, outer.β, outer.e0)
+  ys, xs, pre, post = NFFT.nnfft_nodes(Val(D), kc, yc, y0, k0, K, outer, n, φ, nthreads)
+  with_width(outer.W, T) do w
+    spread = make_spread(T, ys, n, outer.W, φ, make_kernel(φ, w, T), nthreads)
+    inner = create_plan(Val(:nfft), T, n, xs, e2, nthreads, 1, 1)
+    eng = NNFFTEngine{typeof(spread),T,D}(spread, inner, Complex{T}.(pre), Complex{T}.(post), zeros(Complex{T}, n),
+                                          Vector{Complex{T}}(undef, N), Vector{Complex{T}}(undef, J), L1, L3)
+    reg = nnfft_registry(T, Val(D), w)
+    @lock REGISTRY_LOCK begin
+      push!(reg, eng)
+      Int64(length(reg)) << 32 | Int64(NNFFT_X) << 28 | Int64(1) << 24 | Int64(index(T, TS)) << 16 |
+        Int64(D) << 8 | Int64(outer.W)
+    end
+  end
+end
+
+# f(registry, index) for NNFFT plan h of element type T, -1 for another plan
+function with_nnfft_registry(f, h, ::Type{T}) where {T}
+  x, _, t, D, W, i = unhandle(h)
+  (x == NNFFT_X && t == index(T, TS)) || return Cint(-1)
+  with_dim(D) do d
+    with_width(W, T) do w
+      f(nnfft_registry(T, d, w), i)
+    end
+  end
+end
+
+nnfft_lookup(f, ::Type{T}, h) where {T} = with_nnfft_registry(h, T) do reg, i
+  e = @lock REGISTRY_LOCK (1 <= i <= length(reg) ? reg[i] : nothing)
+  e === nothing ? Cint(-1) : f(e)
+end
+
+# Data (L1, N, L3) and (L1, J, L3); slice (a, b) goes through the buffers fs and fj.
+function run_nnfft(e::NNFFTEngine{C,T}, fp::Ptr{Complex{T}}, gp::Ptr{Complex{T}}, forward::Bool) where {C,T}
+  N = length(e.fs); J = length(e.fj); L1 = e.L1
+  f = unsafe_wrap(Array, fp, L1 * N * e.L3); g = unsafe_wrap(Array, gp, L1 * J * e.L3)
+  for b in 1:e.L3, a in 1:L1
+    fo = a + L1 * N * (b - 1); go = a + L1 * J * (b - 1)
+    if forward
+      for l in 1:N; e.fs[l] = f[fo + L1 * (l - 1)] * e.pre[l]; end
+      NFFT.resampling_adjoint_stage!(e.spread, e.g, e.fs)
+      rc = GC.@preserve e trafo(Val(:nfft), T, e.inner, pointer(e.g), pointer(e.fj))
+      rc == 0 || return rc
+      for j in 1:J; g[go + L1 * (j - 1)] = e.fj[j] * e.post[j]; end
+    else
+      for j in 1:J; e.fj[j] = g[go + L1 * (j - 1)] * conj(e.post[j]); end
+      rc = GC.@preserve e adjoint(Val(:nfft), T, e.inner, pointer(e.fj), pointer(e.g))
+      rc == 0 || return rc
+      NFFT.resampling_stage!(e.spread, e.fs, e.g)
+      for l in 1:N; f[fo + L1 * (l - 1)] = e.fs[l] * conj(e.pre[l]); end
+    end
+  end
+  Cint(0)
+end
+
+function nnfft_plan_create(::Type{T}, D, J, k, N, y, reltol, nthreads, L1=1, L3=1) where {T}
+  try
+    @lock PLAN_LOCK with_dim(Int(D)) do d
+      create_nnfft(T, d, Int(J), k, Int(N), y, Float64(reltol),
+                   nthreads > 0 ? min(Int(nthreads), Threads.nthreads()) : default_threads(), Int(L1), Int(L3))
+    end
+  catch e
+    set_last_error(e)
+    Int64(-1)
+  end
+end
+
+function nnfft_run(::Type{T}, h, fp, gp, forward) where {T}
+  try
+    nnfft_lookup(e -> run_nnfft(e, fp, gp, forward), T, h)
   catch
     Cint(-1)
+  end
+end
+
+function nnfft_destroy(h)
+  with_type((h >> 16) & 0xff) do T
+    with_nnfft_registry(h, T) do reg, i
+      e = @lock REGISTRY_LOCK begin
+        e = 1 <= i <= length(reg) ? reg[i] : nothing
+        e === nothing || (reg[i] = nothing)
+        e
+      end
+      e === nothing ? Cint(-1) : destroy(e.inner)
+    end
   end
 end
 
@@ -436,6 +580,19 @@ for (T, prefix) in ((Float64, "nfftjl_"), (Float32, "nfftjlf_")), X in TRANSFORM
       trafo(Val($(QuoteNode(X))), $T, h, f, fhat)
     Base.@ccallable $(Symbol(P, :adjoint))(h::Int64, fhat::Ptr{$Tout}, f::Ptr{$Tin})::Cint =
       adjoint(Val($(QuoteNode(X))), $T, h, fhat, f)
+  end
+end
+for (T, P) in ((Float64, "nfftjl_nnfft_"), (Float32, "nfftjlf_nnfft_"))
+  @eval begin
+    Base.@ccallable $(Symbol(P, :plan_create))(D::Cint, J::Int64, k::Ptr{Float64}, N::Int64, y::Ptr{Float64},
+      reltol::Cdouble, nthreads::Cint)::Int64 = nnfft_plan_create($T, D, J, k, N, y, reltol, nthreads)
+    Base.@ccallable $(Symbol(P, :plan_create_many))(D::Cint, J::Int64, k::Ptr{Float64}, N::Int64, y::Ptr{Float64},
+      L1::Int64, L3::Int64, reltol::Cdouble, nthreads::Cint)::Int64 =
+      nnfft_plan_create($T, D, J, k, N, y, reltol, nthreads, L1, L3)
+    Base.@ccallable $(Symbol(P, :trafo))(h::Int64, f::Ptr{Complex{$T}}, fhat::Ptr{Complex{$T}})::Cint =
+      nnfft_run($T, h, f, fhat, true)
+    Base.@ccallable $(Symbol(P, :adjoint))(h::Int64, fhat::Ptr{Complex{$T}}, f::Ptr{Complex{$T}})::Cint =
+      nnfft_run($T, h, f, fhat, false)
   end
 end
 Base.@ccallable nfftjl_plan_destroy(h::Int64)::Cint = plan_destroy(h)

@@ -61,7 +61,7 @@ as the Julia package. Its interface is experimental and covers the core transfor
 | multi-threaded | ✓ | ✓ | ✓ |
 | transforms along dimensions (batches) | ✓ | ✓ | ✓ |
 | RNFFT, NFCT, NFST | ✓ | ✓ | ✓ |
-| NNFFT | ✓ | – | – |
+| NNFFT | ✓ | ✓ | ✓ |
 | GPUs | ✓ | – | – |
 | stages, density compensation, Toeplitz | ✓ | – | – |
 | status | 1.0 (in development) | experimental | experimental |

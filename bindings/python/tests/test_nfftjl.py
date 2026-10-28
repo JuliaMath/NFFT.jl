@@ -113,6 +113,31 @@ def test_real_transforms():
         assert "[0, 1/2]" in str(e)
 
 
+def test_nnfft():
+    # direct sums with batch axes, single precision, and FINUFFT's type 3
+    rng = np.random.default_rng(8)
+    for D, shape, axis, dtype, tol in ((1, (150,), -1, np.complex128, 1e-9), (2, (3, 150, 2), 1, np.complex128, 1e-9),
+                                       (3, (120, 4), 0, np.complex128, 1e-9), (2, (150,), 0, np.complex64, 1e-4)):
+        k = 6 * (rng.random((200, D)) - 0.5) - 1                 # targets
+        y = 20 * (rng.random((150 if D < 3 else 120, D)) - 0.5) + 3   # sources
+        p = nfftjl.NNFFTPlan(k, y, shape, reltol=tol, axis=axis, dtype=dtype)
+        E = np.exp(-2j * np.pi * k @ y.T)                          # (J, N)
+        f = (rng.standard_normal(shape) + 1j * rng.standard_normal(shape)).astype(dtype)
+        fhat = p.trafo(f)
+        assert fhat.shape == p.out_shape and fhat.dtype == dtype
+        ref = np.moveaxis(np.tensordot(E, f.astype(np.complex128), axes=([1], [p.axis])), 0, p.axis)
+        assert relerr(fhat, ref) < 10 * tol
+        g = p.adjoint(ref.astype(dtype))
+        refa = np.moveaxis(np.tensordot(E.conj().T, ref, axes=([1], [p.axis])), 0, p.axis)
+        assert g.shape == shape and relerr(g, refa) < 10 * tol
+    import finufft
+    y = 30 * rng.random((2000, 2)); k = 4 * rng.random((3000, 2)) - 2
+    c = rng.standard_normal(2000) + 1j * rng.standard_normal(2000)
+    ref = finufft.nufft2d3(*(np.ascontiguousarray(a) for a in (2 * np.pi * y[:, 0], 2 * np.pi * y[:, 1], c, k[:, 0], k[:, 1])),
+                           isign=-1, eps=1e-12)
+    assert relerr(nfftjl.NNFFTPlan(k, y, reltol=1e-10).trafo(c), ref) < 1e-9
+
+
 def test_float32():
     rng = np.random.default_rng(5)
     for N, tol in (((64,), 1e-5), ((16, 12), 1e-5), ((8, 6, 10), 1e-3)):
@@ -187,6 +212,7 @@ if __name__ == "__main__":
     test_accuracy()
     test_axes()
     test_real_transforms()
+    test_nnfft()
     test_float32()
     test_finufft()
     test_threads()
