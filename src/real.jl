@@ -12,7 +12,7 @@
 # Like the complex FFT stage, pruned passes skip lines that are zero (direct transform: modes outside
 # 1:N along the dimensions not yet transformed) or not needed (transposed transform); the stage
 # interface uses unpruned passes.
-struct R2RPass{T}
+struct R2RPass{T,P}
   d::Int
   Ñ::Int
   A::Int                                  # F viewed as (A, size(F, d), C)
@@ -20,7 +20,7 @@ struct R2RPass{T}
   items::Vector{NTuple{3,Int}}            # (first line along A or C, number of lines, c)
   bufs::Vector{Matrix{T}}                 # per task: (2Ñ, Lb) extended lines
   outs::Vector{Matrix{Complex{T}}}        # per task: (Ñ + 1, Lb) spectra
-  plans::Vector{Any}
+  plans::Vector{P}
 end
 
 const R2R_LINES = 16
@@ -46,8 +46,8 @@ function R2RPass(::Type{T}, F, d, Ñ, N, flags, nthreads; pruned=true) where {T}
   ntasks = D == 1 ? 1 : min(4nthreads, length(items))
   bufs = [zeros(T, 2Ñ, Lb) for _ in 1:ntasks]
   outs = [zeros(Complex{T}, Ñ + 1, Lb) for _ in 1:ntasks]
-  plans = with_fftw_threads(() -> Any[FFTW.plan_rfft(b, 1; flags) for b in bufs], D == 1 ? nthreads : 1)
-  R2RPass{T}(d, Ñ, A, C, items, bufs, outs, plans)
+  plans = with_fftw_threads(() -> [FFTW.plan_rfft(b, 1; flags) for b in bufs], D == 1 ? nthreads : 1)
+  R2RPass(d, Ñ, A, C, items, bufs, outs, plans)
 end
 
 function apply_r2r!(P::R2RPass, F, ::Val{S}) where {S}
@@ -105,7 +105,7 @@ end
 r2r_passes(::Type{T}, F, Ñ, N, flags, nthreads; pruned=true) where {T} =
   [R2RPass(T, F, d, Ñ[d], N, flags, nthreads; pruned) for d in ndims(F):-1:1]
 
-struct RealCore{S,D,K<:SymKernel,T,Tk}   # S = :cos or :sin
+struct RealCore{S,D,K<:SymKernel,T,Tk,P<:R2RPass}   # S = :cos or :sin
   N::NTuple{D,Int}
   Ñ::NTuple{D,Int}                       # stored points l = 0…Ñ; virtual periodic grid 2Ñ
   W::Int
@@ -116,7 +116,7 @@ struct RealCore{S,D,K<:SymKernel,T,Tk}   # S = :cos or :sin
   binned::Binned{D,Tk}
   gp::Array{T,D}                         # padded grid, (Ñ + 1) .+ W
   F::Array{T,D}                          # contiguous copy of the stored points for the FFT stage
-  passes::Vector{R2RPass{T}}            # direct: in this order, transposed: reversed
+  passes::Vector{P}                      # direct: in this order, transposed: reversed
   locks::TileLocks{D}
   bufs::Vector{Array{T,D}}
   flags::UInt32
@@ -135,9 +135,9 @@ function RealCore{S}(k::AbstractMatrix, N::NTuple{D,Int}, Ñv::NTuple{D,Int}, W,
   h = halo(W)
   gp = zeros(T, (Ñ .+ 1) .+ W)
   F = zeros(T, size(stored(gp, h, Ñ, Val(S))))
-  RealCore{S,D,typeof(K),T,eltype(k)}(N, Ñ, W, B, K, cfwd, cadj, Binned(k, Ñv, B, nthreads), gp, F,
-    r2r_passes(T, F, Ñ, N, fft.flags, nthreads),
-    TileLocks(size(gp), B), task_buffers(T, ntuple(_ -> B + W + 1, D), nthreads), fft.flags, nthreads)
+  passes = r2r_passes(T, F, Ñ, N, fft.flags, nthreads)
+  RealCore{S,D,typeof(K),T,eltype(k),eltype(passes)}(N, Ñ, W, B, K, cfwd, cadj, Binned(k, Ñv, B, nthreads), gp, F,
+    passes, TileLocks(size(gp), B), task_buffers(T, ntuple(_ -> B + W + 1, D), nthreads), fft.flags, nthreads)
 end
 
 # Correction factors of the direct and the transposed transform per mode: 1/φ̂ of the virtual grid
@@ -277,9 +277,9 @@ function r2r_transposed!(F, passes, ::Val{S}) where {S}
   F
 end
 
-function copy_core(c::RealCore{S,D,K,T,Tk}, nthreads) where {S,D,K,T,Tk}
+function copy_core(c::RealCore{S,D,K,T,Tk,P}, nthreads) where {S,D,K,T,Tk,P}
   F = zero(c.F)
-  RealCore{S,D,K,T,Tk}(c.N, c.Ñ, c.W, c.B, c.kernel, c.cfwd, c.cadj, c.binned, zero(c.gp), F,
+  RealCore{S,D,K,T,Tk,P}(c.N, c.Ñ, c.W, c.B, c.kernel, c.cfwd, c.cadj, c.binned, zero(c.gp), F,
                        r2r_passes(T, F, c.Ñ, c.N, c.flags, nthreads),
                        TileLocks(size(c.gp), c.B), task_buffers(T, size(c.bufs[1]), nthreads), c.flags, nthreads)
 end

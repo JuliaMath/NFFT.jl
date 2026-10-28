@@ -81,13 +81,13 @@ function make_engine(P, k, N, dims, kernel::KernelEntry, ::Type{T}, fft, tilesiz
   k = k isa Array ? k : Array(k)
   check_nodes(P, k)
   if !(storage <: Array) || L == 1
-    return :single, make_core(P, k, Nd, kernel, T, fft, tilesize, nthreads, storage, L1, L3), nothing, nothing
+    return :single, make_core(P, k, Nd, kernel, T, fft, tilesize, nthreads, storage, L1, L3)
   end
   use_slices(L, J + prod(Nd), nthreads) &&
-    return :slices, single_cores(make_core(P, k, Nd, kernel, T, fft, tilesize, nthreads, storage, 1, 1), L), nothing, nothing
+    return :slices, single_cores(make_core(P, k, Nd, kernel, T, fft, tilesize, nthreads, storage, 1, 1), L)
   strategy = batch_strategy(P, length(dims), L1, L3)
   strategy === :loop || return batch_engine(strategy, k, Nd, kernel, T, fft, tilesize, nthreads, L1, L3)
-  :loop, make_core(P, k, Nd, kernel, T, fft, tilesize, nthreads, storage, 1, 1), nothing, nothing
+  :loop, make_core(P, k, Nd, kernel, T, fft, tilesize, nthreads, storage, 1, 1)
 end
 
 batch_strategy(P, Dd, L1, L3) = :loop
@@ -142,13 +142,12 @@ Base.copy(c::Union{NFFTCore,BatchCore,RNFFTCore,RealCore}) = copy_core(c, c.nthr
 function Base.copy(p::FastPlan)
   core = p.strategy === :slices ? single_cores(p.core[1], length(p.core)) : copy(p.core)
   typeof(p)(p.N, p.Nin, p.NOut, p.dims, p.k, p.kernel, p.accuracy, p.options, p.fft, p.tilesize, p.strategy,
-            core, maybe_similar(p.fbuf), maybe_similar(p.gbuf))
+            core)
 end
-maybe_similar(x) = x === nothing ? nothing : similar(x)
 
 function AbstractNFFTs.nodes!(p::FastPlan{T}, k::AbstractMatrix) where {T}
   size(k, 1) == length(p.dims) || throw(DimensionMismatch("nodes must have $(length(p.dims)) rows"))
-  p.strategy, p.core, p.fbuf, p.gbuf = make_engine(typeof(p), k, p.N, p.dims, p.kernel, T, p.fft, p.tilesize,
+  p.strategy, p.core = make_engine(typeof(p), k, p.N, p.dims, p.kernel, T, p.fft, p.tilesize,
                                                    p.options.nthreads, p.options.storage)
   p.k = to_storage(p.options.storage, k, T)
   p.NOut = out_size(p.N, p.dims, size(k, 2))

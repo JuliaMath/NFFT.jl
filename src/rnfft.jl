@@ -8,7 +8,7 @@
 # correction stores conj(h_n)/φ̂(n), halved for n₁ ≥ 1 (n₁ ≤ N₁÷2 < Ñ₁/2, the grid's Nyquist bin
 # stays empty). The adjoint is the r2c FFT (negative sign) and forward FFTs, conjugated at the end.
 
-struct RNFFTCore{D,K<:SymKernel,T,Tk,PF<:PassFFT,PB<:PassFFT}
+struct RNFFTCore{D,K<:SymKernel,T,Tk,PF<:PassFFT,PB<:PassFFT,PC,PR}
   N::NTuple{D,Int}                     # logical size
   Nh::Int                              # modes n₁ = 0…Nh−1 = N₁÷2
   Ñ::NTuple{D,Int}
@@ -22,8 +22,8 @@ struct RNFFTCore{D,K<:SymKernel,T,Tk,PF<:PassFFT,PB<:PassFFT}
   pfwd::PF                             # direct: backward FFTs along 2…D, zero input skipped
   pbwd::PB                             # adjoint: forward FFTs along 2…D, only kept outputs
   boxes::Vector{UnitRange{Int}}        # chunks along dimension D for the c2r/r2c FFTs
-  c2r::Vector{Any}
-  r2c::Vector{Any}
+  c2r::Vector{PC}                      # FFTW plans per box
+  r2c::Vector{PR}
   locks::TileLocks{D}
   bufs::Vector{Array{T,D}}
   flags::UInt32
@@ -53,15 +53,12 @@ function RNFFTCore(k::AbstractMatrix, N::NTuple{D,Int}, Ñ::NTuple{D,Int}, W, φ
   pfwd = PassFFT(fft, Hk, Nk; dir=:bwd, pattern=:fwd, nthreads, tdims=2:D, fft_threads=false)
   pbwd = PassFFT(fft, Hk, Nk; dir=:fwd, pattern=:bwd, nthreads, tdims=2:D, fft_threads=false)
   boxes = D == 1 ? [1:1] : chunks(1:Ñ[D], 4nthreads)
-  c2r = Any[]; r2c = Any[]
-  with_fftw_threads(D == 1 ? nthreads : 1) do
-    for b in boxes
-      X = box(H, b); Y = box(g, b)
-      push!(c2r, FFTW.rFFTWPlan{Complex{T},FFTW.BACKWARD,false,D}(X, Y, (1,), fft.flags, FFTW.NO_TIMELIMIT))
-      push!(r2c, FFTW.rFFTWPlan{T,FFTW.FORWARD,false,D}(Y, X, (1,), fft.flags, FFTW.NO_TIMELIMIT))
-    end
+  c2r, r2c = with_fftw_threads(D == 1 ? nthreads : 1) do
+    ([FFTW.rFFTWPlan{Complex{T},FFTW.BACKWARD,false,D}(box(H, b), box(g, b), (1,), fft.flags, FFTW.NO_TIMELIMIT)
+      for b in boxes],
+     [FFTW.rFFTWPlan{T,FFTW.FORWARD,false,D}(box(g, b), box(H, b), (1,), fft.flags, FFTW.NO_TIMELIMIT) for b in boxes])
   end
-  RNFFTCore{D,typeof(K),T,nodetype(binned),typeof(pfwd),typeof(pbwd)}(N, Nh, Ñ, W, B, K, invphi, binned, gp, H, pfwd, pbwd, boxes, c2r, r2c,
+  RNFFTCore{D,typeof(K),T,nodetype(binned),typeof(pfwd),typeof(pbwd),eltype(c2r),eltype(r2c)}(N, Nh, Ñ, W, B, K, invphi, binned, gp, H, pfwd, pbwd, boxes, c2r, r2c,
     TileLocks(size(gp), B), task_buffers(T, ntuple(_ -> B + W + 1, D), nthreads), fft.flags, nthreads)
 end
 
@@ -77,11 +74,12 @@ box(x::AbstractArray{<:Any,D}, r) where {D} = view(x, ntuple(_ -> Colon(), D - 1
 
 half_view(c::RNFFTCore{D}) where {D} = view(c.H, 1:c.Nh, ntuple(_ -> Colon(), D - 1)...)
 
-function c2r_boxes!(c::RNFFTCore{D}, plans, forward::Bool) where {D}
+# the c2r FFTs (direct) or the r2c FFTs (adjoint) along dimension 1, per chunk of dimension D
+function c2r_boxes!(c::RNFFTCore, ::Val{forward}) where {forward}
   g = interior(c.gp, halo(c.W))
   @maybe_threads c.nthreads :dynamic for i in eachindex(c.boxes)
     X = box(c.H, c.boxes[i]); Y = box(g, c.boxes[i])
-    forward ? mul!(Y, plans[i], X) : mul!(X, plans[i], Y)
+    forward ? mul!(Y, c.c2r[i], X) : mul!(X, c.r2c[i], Y)
   end
 end
 
@@ -119,14 +117,14 @@ function trafo_core!(out, c::RNFFTCore{D}, h) where {D}
   threaded_fill!(c.H, 0, c.nthreads)
   rnfft_correction!(c.H, h, c)
   D > 1 && apply!(c.pfwd, half_view(c))
-  c2r_boxes!(c, c.c2r, true)
+  c2r_boxes!(c, Val(true))
   resample_interior!(c, out)
   out
 end
 
 function adjoint_core!(h, c::RNFFTCore{D}, vals) where {D}
   resample_adjoint_interior!(c, vals)
-  c2r_boxes!(c, c.r2c, false)
+  c2r_boxes!(c, Val(false))
   D > 1 && apply!(c.pbwd, half_view(c))
   rnfft_correction_adjoint!(h, c.H, c)
   h

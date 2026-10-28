@@ -45,13 +45,19 @@ mutable struct NNFFTPlan{T,D,M} <: AbstractNNFFTPlan{T,M,M}
   n::NTuple{D,Int}             # grid of the spreading = modes of the inner NFFT
   accuracy::Float64
   options::GenericOptions{T}
-  core::Any                    # spreading: NFFT core on a grid of exactly n points
-  inner::Any                   # NFFT plan of size n at the nodes h k′
-  pre::AbstractVector          # exp(−2πi k₀·y′_l)
-  post::AbstractVector         # exp(−2πi k_j·y₀) / Π_d φ̂(h_d k′_dj)
-  g::AbstractArray             # spread grid (n...); empty on the CPU, where the core's grid is used
-  fs::AbstractVector           # sources times pre
-  fj::AbstractVector           # targets times conj(post)
+  core::Any                    # NNFFTCore: behind this field the transforms are type stable
+end
+
+# What a transform uses, with concrete types; the plan holds it untyped (as the NFFT plans their
+# cores), so the plan type does not depend on the kernels and the storage.
+struct NNFFTCore{C,P,V<:AbstractVector,G<:AbstractArray}
+  spread::C                    # NFFT core on a grid of exactly n points (resampling only)
+  inner::P                     # NFFT plan of size n at the nodes h k′
+  pre::V                       # exp(−2πi k₀·y′_l)
+  post::V                      # exp(−2πi k_j·y₀) / Π_d φ̂(h_d k′_dj)
+  g::G                         # spread grid (n...); empty on the CPU, where the core's grid is used
+  fs::V                        # sources times pre
+  fj::V                        # targets times conj(post)
 end
 
 const NNFFT_OPTIONS = (:window, :W, :σ, :fft)
@@ -135,9 +141,10 @@ function nnfft_plan(::Val{D}, k, y, kc, yc, g::GenericOptions{T}, Nin::NTuple{M,
   S = g.storage
   store(v) = to_storage(S, Complex{T}.(v))
   dim = first(g.dims)
-  NNFFTPlan{T,D,M}(N, J, Nin, Base.setindex(Nin, J, dim), dim, to_storage(S, k, T), to_storage(S, y, T), S <: Array ? y : yc, outer, n, acc.outer + outer.amp * accuracy(inner),
-                 g, core, inner, store(pre), store(post), to_storage(S, zeros(Complex{T}, S <: Array ? map(zero, n) : n)),
-                 to_storage(S, zeros(Complex{T}, N)), to_storage(S, zeros(Complex{T}, J)))
+  engine = NNFFTCore(core, inner, store(pre), store(post), to_storage(S, zeros(Complex{T}, S <: Array ? map(zero, n) : n)),
+                     to_storage(S, zeros(Complex{T}, N)), to_storage(S, zeros(Complex{T}, J)))
+  NNFFTPlan{T,D,M}(N, J, Nin, Base.setindex(Nin, J, dim), dim, to_storage(S, k, T), to_storage(S, y, T), S <: Array ? y : yc,
+                   outer, n, acc.outer + outer.amp * accuracy(inner), g, engine)
 end
 
 # Outer window e₁ (spreading) and inner NFFT kernel e₂ at the lowest predicted cost: e₁ with error
@@ -210,7 +217,7 @@ AbstractNFFTs.accuracy(p::NNFFTPlan) = p.accuracy
 
 function AbstractNFFTs.nodes!(p::NNFFTPlan{T,D}, k::AbstractMatrix) where {T,D}
   size(k, 1) == D || throw(DimensionMismatch("targets must have $D rows"))
-  q = NNFFTPlan(k, p.ysrc, p.options; N=p.Nin, parameters(p.inner)...)
+  q = NNFFTPlan(k, p.ysrc, p.options; N=p.Nin, parameters(p.core.inner)...)
   for f in fieldnames(NNFFTPlan)
     setfield!(p, f, getfield(q, f))
   end
@@ -219,8 +226,9 @@ end
 
 # A copy shares nodes, phases and correction factors and gets its own cores and buffers.
 Base.copy(p::NNFFTPlan{T,D,M}) where {T,D,M} =
-  NNFFTPlan{T,D,M}(p.N, p.J, p.Nin, p.NOut, p.dim, p.k, p.y, p.ysrc, p.outer, p.n, p.accuracy, p.options, copy(p.core), copy(p.inner),
-                 p.pre, p.post, similar(p.g), similar(p.fs), similar(p.fj))
+  NNFFTPlan{T,D,M}(p.N, p.J, p.Nin, p.NOut, p.dim, p.k, p.y, p.ysrc, p.outer, p.n, p.accuracy, p.options, copy(p.core))
+Base.copy(c::NNFFTCore) =
+  NNFFTCore(copy(c.spread), copy(c.inner), c.pre, c.post, similar(c.g), similar(c.fs), similar(c.fj))
 
 function Base.show(io::IO, p::NNFFTPlan{T,D,M}) where {T,D,M}
   print(io, "NNFFTPlan{$T} from $(p.N) sources to $(p.J) targets",
@@ -232,18 +240,22 @@ end
 function LinearAlgebra.mul!(fHat::AbstractArray, p::NNFFTPlan, f::AbstractArray)
   check_size(f, p.Nin, "input"); check_size(fHat, p.NOut, "output")
   L1, L3 = batch_sizes(p.Nin, p.dim:p.dim)
-  L1 * L3 == 1 && (nnfft!(vec(fHat), p, vec(f)); return fHat)
-  fr = reshape(f, L1, p.N, L3); gr = reshape(fHat, L1, p.J, L3)
-  for b in 1:L3, a in 1:L1
-    view(gr, a, :, b) .= nnfft!(p.fj, p, view(fr, a, :, b))
-  end
+  L1 * L3 == 1 && (nnfft!(vec(fHat), p.core, vec(f)); return fHat)
+  nnfft_slices!(reshape(fHat, L1, p.J, L3), p.core, reshape(f, L1, p.N, L3))
   fHat
 end
 
-function nnfft!(fHat, p, f)
-  p.fs .= f .* p.pre
-  mul!(fHat, p.inner, spread!(p.core, p.g, p.fs))
-  fHat .*= p.post
+function nnfft_slices!(gr, c::NNFFTCore, fr)
+  for b in axes(fr, 3), a in axes(fr, 1)
+    view(gr, a, :, b) .= nnfft!(c.fj, c, view(fr, a, :, b))
+  end
+  gr
+end
+
+function nnfft!(fHat, c::NNFFTCore, f)
+  c.fs .= f .* c.pre
+  mul!(fHat, c.inner, spread!(c.spread, c.g, c.fs))
+  fHat .*= c.post
 end
 
 # spread the sources onto the grid; on the CPU the inner NFFT reads the grid of the core in place
@@ -254,18 +266,22 @@ function LinearAlgebra.mul!(f::AbstractArray, pl::Adjoint{Complex{T},<:NNFFTPlan
   p = pl.parent
   check_size(f, p.Nin, "output"); check_size(fHat, p.NOut, "input")
   L1, L3 = batch_sizes(p.Nin, p.dim:p.dim)
-  L1 * L3 == 1 && (nnfft_adjoint!(vec(f), p, vec(fHat)); return f)
-  fr = reshape(f, L1, p.N, L3); gr = reshape(fHat, L1, p.J, L3)
-  for b in 1:L3, a in 1:L1
-    view(fr, a, :, b) .= nnfft_adjoint!(p.fs, p, view(gr, a, :, b))
-  end
+  L1 * L3 == 1 && (nnfft_adjoint!(vec(f), p.core, vec(fHat)); return f)
+  nnfft_adjoint_slices!(reshape(f, L1, p.N, L3), p.core, reshape(fHat, L1, p.J, L3))
   f
 end
 
-function nnfft_adjoint!(f, p, fHat)
-  p.fj .= fHat .* conj.(p.post)
-  interpolate!(p.core, f, p.g, adjoint(p.inner), p.fj)
-  f .*= conj.(p.pre)
+function nnfft_adjoint_slices!(fr, c::NNFFTCore, gr)
+  for b in axes(gr, 3), a in axes(gr, 1)
+    view(fr, a, :, b) .= nnfft_adjoint!(c.fs, c, view(gr, a, :, b))
+  end
+  fr
+end
+
+function nnfft_adjoint!(f, c::NNFFTCore, fHat)
+  c.fj .= fHat .* conj.(c.post)
+  interpolate!(c.spread, f, c.g, adjoint(c.inner), c.fj)
+  f .*= conj.(c.pre)
 end
 
 # the adjoint of the inner NFFT and the resampling at the sources (on the CPU in place, as `spread!`)

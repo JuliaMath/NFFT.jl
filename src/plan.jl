@@ -70,9 +70,7 @@ macro plan_fields()
     fft::AbstractFFTBackend
     tilesize::Union{Nothing,Int}
     strategy::Symbol                  # batch dimensions, see make_engine
-    core::Any
-    fbuf::Any                         # :trail: batch-first copies of input and output
-    gbuf::Any
+    core::Any                         # the engine of the strategy; behind it the transforms are type stable
   end)
 end
 
@@ -132,9 +130,17 @@ batch_strategy(::Type{<:NFFTPlan}, Dd, L1, L3) = Dd > 2 ? :loop : L3 == 1 ? :lea
 function batch_engine(strategy, k, Nd, kernel::KernelEntry, ::Type{T}, fft, tilesize, nthreads, L1, L3) where {T}
   Ñ = grid_size(kernel.σ, Nd, kernel.W)
   c = BatchCore(k, Nd, Ñ, kernel.W, window_function(kernel), T, fft, L1 * L3, tilesize, nthreads)
-  strategy === :lead && return :lead, c, nothing, nothing
-  :trail, c, Array{Complex{T}}(undef, L3, Nd...), Array{Complex{T}}(undef, L3, size(k, 2))
+  strategy === :lead && return :lead, c
+  :trail, TrailCore(c, Array{Complex{T}}(undef, L3, Nd...), Array{Complex{T}}(undef, L3, size(k, 2)))
 end
+
+# :trail: the batch core and batch-first copies of input and output
+struct TrailCore{C<:BatchCore,A,B}
+  core::C
+  fbuf::A
+  gbuf::B
+end
+Base.copy(t::TrailCore) = TrailCore(copy(t.core), similar(t.fbuf), similar(t.gbuf))
 
 # A copy shares the read-only parts (kernel, correction factors, binned nodes) and gets its own
 # grid, FFT plans, locks and buffers, so that copies can run concurrently.
@@ -149,17 +155,17 @@ end
 transform!(::Val{:lead}, p, c, fHat, f) = trafo_batch!(reshape(fHat, c.L, :), c, reshape(f, c.L, c.N...))
 transform_adjoint!(::Val{:lead}, p, c, f, fHat) = adjoint_batch!(reshape(f, c.L, c.N...), c, reshape(fHat, c.L, :))
 
-function transform!(::Val{:trail}, p, c, fHat, f)
-  L3 = c.L
-  transpose_ml!(reshape(p.fbuf, L3, :), reshape(f, :, L3), c.nthreads)
-  trafo_batch!(p.gbuf, c, p.fbuf)
-  transpose_lm!(reshape(fHat, :, L3), p.gbuf, c.nthreads)
+function transform!(::Val{:trail}, p, t::TrailCore, fHat, f)
+  c = t.core; L3 = c.L
+  transpose_ml!(reshape(t.fbuf, L3, :), reshape(f, :, L3), c.nthreads)
+  trafo_batch!(t.gbuf, c, t.fbuf)
+  transpose_lm!(reshape(fHat, :, L3), t.gbuf, c.nthreads)
 end
-function transform_adjoint!(::Val{:trail}, p, c, f, fHat)
-  L3 = c.L
-  transpose_ml!(p.gbuf, reshape(fHat, :, L3), c.nthreads)
-  adjoint_batch!(p.fbuf, c, p.gbuf)
-  transpose_lm!(reshape(f, :, L3), reshape(p.fbuf, L3, :), c.nthreads)
+function transform_adjoint!(::Val{:trail}, p, t::TrailCore, f, fHat)
+  c = t.core; L3 = c.L
+  transpose_ml!(t.gbuf, reshape(fHat, :, L3), c.nthreads)
+  adjoint_batch!(t.fbuf, c, t.gbuf)
+  transpose_lm!(reshape(f, :, L3), reshape(t.fbuf, L3, :), c.nthreads)
 end
 
 # Stage interface (Knopp et al. 2023), for plans without batch dimensions. `g` is an unpadded
