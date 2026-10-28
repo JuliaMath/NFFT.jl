@@ -17,8 +17,8 @@ struct BatchCore{D,K<:SymKernel,T,Tk,D1,CH}
   invphi::NTuple{D,Vector{T}}
   binned::Binned{D,Tk}
   gp::Array{Complex{T},D1}          # (Lp, Ñ .+ W)
-  fwd::PassFFT{D1}                  # on the grid interior, in 1D on F
-  bwd::PassFFT{D1}
+  fwd::FFTWPass{Complex{T},FFTW.FORWARD,D1}  # on the grid interior, in 1D on F
+  bwd::FFTWPass{Complex{T},FFTW.BACKWARD,D1}
   locks::TileLocks{D}
   bufs::Vector{Array{Complex{T},D1}} # tile buffers (Lp, B+W+1, …)
   # 1D: FFT buffer with the batch dimension last. A 1D FFT along dimension 2 of the batch-first grid

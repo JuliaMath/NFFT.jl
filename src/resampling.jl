@@ -127,7 +127,7 @@ function resample_adjoint_slide!(gp, K::SymKernel{W}, b::Binned{D}, vals, Ñ, L:
         if t == last(tiles)
           flush!(gp, buf, o, L)
         else
-          flush!(gp, selectdim(buf, D, 1:B), o, L)
+          flush!(gp, lastdim_view(buf, 1:B), o, L)
           # forward copy is safe: the destination starts before the source
           @inbounds for i in 1:(E-B)*S
             buf[i] = buf[i+B*S]
@@ -152,22 +152,21 @@ resample_adjoint!(gp, K, b::Binned{D}, vals, Ñ, L, bufs) where {D} =
 # (2:ndims for the batch-first grid of the batch kernels).
 function halo_chunks(gp, d, nthreads, dims)
   nd = ndims(gp)
+  nd == 1 && return d, [1:size(gp, 1)]
   e = d != nd ? nd : first(dims) != d ? first(dims) : 1
-  e, chunks(axes(gp, e), nthreads)
+  e, chunks(1:size(gp, e), nthreads)
 end
 function fill_halo!(gp, h::Tuple, nthreads, dims=1:ndims(gp))
   for d in dims
     Ñ = size(gp, d) - h[1] - h[2]
-    if ndims(gp) == 1
-      copyto!(view(gp, 1:h[1]), view(gp, Ñ+1:Ñ+h[1]))
-      copyto!(view(gp, Ñ+h[1]+1:Ñ+h[1]+h[2]), view(gp, h[1]+1:h[1]+h[2]))
-      continue
-    end
     e, cs = halo_chunks(gp, d, nthreads, dims)
     @maybe_threads length(cs) for c in cs
-      g = selectdim(gp, e, c)
-      copyto!(selectdim(g, d, 1:h[1]), selectdim(g, d, Ñ+1:Ñ+h[1]))
-      copyto!(selectdim(g, d, Ñ+h[1]+1:Ñ+h[1]+h[2]), selectdim(g, d, h[1]+1:h[1]+h[2]))
+      for I in halo_slab(gp, d, e, c, 1:h[1])
+        gp[I] = gp[shift(I, d, Ñ)]
+      end
+      for I in halo_slab(gp, d, e, c, Ñ+h[1]+1:Ñ+h[1]+h[2])
+        gp[I] = gp[shift(I, d, -Ñ)]
+      end
     end
   end
   gp
@@ -175,20 +174,22 @@ end
 function fold_halo!(gp, h::Tuple, nthreads, dims=1:ndims(gp))
   for d in reverse(dims)
     Ñ = size(gp, d) - h[1] - h[2]
-    if ndims(gp) == 1
-      view(gp, Ñ+1:Ñ+h[1]) .+= view(gp, 1:h[1])
-      view(gp, h[1]+1:h[1]+h[2]) .+= view(gp, Ñ+h[1]+1:Ñ+h[1]+h[2])
-      continue
-    end
     e, cs = halo_chunks(gp, d, nthreads, dims)
     @maybe_threads length(cs) for c in cs
-      g = selectdim(gp, e, c)
-      selectdim(g, d, Ñ+1:Ñ+h[1]) .+= selectdim(g, d, 1:h[1])
-      selectdim(g, d, h[1]+1:h[1]+h[2]) .+= selectdim(g, d, Ñ+h[1]+1:Ñ+h[1]+h[2])
+      for I in halo_slab(gp, d, e, c, 1:h[1])
+        gp[shift(I, d, Ñ)] += gp[I]
+      end
+      for I in halo_slab(gp, d, e, c, Ñ+h[1]+1:Ñ+h[1]+h[2])
+        gp[shift(I, d, -Ñ)] += gp[I]
+      end
     end
   end
   gp
 end
+# The indices r along dimension d, the chunk c along dimension e (e = d in 1D: one chunk).
+halo_slab(gp::AbstractArray{T,N}, d, e, c, r) where {T,N} =
+  CartesianIndices(ntuple(i -> i == d ? r : i == e ? c : (1:size(gp, i)), Val(N)))
+@inline shift(I::CartesianIndex{N}, d, s) where {N} = I + CartesianIndex(ntuple(i -> i == d ? s : 0, Val(N)))
 interior(gp, h::Tuple) = view(gp, map(n -> h[1]+1:n-h[2], size(gp))...)
 # the batch-first grid: all of dimension 1
 interior_b(gp, h::Tuple) = view(gp, :, map(n -> h[1]+1:n-h[2], Base.tail(size(gp)))...)

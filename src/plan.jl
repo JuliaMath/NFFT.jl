@@ -11,8 +11,8 @@ struct NFFTCore{D,K<:SymKernel,T,Tk}
   invphi::NTuple{D,Vector{T}}
   binned::Binned{D,Tk}
   gp::Array{Complex{T},D}           # padded grid, Ñ .+ W
-  fwd::PassFFT{D}
-  bwd::PassFFT{D}
+  fwd::FFTWPass{Complex{T},FFTW.FORWARD,D}
+  bwd::FFTWPass{Complex{T},FFTW.BACKWARD,D}
   locks::TileLocks{D}
   # one extra point: tile assignment and support may round differently at tile edges
   bufs::Vector{Array{Complex{T},D}} # tile buffers of edge B+W+1
@@ -22,8 +22,9 @@ end
 
 # With fft = nothing a core for the resampling stages only (the spreading of the NNFFT): no FFT
 # plans and no correction factors.
-function NFFTCore(k::AbstractMatrix, N::NTuple{D,Int}, Ñ::NTuple{D,Int}, W, φ, ::Type{T}, fft, B, nthreads) where {D,T}
-  K = make_kernel(φ, W, T)
+function NFFTCore(k::AbstractMatrix, N::NTuple{D,Int}, Ñ::NTuple{D,Int}, W, φ::F, ::Type{T}, fft, B, nthreads;
+                  kernel=make_kernel(φ, W, T)) where {D,F,T}
+  K = kernel
   invphi = fft === nothing ? ntuple(_ -> T[], D) : inv_kernel_ft(φ, W, N, Ñ, T, nthreads)
   B = B === nothing ? default_tile(D, W) : B
   h = halo(W)

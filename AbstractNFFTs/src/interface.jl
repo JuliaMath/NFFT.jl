@@ -1,6 +1,6 @@
 abstract type AbstractNFFTBackend end
 struct BackendReference
-    ref::Ref{Union{Missing, AbstractNFFTBackend}}
+    ref::Base.RefValue{Union{Missing, AbstractNFFTBackend}}
     BackendReference(val::Union{Missing, AbstractNFFTBackend}) = new(Ref{Union{Missing, AbstractNFFTBackend}}(val))
 end
 Base.setindex!(ref::BackendReference, val::Union{Missing, AbstractNFFTBackend}) = ref.ref[] = val

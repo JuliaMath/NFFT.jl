@@ -34,21 +34,31 @@ end
 # run along the transformed dims in decreasing order, pass d only on lines whose transformed dims
 # < d are kept. Backward (adjoint NFFT): only the corner outputs are needed, passes in increasing
 # order with the same restriction. Batch dimensions (not in `tdims`) are never transformed.
-struct PassFFT{D}
-  plans::Vector{Vector{Any}}
+struct PassFFT{D,P}
+  plans::Vector{Vector{P}}
   boxes::Vector{Vector{NTuple{D,UnitRange{Int}}}}
 end
+
+# The passes on arrays of element type C in direction K (FFTW.FORWARD or FFTW.BACKWARD).
+const FFTWPass{C,K,D} = PassFFT{D,FFTW.cFFTWPlan{C,K,true,D,Int}}
 
 # `dir` selects the transform (:fwd forward, :bwd unnormalised backward), `pattern` the pruning
 # (:fwd zero input outside the kept modes, :bwd only the kept outputs needed); they differ for the
 # RNFFT. With `fftw_threads`, a single pass is threaded by FFTW instead of split into boxes.
-function PassFFT(fft::FFTWBackend, x::AbstractArray{T,D}, N::NTuple{D,Int}; dir=:fwd, pattern=dir,
-                 nthreads=Threads.nthreads(), tdims=1:D, fftw_threads=length(tdims) == 1) where {T,D}
+function PassFFT(fft::FFTWBackend, x::AbstractArray{C,D}, N::NTuple{D,Int}; dir=:fwd, pattern=dir,
+                 nthreads=Threads.nthreads(), tdims=1:D, fftw_threads=length(tdims) == 1) where {C,D}
+  dir == :fwd ? fftw_passes(Val(FFTW.FORWARD), fft, x, N, pattern, nthreads, tdims, fftw_threads) :
+                fftw_passes(Val(FFTW.BACKWARD), fft, x, N, pattern, nthreads, tdims, fftw_threads)
+end
+
+function fftw_passes(::Val{K}, fft, x::AbstractArray{C,D}, N, pattern, nthreads, tdims, fftw_threads) where {K,C,D}
   Ñ = size(x)
   order = pattern == :fwd ? reverse(tdims) : tdims
-  plans, boxes = Vector{Any}[], Vector{NTuple{D,UnitRange{Int}}}[]
+  P = FFTW.cFFTWPlan{C,K,true,D,Int}
+  plans, boxes = Vector{P}[], Vector{NTuple{D,UnitRange{Int}}}[]
   for d in order
-    sets = ntuple(k -> (k < d && k in tdims) ? filter(!isempty, keptranges(N[k], Ñ[k])) : (1:Ñ[k],), D)
+    sets = ntuple(k -> (k < d && k in tdims) ? UnitRange{Int}[r for r in keptranges(N[k], Ñ[k]) if !isempty(r)] :
+                                               UnitRange{Int}[1:Ñ[k]], Val(D))
     bxs = vec(collect(Iterators.product(sets...)))
     # split each box along the outermost dimension other than d
     s = fftw_threads ? 0 : d == D ? D - 1 : D
@@ -58,16 +68,18 @@ function PassFFT(fft::FFTWBackend, x::AbstractArray{T,D}, N::NTuple{D,Int}; dir=
     end
     push!(boxes, pb)
     push!(plans, with_fftw_threads(fftw_threads ? nthreads : 1) do
-      Any[dir == :fwd ? FFTW.plan_fft!(view(x, b...), d; flags=fft.flags) :
-                        FFTW.plan_bfft!(view(x, b...), d; flags=fft.flags) for b in pb]
+      P[K == FFTW.FORWARD ? FFTW.plan_fft!(view(x, b...), d; flags=fft.flags) :
+                            FFTW.plan_bfft!(view(x, b...), d; flags=fft.flags) for b in pb]
     end)
   end
-  PassFFT{D}(plans, boxes)
+  PassFFT{D,P}(plans, boxes)
 end
 
 # No FFT: the core of the NNFFT spreading only resamples.
-PassFFT(::Nothing, x::AbstractArray{T,D}, N; kwargs...) where {T,D} =
-  PassFFT{D}(Vector{Any}[], Vector{NTuple{D,UnitRange{Int}}}[])
+function PassFFT(::Nothing, x::AbstractArray{C,D}, N; dir=:fwd, kwargs...) where {C,D}
+  P = FFTW.cFFTWPlan{C,dir == :fwd ? FFTW.FORWARD : FFTW.BACKWARD,true,D,Int}
+  PassFFT{D,P}(Vector{P}[], Vector{NTuple{D,UnitRange{Int}}}[])
+end
 
 function apply!(P::PassFFT, x)
   for (ps, bs) in zip(P.plans, P.boxes)

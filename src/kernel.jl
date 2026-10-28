@@ -6,7 +6,8 @@ struct PolyKernel{W,P1,T}
 end
 
 # Least-squares fit at Chebyshev points; the monomial basis is well conditioned on [−1, 1].
-function PolyKernel(φ, W, P; T=Float64)
+PolyKernel(φ, W::Integer, P::Integer; T=Float64) = PolyKernel(φ, Val(W), Val(P), T)
+function PolyKernel(φ, ::Val{W}, ::Val{P}, ::Type{T}) where {W,P,T}
   ns = 4P
   s = [cospi((2k - 1) / (2ns)) for k in 1:ns]
   V = [sk^k for sk in s, k in 0:P]
@@ -14,13 +15,16 @@ function PolyKernel(φ, W, P; T=Float64)
   for i in 0:W-1
     C[:, i+1] = V \ [φ(1 + i - W / 2 - (sk + 1) / 2) for sk in s]
   end
-  PolyKernel{W,P + 1,T}(ntuple(k -> SVector{W,T}(C[k, :]), P + 1))
+  PolyKernel{W,P + 1,T}(ntuple(k -> SVector{W,T}(view(C, k, :)), Val(P + 1)))
 end
 
 # The window kernel of the resampling (polynomial degree W+3, accurate to the window itself) and the
 # correction factors 1/φ̂ of the modes −N÷2 … N−N÷2−1 per dimension.
-make_kernel(φ, W, ::Type{T}) where {T} = SymKernel(PolyKernel(φ, W, W + 3; T))
-inv_kernel_ft(φ, W, N, Ñ, ::Type{T}, nthreads) where {T} =
+# With W as a Val the type of the kernel is inferred.
+make_kernel(φ, W::Integer, ::Type{T}) where {T} = make_kernel(φ, Val(W), T)
+make_kernel(φ, ::Val{W}, ::Type{T}) where {W,T} = SymKernel(PolyKernel(φ, Val(W), Val(W + 3), T))
+# φ::F: a function that is only passed on is otherwise not specialised on.
+inv_kernel_ft(φ::F, W, N, Ñ, ::Type{T}, nthreads) where {F,T} =
   ntuple(d -> T.(1 ./ kernel_ft(φ, W, N[d], Ñ[d]; nthreads)), length(N))
 
 # The window is symmetric: piece W−1−i at s equals piece i at −s. With wᵢ(s) = Eᵢ(s²) + s·Oᵢ(s²)
@@ -32,9 +36,9 @@ struct SymKernel{W,H,NE,NO,T}
 end
 function SymKernel(K::PolyKernel{W,P1,T}) where {W,P1,T}
   H = cld(W, 2)
-  even = Tuple(SVector{H,T}(K.coeffs[k][1:H]) for k in 1:2:P1)
-  odd = Tuple(SVector{H,T}(K.coeffs[k][1:H]) for k in 2:2:P1)
-  SymKernel{W,H,length(even),length(odd),T}(even, odd)
+  even = ntuple(k -> SVector{H,T}(ntuple(i -> K.coeffs[2k-1][i], Val(H))), Val(cld(P1, 2)))
+  odd = ntuple(k -> SVector{H,T}(ntuple(i -> K.coeffs[2k][i], Val(H))), Val(P1 ÷ 2))
+  SymKernel{W,H,cld(P1, 2),P1 ÷ 2,T}(even, odd)
 end
 
 # The Horner chain is unrolled at compile time as a sequence of statements: with a runtime index
@@ -68,7 +72,7 @@ end
 # it is computed by Gauss–Legendre quadrature at nc Chebyshev points and interpolated (Clenshaw)
 # at the N modes; quadrature per mode costs O(N·nq) (130 ms for N = 2^18). 32 points reach the
 # rounding floor of the quadrature itself (≈ 1e-13 relative).
-function kernel_ft(φ, W, N, Ñ; nq=2W + 20, nc=32, nthreads=Threads.nthreads())
+function kernel_ft(φ::F, W, N, Ñ; nq=2W + 20, nc=32, nthreads=Threads.nthreads()) where {F}
   ks = -N÷2:N-N÷2-1
   kmax = max(N ÷ 2, N - N ÷ 2 - 1)
   N <= 4nc && (quad = window_quadrature(φ, W; nq); return [quad(k / Ñ) for k in ks])
@@ -83,7 +87,7 @@ function kernel_ft(φ, W, N, Ñ; nq=2W + 20, nc=32, nthreads=Threads.nthreads())
 end
 
 # ξ ↦ ∫ φ(z) cos(2πξz) dz by Gauss–Legendre quadrature with nq points
-function window_quadrature(φ, W; nq=2W + 20)
+function window_quadrature(φ::F, W; nq=2W + 20) where {F}
   x, w = gausslegendre(nq)
   z = x .* (W / 2); wz = w .* (W / 2) .* φ.(z)
   ξ -> sum(wz[q] * cospi(2ξ * z[q]) for q in eachindex(z))
@@ -94,7 +98,7 @@ struct WindowFT
   c::Vector{Float64}
   ξmax::Float64
 end
-function WindowFT(φ, W, ξmax; nq=2W + 20, nc=32)
+function WindowFT(φ::F, W, ξmax; nq=2W + 20, nc=32) where {F}
   quad = window_quadrature(φ, W; nq)
   θ = [π * (j - 0.5) / nc for j in 1:nc]
   fv = [quad(ξmax * (cos(t) + 1) / 2) for t in θ]

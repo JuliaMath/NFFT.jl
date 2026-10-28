@@ -18,7 +18,7 @@ The AbstractNFFTs backend of NFFT.jl. Activated when the package is loaded; reac
 `NFFT.activate!()`.
 """
 struct NFFTBackend <: AbstractNFFTBackend end
-activate!() = AbstractNFFTs.set_active_backend!(NFFT)
+activate!() = AbstractNFFTs.set_active_backend!(NFFTBackend())
 backend() = NFFTBackend()
 
 include("util.jl")

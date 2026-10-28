@@ -49,9 +49,9 @@ window_error(e::KernelEntry, D) = e.est_rms * sqrt(D) * 1.5
 
 # Rounding floor: node coordinates in Float64 limit the phase to ≈ eps(Float64)·max(N), the
 # working precision T adds ≈ 5·eps(T) (FFT, summation).
-error_floor(N, T) = 0.5 * eps(Float64) * maximum(N) + 5 * eps(T)
+error_floor(N, ::Type{T}) where {T} = 0.5 * eps(Float64) * maximum(N) + 5 * eps(T)
 
-predicted_error(e::KernelEntry, N::NTuple{D,Int}, T) where {D} =
+predicted_error(e::KernelEntry, N::NTuple{D,Int}, ::Type{T}) where {D,T} =
   window_error(e, D) + error_floor(N, T) + 10 * eps(T) * e.amp
 
 grid_size(σ, N) = map(n -> smooth_size(ceil(Int, σ * n)), N)
@@ -67,7 +67,7 @@ end
 # The kernels a plan may use, from its options `window`, `W`, `σ`, as pairs (entry, predicted
 # error): a CustomWindow as given (its error is unknown), otherwise the `n` cheapest table entries
 # that reach the tolerance (`choose_kernels`).
-function select_kernels(window, W, σ, reltol, N, J, T; Ncost=N, n=1)
+function select_kernels(window, W, σ, reltol, N, J, ::Type{T}; Ncost=N, n=1) where {T}
   check_window_options(W, σ)
   if window isa CustomWindow
     (W === nothing || σ === nothing) && throw(ArgumentError("a CustomWindow needs W and σ"))
@@ -86,11 +86,26 @@ function check_window_options(W, σ)
   nothing
 end
 
+# Indices of the n smallest values, smallest first (n is small: repeated selection).
+function cheapest(cost::Vector{Float64}, n)
+  idx = Int[]
+  for _ in 1:min(n, length(cost))
+    i = 0
+    for j in eachindex(cost)
+      j in idx && continue
+      (i == 0 || cost[j] < cost[i]) && (i = j)
+    end
+    push!(idx, i)
+  end
+  idx
+end
+
 # The `n` table entries of lowest predicted cost that reach `reltol`, restricted by the user's
 # `window` (`:auto` or a family), `W` and `σ`, cheapest first, as pairs (entry, predicted error);
 # σ is replaced by the user's σ when given. `Ncost` is the size whose oversampled grid the cost
 # model sees (NFCT/NFST: the error is that of an NFFT of twice the size on half its grid).
-function choose_kernels(reltol, N::NTuple{D,Int}, J, T; window=:auto, W=nothing, σ=nothing, Ncost=N, n=1) where {D}
+function choose_kernels(reltol, N::NTuple{D,Int}, J, ::Type{T}; window=:auto, W=nothing, σ=nothing, Ncost=N,
+                        n=1) where {D,T}
   cands = filter(KERNEL_TABLE) do e
     (window === :auto || e.window == window) && (W === nothing || e.W == W)
   end
@@ -100,11 +115,12 @@ function choose_kernels(reltol, N::NTuple{D,Int}, J, T; window=:auto, W=nothing,
   end
   isempty(cands) && throw(ArgumentError("no table entry for window = $window, W = $W, σ = $σ"))
   # below what any candidate reaches: take the most accurate
-  tol = max(reltol, minimum(e -> predicted_error(e, N, T), cands))
-  ok = filter(e -> predicted_error(e, N, T) <= tol, cands)
+  err = [predicted_error(e, N, T) for e in cands]
+  tol = max(reltol, minimum(err))
+  ok = cands[err .<= tol]
   # the cost once per entry: it searches the next FFT-friendly grid size
   cost = [kernel_cost(e, Ncost, J) for e in ok]
-  best = ok[partialsortperm(cost, 1:min(n, length(ok)))]
+  best = ok[cheapest(cost, n)]
   if σ !== nothing
     best = [KernelEntry(e.window, e.W, Float64(σ), e.β, e.e0, e.est_rms, e.amp) for e in best]
   end

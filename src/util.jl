@@ -42,17 +42,22 @@ function tasks(f, n)
   if n == 1
     f(1)
   else
-    @sync for it in 1:n
-      Threads.@spawn f(it)
+    ts = Vector{Task}(undef, n)
+    for it in 1:n
+      ts[it] = Threads.@spawn f(it)
     end
+    foreach(wait, ts)
   end
   nothing
 end
 
+# The part r of the last dimension (selectdim with a constant dimension, without its error path).
+lastdim_view(A::AbstractArray{T,N}, r) where {T,N} = view(A, ntuple(_ -> Colon(), Val(N - 1))..., r)
+
 function threaded_copy!(dst, src, nthreads)
   D = ndims(dst)
   @maybe_threads nthreads for r in chunks(axes(dst, D), nthreads)
-    copyto!(selectdim(dst, D, r), selectdim(src, D, r))
+    copyto!(lastdim_view(dst, r), lastdim_view(src, r))
   end
   dst
 end

@@ -19,8 +19,8 @@ struct RNFFTCore{D,K<:SymKernel,T,Tk}
   binned::Binned{D,Tk}
   gp::Array{T,D}                       # padded real grid, Ñ .+ W
   H::Array{Complex{T},D}               # half spectrum, (Ñ₁÷2+1, Ñ₂, …)
-  pfwd::PassFFT{D}                     # direct: backward FFTs along 2…D, zero input skipped
-  pbwd::PassFFT{D}                     # adjoint: forward FFTs along 2…D, only kept outputs
+  pfwd::FFTWPass{Complex{T},FFTW.BACKWARD,D} # direct: backward FFTs along 2…D, zero input skipped
+  pbwd::FFTWPass{Complex{T},FFTW.FORWARD,D}  # adjoint: forward FFTs along 2…D, only kept outputs
   boxes::Vector{UnitRange{Int}}        # chunks along dimension D for the c2r/r2c FFTs
   c2r::Vector{Any}
   r2c::Vector{Any}
