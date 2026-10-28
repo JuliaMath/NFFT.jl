@@ -99,46 +99,17 @@ end
 
 function nnfft_plan(::Val{D}, k, y, kc, yc, g::GenericOptions{T}, Nin::NTuple{M,Int}; window, W, σ, fft) where {D,T,M}
   J = size(kc, 2); N = size(yc, 2)
-  y0 = ntuple(d -> N == 0 ? 0.0 : (minimum(view(yc, d, :)) + maximum(view(yc, d, :))) / 2, Val(D))
-  k0 = ntuple(d -> J == 0 ? 0.0 : (minimum(view(kc, d, :)) + maximum(view(kc, d, :))) / 2, Val(D))
-  Y = ntuple(d -> N == 0 ? 0.0 : maximum(x -> abs(x - y0[d]), view(yc, d, :)), Val(D))
-  K = ntuple(d -> J == 0 ? 0.0 : maximum(x -> abs(x - k0[d]), view(kc, d, :)), Val(D))
-  outer, inner_entry, n, acc = choose_nnfft(g.reltol, Y, K, N, J, T; window, W, σ)
-  σ1 = outer.σ; W1 = outer.W
-  h = map(x -> x > 0 ? 1 / (2σ1 * x) : 1.0, K)
-  # the outer grid as a resampling core: source y′/h sits at grid position y′/h + n÷2
-  ys = Matrix{Float64}(undef, D, N)
-  @maybe_threads g.nthreads for l in 1:N
-    for d in 1:D
-      x = (yc[d, l] - y0[d]) / (h[d] * n[d]) + (n[d] ÷ 2) / n[d]
-      ys[d, l] = x >= 0.5 ? x - 1 : x
-    end
-  end
-  φ = window_function(outer.window, W1, outer.β, outer.e0)
+  y0, Y = centre(Val(D), yc)
+  k0, K = centre(Val(D), kc)
+  outer, e2, n, acc = choose_nnfft(g.reltol, Y, K, N, J, T; window, W, σ)
+  φ = window_function(outer.window, outer.W, outer.β, outer.e0)
+  ys, xs, pre, post = nnfft_nodes(Val(D), kc, yc, y0, k0, K, outer, n, φ, g.nthreads)
   core = g.storage <: Array ?
-    NFFTCore(ys, n, n, W1, φ, T, nothing, nothing, g.nthreads) :
-    device_core(g.storage, ys, n, n, W1, φ, T, g.nthreads, 1, 1; fft=false)
-  # inner NFFT at h k′ in Float64 (its grid positions are computed from these)
-  xs = Matrix{Float64}(undef, D, J)
-  @maybe_threads g.nthreads for j in 1:J
-    for d in 1:D
-      xs[d, j] = (kc[d, j] - k0[d]) * h[d]
-    end
-  end
-  e2 = inner_entry
+    NFFTCore(ys, n, n, outer.W, φ, T, nothing, nothing, g.nthreads) :
+    device_core(g.storage, ys, n, n, outer.W, φ, T, g.nthreads, 1, 1; fft=false)
   # the kernel is fixed by the choice above; below the reachable error the tolerance only must stay positive
   inner = plan_nfft(NFFTBackend(), xs, n; reltol=max((g.reltol - acc.outer) / outer.amp, eps(Float64)), eltype=T, storage=g.storage,
                     nthreads=g.nthreads, window=e2.window, W=e2.W, σ=e2.σ, fft)
-  # phases and the division by φ̂ in Float64; |h k′| ≤ 1/(2σ₁)
-  ft = WindowFT(φ, W1, 1 / (2σ1))
-  pre = Vector{ComplexF64}(undef, N)
-  @maybe_threads g.nthreads for l in 1:N
-    pre[l] = cispi(-2 * sum(ntuple(d -> k0[d] * (yc[d, l] - y0[d]), Val(D))))
-  end
-  post = Vector{ComplexF64}(undef, J)
-  @maybe_threads g.nthreads for j in 1:J
-    post[j] = cispi(-2 * sum(ntuple(d -> kc[d, j] * y0[d], Val(D)))) / prod(ntuple(d -> ft(abs(xs[d, j])), Val(D)))
-  end
   S = g.storage
   store(v) = to_storage(S, Complex{T}.(v))
   dim = first(g.dims)
@@ -147,6 +118,47 @@ function nnfft_plan(::Val{D}, k, y, kc, yc, g::GenericOptions{T}, Nin::NTuple{M,
                      to_storage(S, zeros(Complex{T}, N)), to_storage(S, zeros(Complex{T}, J)))
   NNFFTPlan{T,D,M}(N, J, Nin, Base.setindex(Nin, J, dim), dim, to_storage(S, k, T), to_storage(S, y, T), S <: Array ? y : yc,
                    outer, inner.kernel, n, acc.outer + outer.amp * accuracy(inner), g, engine)
+end
+
+# centre of the nodes x (D × M) and their largest distance from it, per dimension
+function centre(::Val{D}, x) where {D}
+  M = size(x, 2)
+  x0 = ntuple(d -> M == 0 ? 0.0 : (minimum(view(x, d, :)) + maximum(view(x, d, :))) / 2, Val(D))
+  x0, ntuple(d -> M == 0 ? 0.0 : maximum(t -> abs(t - x0[d]), view(x, d, :)), Val(D))
+end
+
+# The nodes of the spreading on the grid n (ys, grid positions scaled to [−1/2, 1/2)) and of the inner
+# NFFT (xs), and the phases pre and post, for the outer window φ with table entry `outer`. In
+# Float64: the grid positions of the inner NFFT are computed from xs.
+function nnfft_nodes(::Val{D}, kc, yc, y0, k0, K, outer, n, φ::F, nthreads) where {D,F}
+  J = size(kc, 2); N = size(yc, 2)
+  σ1 = outer.σ
+  h = map(x -> x > 0 ? 1 / (2σ1 * x) : 1.0, K)
+  # source y′/h sits at grid position y′/h + n÷2
+  ys = Matrix{Float64}(undef, D, N)
+  @maybe_threads nthreads for l in 1:N
+    for d in 1:D
+      x = (yc[d, l] - y0[d]) / (h[d] * n[d]) + (n[d] ÷ 2) / n[d]
+      ys[d, l] = x >= 0.5 ? x - 1 : x
+    end
+  end
+  xs = Matrix{Float64}(undef, D, J)
+  @maybe_threads nthreads for j in 1:J
+    for d in 1:D
+      xs[d, j] = (kc[d, j] - k0[d]) * h[d]
+    end
+  end
+  # the division by φ̂; |h k′| ≤ 1/(2σ₁)
+  ft = WindowFT(φ, outer.W, 1 / (2σ1))
+  pre = Vector{ComplexF64}(undef, N)
+  @maybe_threads nthreads for l in 1:N
+    pre[l] = cispi(-2 * sum(ntuple(d -> k0[d] * (yc[d, l] - y0[d]), Val(D))))
+  end
+  post = Vector{ComplexF64}(undef, J)
+  @maybe_threads nthreads for j in 1:J
+    post[j] = cispi(-2 * sum(ntuple(d -> kc[d, j] * y0[d], Val(D)))) / prod(ntuple(d -> ft(abs(xs[d, j])), Val(D)))
+  end
+  ys, xs, pre, post
 end
 
 # Outer window e₁ (spreading) and inner NFFT kernel e₂ at the lowest predicted cost: e₁ with error
