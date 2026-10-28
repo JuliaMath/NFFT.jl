@@ -302,6 +302,33 @@ end
 nbatch(c) = c.L1 * c.L3
 node_values(c, v) = reshape(v, c.L1, :, c.L3)
 
+# In-place FFTs of A along the dimensions `region` (a range). rocFFT (AMDGPU.jl) only plans regions
+# that start at dimension 1 or end at the last one and rejects the others with an ArgumentError;
+# for those the plan runs on every slice of A along the dimensions after the region, which are
+# contiguous and end with the region.
+struct SlicedPlan{P,A,S}
+  p::P
+  parent::A
+  slices::Vector{S}
+end
+function Base.:*(s::SlicedPlan, x)
+  x === s.parent || throw(ArgumentError("a sliced FFT plan applies to the array it was made for"))
+  foreach(y -> s.p * y, s.slices)
+  x
+end
+
+function inplace_plan(plan!, A, region)
+  try
+    plan!(A, region)
+  catch e
+    e isa ArgumentError || rethrow()
+    b = last(region)
+    B = reshape(A, size(A)[1:b]..., :)
+    slices = [view(B, ntuple(_ -> Colon(), b)..., l) for l in axes(B, b + 1)]
+    SlicedPlan(plan!(first(slices), region), A, slices)
+  end
+end
+
 ## NFFT
 
 struct GPUCore{D,ND,V,G,PF,PB,B}
@@ -429,8 +456,8 @@ end
 
 function rnfft_core(N::NTuple{D}, Nh, Ñ, L1, L3, W, nd, invphi, gp, gf, backend) where {D}
   H = KA.zeros(backend, complex(eltype(gf)), Ñ[1] ÷ 2 + 1, Base.tail(Ñ)..., L1 * L3)
-  pb = D == 1 ? nothing : plan_bfft!(H, 2:D)
-  pf = D == 1 ? nothing : plan_fft!(H, 2:D)
+  pb = D == 1 ? nothing : inplace_plan(plan_bfft!, H, 2:D)
+  pf = D == 1 ? nothing : inplace_plan(plan_fft!, H, 2:D)
   RGPUCore(N, Nh, Ñ, L1, L3, W, nd, invphi, gp, gf, H, pb, pf, plan_brfft(H, Ñ[1], 1), plan_rfft(gf, 1), backend)
 end
 
@@ -516,7 +543,7 @@ end
 
 function real_core(::Val{S}, N::NTuple{D}, Ñ, L1, L3, W, nd, cfwd, cadj, gp, F, backend) where {S,D}
   E = ntuple(d -> KA.zeros(backend, complex(eltype(F)), Base.setindex(size(F), 2Ñ[d], d)...), D)
-  pE = ntuple(d -> plan_fft!(E[d], d), D)
+  pE = ntuple(d -> inplace_plan(plan_fft!, E[d], d:d), D)
   RealGPUCore{S,D,typeof(nd),eltype(cfwd),typeof(gp),typeof(E),typeof(pE),typeof(backend)}(
     N, Ñ, L1, L3, W, nd, cfwd, cadj, gp, F, E, pE, backend)
 end
