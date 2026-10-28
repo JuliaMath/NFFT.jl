@@ -1,10 +1,10 @@
 # libnfftjl (experimental)
 
-NFFT.jl as a C library, compiled with `juliac --trim`: NFFT, RNFFT, NFCT and NFST and their adjoints in
-1–3 dimensions, with batches,
-double and single precision, parameters chosen from NFFT.jl's kernel table for a requested relative error. The
-library carries its Julia runtime; no Julia installation is needed to use it. Bindings for other
-languages (`../bindings/`) are thin wrappers around `include/nfftjl.h`.
+NFFT.jl as a C library, compiled with `juliac --trim`: NFFT, RNFFT, NFCT and NFST and their
+adjoints in 1–3 dimensions, with batches, in double and single precision, parameters chosen from
+NFFT.jl's kernel table for a requested relative error. The library carries its Julia runtime; no
+Julia installation is needed to use it. Bindings for other languages (`../bindings/`) are thin
+wrappers around `include/nfftjl.h`.
 
 ```
 ./build.sh                   # → build/lib/libnfftjl.{so,dylib} with its runtime, the C test and examples
