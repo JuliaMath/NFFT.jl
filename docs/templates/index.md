@@ -1,6 +1,7 @@
 # NFFT.jl
 
-*Fast Fourier transforms at non-equidistant nodes, in pure Julia, on CPUs and GPUs.*
+*Fast Fourier transforms at non-equidistant nodes: a Julia package for CPUs and GPUs, and a library
+for Python and C compiled from the same code.*
 
 !!! warning "Development version"
     This documentation describes NFFT.jl 1.0, which is under development on the main branch
@@ -13,6 +14,10 @@ accurate to a tolerance you choose and runs in ``\mathcal{O}(|\bm{N}| \log |\bm{
 for ``J`` nodes and an array of size ``\bm{N}``. The same plans run multi-threaded on the CPU and
 on GPUs (CUDA, AMD, Apple).
 
+## Quick start
+
+**Julia**
+
 ```julia
 using NFFT
 
@@ -23,6 +28,42 @@ p = plan_nfft(k, size(f))            # relative error 1e-8 by default
 fHat = p * f                         # NFFT: equidistant → nodes
 g = adjoint(p) * fHat                # adjoint NFFT: nodes → equidistant
 ```
+
+**Python** (experimental, see [Python](python.md))
+
+```python
+{{include bindings/python/examples/quickstart.py}}
+```
+
+**C** (experimental, see [C](c.md))
+
+```c
+#include "nfftjl.h"
+
+int64_t N[] = {256, 256};             /* column major: node j is k[2j], k[2j+1] */
+int64_t p = nfftjl_plan_create(2, N, J, k, 1e-8, nfftjl_num_threads());
+nfftjl_trafo(p, f, fhat);             /* NFFT: equidistant → nodes */
+nfftjl_adjoint(p, fhat, g);           /* adjoint NFFT: nodes → equidistant */
+nfftjl_plan_destroy(p);
+```
+
+## What is available in which language
+
+The Julia package is the full library. Python and C use `libnfftjl`, a library compiled from the
+same Julia code with `juliac --trim`: no Julia installation is needed to use it, and it is as fast
+as the Julia package. Its interface is experimental and covers the core transform so far.
+
+| | Julia | Python | C |
+|:--|:--|:--|:--|
+| NFFT and adjoint, `reltol` chooses the parameters | ✓ | ✓ | ✓ |
+| dimensions | any | 1–3 | 1–3 |
+| precision | Float32, Float64 | Float64 | Float64 |
+| multi-threaded | ✓ | ✓ | ✓ |
+| transforms along dimensions (batches) | ✓ | – | – |
+| RNFFT, NFCT, NFST, NNFFT | ✓ | – | – |
+| GPUs | ✓ | – | – |
+| stages, density compensation, Toeplitz | ✓ | – | – |
+| status | 1.0 (in development) | experimental | experimental |
 
 ## What NFFT.jl offers
 
@@ -57,16 +98,18 @@ Pkg.add("NFFT")
 ```
 
 This also installs `AbstractNFFTs.jl`, the interface package. Sampling density compensation and
-Toeplitz kernels are in `NFFTTools.jl` (`Pkg.add("NFFTTools")`).
+Toeplitz kernels are in `NFFTTools.jl` (`Pkg.add("NFFTTools")`). For Python and C see
+[Python](python.md) and [C](c.md).
 
 ## Guide
 
 The documentation follows the [Diátaxis](https://diataxis.fr) structure:
 
-**Tutorial**, to learn NFFT.jl step by step:
-- [Getting Started](@ref): plans, transforms, precision, threads and changing nodes.
+**Getting started**, to learn NFFT.jl step by step:
+- [Getting Started](@ref) in Julia: plans, transforms, precision, threads and changing nodes.
+- [Python](python.md) and [C](c.md): installation, a first transform, the interface, threads.
 
-**How-to guides**, for a task at hand:
+**How-to guides** (Julia), for a task at hand:
 - [Transforms along Dimensions](@ref): `dims` and many transforms with the same nodes.
 - [Real Data](@ref): real values at the nodes with `plan_rnfft` (e.g. OCT).
 - [Cosine and Sine Transforms](@ref): the NFCT and NFST.

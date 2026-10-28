@@ -34,12 +34,16 @@ jobs:
             ${{ runner.os }}-libnfftjl-${{ env.cache-name }}-
       - name: Build the library and the C test
         run: libnfftjl/build.sh
-      - name: C test
-        run: libnfftjl/test/test 4
+      - name: C test and example
+        run: |
+          libnfftjl/test/test 4
+          libnfftjl/examples/getting_started
       - name: Python wheel and tests
         run: |
           python3 -m venv .venv
           .venv/bin/pip install numpy build wheel setuptools finufft
           PYTHON=$PWD/.venv/bin/python bindings/python/build_wheel.sh
           .venv/bin/pip install bindings/python/dist/*.whl
-          cd /tmp && $GITHUB_WORKSPACE/.venv/bin/python $GITHUB_WORKSPACE/bindings/python/tests/test_nfftjl.py
+          cd /tmp
+          $GITHUB_WORKSPACE/.venv/bin/python $GITHUB_WORKSPACE/bindings/python/tests/test_nfftjl.py
+          for e in $GITHUB_WORKSPACE/bindings/python/examples/*.py; do $GITHUB_WORKSPACE/.venv/bin/python $e; done

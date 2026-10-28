@@ -6,9 +6,13 @@ library carries its Julia runtime; no Julia installation is needed to use it. Bi
 languages (`../bindings/`) are thin wrappers around `include/nfftjl.h`.
 
 ```
-./build.sh          # → build/lib/libnfftjl.{so,dylib} with its runtime, and the C test, ≈ 2 min
-./test/test 8       # accuracy against the direct sum, timings, 8 threads
+./build.sh                   # → build/lib/libnfftjl.{so,dylib} with its runtime, the C test and examples
+./test/test 8                # accuracy against the direct sum, timings, 8 threads
+./examples/getting_started   # the example of the documentation
 ```
+
+Documentation: the pages "C" and "Python" of the NFFT.jl documentation; their examples are the
+files in `examples/` and `../bindings/python/examples/`, run by the CI job `libnfftjl`.
 
 - `src/libnfftjl.jl`: the C entry points and the boundary that turns the run-time dimension D and
   window width W into one compiled branch per combination (D ∈ 1:3, W ∈ 4:16); plans live in

@@ -8,6 +8,16 @@ for dir in readdir(LITERATE), file in filter(endswith(".jl"), readdir(joinpath(L
   Literate.markdown(joinpath(LITERATE, dir, file), joinpath(GENERATED, dir); documenter=true)
 end
 
+# Pages in templates/ with the examples of the other languages included verbatim, written to src/
+# (not versioned): the examples are files in the repository that the CI job libnfftjl compiles and
+# runs.
+const ROOT = dirname(@__DIR__)
+for file in readdir(joinpath(@__DIR__, "templates"))
+  text = replace(read(joinpath(@__DIR__, "templates", file), String),
+                 r"\{\{include ([^}]+)\}\}" => m -> rstrip(read(joinpath(ROOT, m[11:end-2]), String)))
+  write(joinpath(@__DIR__, "src", file), text)
+end
+
 DocMeta.setdocmeta!(NFFT, :DocTestSetup, :(using NFFT); recursive=true)
 
 makedocs(;
@@ -25,8 +35,12 @@ makedocs(;
   # reference for looking things up
   pages=[
     "Home" => "index.md",
-    "Tutorial" => ["Getting Started" => "generated/examples/getting_started.md"],
-    "How-to Guides" => [
+    "Getting Started" => [
+      "Julia" => "generated/examples/getting_started.md",
+      "Python" => "python.md",
+      "C" => "c.md",
+    ],
+    "How-to Guides (Julia)" => [
       "Transforms along Dimensions" => "generated/examples/directional.md",
       "Real Data" => "generated/examples/rnfft.md",
       "Cosine and Sine Transforms" => "generated/examples/real.md",
@@ -44,7 +58,7 @@ makedocs(;
       "Performance" => "performance.md",
     ],
     "Reference" => [
-      "API" => "api.md",
+      "API (Julia)" => "api.md",
       "Abstract Interface" => "abstract.md",
     ],
   ],
