@@ -3,8 +3,8 @@
 !!! note "Experimental"
     The Python package `nfftjl` wraps `libnfftjl`, NFFT.jl compiled into a library with
     `juliac --trim` (see [C](c.md)). The wheel carries the library and its Julia runtime; no Julia
-    installation is needed to use it. It covers the NFFT and its adjoint in 1–3 dimensions in
-    single and double precision; the table on the [home page](index.md) lists what the Julia package offers
+    installation is needed to use it. It covers the NFFT, RNFFT, NFCT and NFST and their adjoints
+    in 1–3 dimensions, with batches, in single and double precision; the table on the [home page](index.md) lists what the Julia package offers
     beyond that. The interface may still change.
 
 ## Installation
@@ -66,6 +66,27 @@ array.
 
 The transform equals FINUFFT's type 2 with `x = 2π k`, `isign = -1` and the default mode ordering;
 the adjoint equals type 1 with `isign = +1`.
+
+## Real data: RNFFT, NFCT, NFST
+
+`nfftjl.RNFFTPlan`, `nfftjl.NFCTPlan` and `nfftjl.NFSTPlan` take the same arguments as `Plan`
+(`dtype` is the real type, `numpy.float64` or `numpy.float32`); `p.in_shape` and `p.out_shape`
+give the shapes of their data:
+
+- **RNFFT** (real values at the nodes): ``\hat f_j = \mathrm{Re} \sum_{\bm n} h_{\bm n}
+  e^{-2\pi i \bm n \cdot \bm k_j}`` with ``n = 0, \dots, N/2`` along the last transformed axis
+  (the layout of `numpy.fft.rfftn`) and as for the NFFT along the others; `h` is complex, the
+  values at the nodes are real. The adjoint is ``h_{\bm n} = \sum_j \hat f_j
+  e^{2\pi i \bm n \cdot \bm k_j}``. Nodes in ``[-1/2, 1/2)``.
+- **NFCT** and **NFST**: ``\hat f_j = \sum_{\bm n} f_{\bm n} \prod_d \cos(2\pi n_d k_{dj})``
+  over ``n_d = 0, \dots, N_d - 1``, or with ``\sin`` over ``n_d = 1, \dots, N_d``, for real `f`;
+  `adjoint` is the transpose. Nodes in ``[0, 1/2]``.
+
+```python
+{{include bindings/python/examples/real.py}}
+```
+
+A plan whose nodes lie outside the range of its transform raises a `ValueError` with the reason.
 
 ## Batches
 

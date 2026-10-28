@@ -1,6 +1,6 @@
 # nfftjl: NFFT.jl for Python
 
-The NFFT of NFFT.jl as a Python package (experimental): a ctypes wrapper around `libnfftjl` (built
+The NFFT, RNFFT, NFCT and NFST of NFFT.jl as a Python package (experimental): a ctypes wrapper around `libnfftjl` (built
 from NFFT.jl with `juliac --trim`, see `../../libnfftjl/README.md`), with the library and its Julia
 runtime inside the wheel.
 No Julia installation is needed to use it.

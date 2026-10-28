@@ -59,6 +59,60 @@ def test_axes():
             assert relerr(gb[idx].reshape(p.N), ndft_adjoint(k, hb[idx], p.N)) < 1e-8
 
 
+def real_direct(kind, k, x, N, adjoint=False):
+    """direct sums of the RNFFT (h: last axis N[-1]//2+1), NFCT and NFST, one slice"""
+    D = len(N)
+    if kind == "rnfft":
+        ranges = [np.arange(-(n // 2), n - n // 2) for n in N[:-1]] + [np.arange(N[-1] // 2 + 1)]
+    else:
+        ranges = [np.arange(n) + (kind == "nfst") for n in N]
+    n = np.stack([g.ravel() for g in np.meshgrid(*ranges, indexing="ij")], axis=1)   # (M, D)
+    if kind == "rnfft":
+        E = np.exp(-2j * np.pi * k @ n.T)                                             # (J, M)
+        return (E.conj().T @ x).reshape([len(r) for r in ranges]) if adjoint else (E @ x.ravel()).real
+    f = np.cos if kind == "nfct" else np.sin
+    E = np.prod(f(2 * np.pi * k[:, None, :] * n[None, :, :]), axis=2)                # (J, M)
+    return (E.T @ x).reshape(N) if adjoint else E @ x.ravel()
+
+
+def test_real_transforms():
+    rng = np.random.default_rng(7)
+    for cls, kind in ((nfftjl.RNFFTPlan, "rnfft"), (nfftjl.NFCTPlan, "nfct"), (nfftjl.NFSTPlan, "nfst")):
+        for shape, axes, dtype, tol in (((40,), None, np.float64, 1e-9), ((12, 10), None, np.float64, 1e-9),
+                                        ((6, 5, 4), None, np.float64, 1e-9), ((3, 12, 10), (1, 2), np.float64, 1e-9),
+                                        ((12, 10, 2), (0, 1), np.float32, 1e-5)):
+            D = len(shape) if axes is None else len(axes)
+            J = 120
+            k = rng.random((J, D)) - 0.5 if kind == "rnfft" else rng.random((J, D)) / 2
+            p = cls(k, shape, reltol=tol, axes=axes, dtype=dtype)
+            a0, a1 = p.axes[0], p.axes[-1]
+            if kind == "rnfft":
+                f = rng.standard_normal(p.in_shape) + 1j * rng.standard_normal(p.in_shape)
+            else:
+                f = rng.standard_normal(p.in_shape)
+            fhat = p.trafo(f)
+            assert fhat.shape == p.out_shape and fhat.dtype == p.out_dtype
+            back = p.adjoint(fhat)
+            assert back.shape == p.in_shape and back.dtype == p.in_dtype
+            fb = np.moveaxis(f.reshape(p.in_shape[:a0] + (-1,) + p.in_shape[a1 + 1:]), a0, -1)
+            hb = np.moveaxis(fhat, a0, -1)
+            bb = np.moveaxis(back.reshape(p.in_shape[:a0] + (-1,) + p.in_shape[a1 + 1:]), a0, -1)
+            slice_shape = p.in_shape[a0:a1 + 1]
+            for idx in np.ndindex(hb.shape[:-1]):
+                x = fb[idx].reshape(slice_shape).astype(np.complex128 if kind == "rnfft" else np.float64)
+                assert relerr(hb[idx], real_direct(kind, k, x, p.N)) < 10 * tol
+                y = hb[idx].astype(np.float64)
+                assert relerr(bb[idx].reshape(slice_shape), real_direct(kind, k, y, p.N, adjoint=True)) < 10 * tol
+    # a plan rejects data of the wrong shape, nodes outside the range of the transform fail
+    p = nfftjl.RNFFTPlan(rng.random((10, 1)) - 0.5, 16)
+    assert p.in_shape == (9,)
+    try:
+        nfftjl.NFCTPlan(rng.random((10, 1)) - 0.5, 16)
+        assert False
+    except ValueError as e:
+        assert "[0, 1/2]" in str(e)
+
+
 def test_float32():
     rng = np.random.default_rng(5)
     for N, tol in (((64,), 1e-5), ((16, 12), 1e-5), ((8, 6, 10), 1e-3)):
@@ -132,6 +186,7 @@ def test_threaded_plan():
 if __name__ == "__main__":
     test_accuracy()
     test_axes()
+    test_real_transforms()
     test_float32()
     test_finufft()
     test_threads()

@@ -364,9 +364,25 @@ function plan_create(::Val{X}, ::Type{T}, D, N, J, k, reltol, nthreads, L1=1, L3
              nthreads > 0 ? min(Int(nthreads), Threads.nthreads()) : default_threads(), Int(L1), Int(L3))
     end
   catch e
-    Core.println(Core.stderr, e)
+    # the message without a call on the exception of unknown type
+    m = e isa ArgumentError ? e.msg : e isa DimensionMismatch ? e.msg : e isa ErrorException ? e.msg : nothing
+    LAST_ERROR[] = m isa String ? m : "plan creation failed"
     Int64(-1)
   end
+end
+
+# The message of the last failed plan creation, for nfftjl_last_error.
+const LAST_ERROR = Ref("")
+Base.@ccallable function nfftjl_last_error(buf::Ptr{UInt8}, len::Csize_t)::Csize_t
+  m = codeunits(LAST_ERROR[])
+  n = min(length(m), Int(len) - 1)
+  if n >= 0
+    for i in 1:n
+      unsafe_store!(buf, m[i], i)
+    end
+    unsafe_store!(buf, 0x00, n + 1)
+  end
+  Csize_t(length(m))
 end
 
 function trafo(::Val{X}, ::Type{T}, h, f, fhat) where {X,T}

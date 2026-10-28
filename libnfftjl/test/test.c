@@ -3,6 +3,7 @@
 #include <stdlib.h>
 #include <math.h>
 #include <time.h>
+#include <string.h>
 #include "nfftjl.h"
 
 static double urand(void) { return rand() / (RAND_MAX + 1.0); }
@@ -201,6 +202,13 @@ int main(int argc, char **argv) {
     fail |= accuracy_real(kind, 1, R1, 150, 1, 1e-9, nthreads);
     fail |= accuracy_real(kind, 2, R2, 150, 3, 1e-9, nthreads);
     fail |= accuracy_real(kind, 3, R3, 100, 1, 1e-9, nthreads);
+  }
+  { /* a failing plan reports why */
+    double kbad[] = {-0.25}; int64_t Nb[] = {8}; char msg[200];
+    int64_t p = nfftjl_nfct_plan_create(1, Nb, 1, kbad, 1e-6, 1);
+    size_t n = nfftjl_last_error(msg, sizeof msg);
+    printf("failing plan: %lld, \"%s\"\n", p, msg);
+    fail |= p != -1 || n == 0 || !strstr(msg, "[0, 1/2]");
   }
   fail |= accuracy_f32(1, N1, 300, 1e-5, nthreads);
   fail |= accuracy_f32(2, N2, 300, 1e-5, nthreads);
