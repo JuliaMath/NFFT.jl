@@ -51,8 +51,8 @@ def test_finufft():
 
 
 def test_threads():
-    # four Python threads, each with its own single-threaded plan, plus numpy (BLAS threads) at
-    # the same time
+    # four Python threads, each with its own threaded plan, plus numpy (BLAS threads) at the
+    # same time
     rng = np.random.default_rng(3)
     N = (128, 128)
     J = 20000
@@ -62,7 +62,7 @@ def test_threads():
         r = np.random.default_rng(seed)
         k = r.random((J, 2)) - 0.5
         f = r.standard_normal(N) + 0j
-        p = nfftjl.Plan(k, N, reltol=1e-8, nthreads=1)
+        p = nfftjl.Plan(k, N, reltol=1e-8, nthreads=2)
         ref = p.trafo(f)
         for _ in range(20):
             if relerr(p.trafo(f), ref) > 1e-14:

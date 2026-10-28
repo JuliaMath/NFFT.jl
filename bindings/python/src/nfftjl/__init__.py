@@ -49,9 +49,8 @@ class Plan:
     mode array size `N` (an integer or a tuple of D = 1, 2, 3 integers).
 
     `reltol` is the requested relative error, `nthreads` the number of threads (default: all
-    threads of the library). One plan must not be executed by two threads at once. Plans used
-    from several Python threads at the same time need nthreads=1: threaded plans executed
-    concurrently from several threads can hang (a limitation of the embedded Julia runtime).
+    threads of the library). One plan must not be executed by two threads at once; separate
+    plans can run concurrently.
     """
 
     def __init__(self, k, N, reltol=1e-8, nthreads=None):

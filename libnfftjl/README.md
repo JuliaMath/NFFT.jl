@@ -20,12 +20,14 @@ files in `examples/` and `../bindings/python/examples/`, run by the CI job `libn
 - `include/nfftjl.h`: the interface, including the threading rules.
 - `jc/`: the environment of JuliaC.jl.
 
-Built with 8 Julia threads and Julia's signal handling (the GC stops threads through a signal;
-without the handler the process dies once more than one thread runs).
+Built with 8 Julia threads, Julia's signal handling (the GC stops threads through a signal;
+without the handler the process dies once more than one thread runs) and one CPU target
+(`JULIA_CPU_TARGET`, default `apple-m1`, `x86-64-v3` or `generic` by machine): a library for several
+targets hangs at the first garbage collection triggered by a second host thread
+([JuliaC.jl#190](https://github.com/JuliaLang/JuliaC.jl/issues/190)).
 
 Known limitations:
-- several caller threads with threaded plans (`nthreads > 1`) can hang after a garbage
-  collection (Julia runtime); several callers need `nthreads = 1`;
-- the Julia runtime starts on the first call: make it from one thread before others call;
+- the Julia runtime starts on the first call: make it from one thread before others call (two
+  threads making it at once abort the process);
 - FFTW.jl is not trimmable: `src/libnfftjl.jl` replaces three of its methods for the build;
 - only NFFT, Float64, no batch dimensions, no GPU.

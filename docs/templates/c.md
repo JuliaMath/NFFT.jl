@@ -23,8 +23,8 @@ against the header `libnfftjl/include/nfftjl.h`:
 cc -O2 prog.c -Ilibnfftjl/include -Llibnfftjl/build/lib -lnfftjl -lm -Wl,-rpath,$PWD/libnfftjl/build/lib
 ```
 
-The library is built with 8 threads of the Julia runtime and with Julia's signal handling, which
-the garbage collector needs to stop threads.
+The library is built with 8 threads of the Julia runtime, with Julia's signal handling, which the
+garbage collector needs to stop threads, and for one CPU target (see `libnfftjl/README.md`).
 
 ## A first transform
 
@@ -72,6 +72,5 @@ this).
   before other threads call (`nfftjl_num_threads()` will do).
 - Plans can be created and destroyed from any thread. One plan must not be executed by two
   threads at the same time.
-- Several threads can execute their own plans at the same time with `nthreads = 1`. A plan with
-  `nthreads > 1` should be executed from one thread at a time: threaded plans run from several
-  threads at once can hang in the Julia runtime.
+- Separate plans can be executed by several threads at the same time, each with its own
+  `nthreads`.

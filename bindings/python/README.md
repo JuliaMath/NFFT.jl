@@ -28,6 +28,5 @@ python tests/test_nfftjl.py                  # direct sum, FINUFFT, Python threa
 python tests/bench.py 8                      # against FINUFFT
 ```
 
-Threads: one plan must not run on two threads at once. Several Python threads can use separate
-plans concurrently with `nthreads=1`; a threaded plan (`nthreads > 1`) should be used from one
-Python thread at a time (concurrent threaded plans can hang in the embedded Julia runtime).
+Threads: one plan must not run on two threads at once; separate plans run concurrently, each with
+its own `nthreads`.

@@ -14,10 +14,7 @@ int nfftjl_plan_destroy(int64_t plan);
 /* Threads of the Julia runtime in the library (upper limit for nthreads). Plans can be created and
    destroyed from any thread; one plan must not be executed on two threads at once. The Julia
    runtime starts on the first call into the library: make that call from one thread before
-   others call concurrently (nfftjl_num_threads() will do).
-   Known limitation: plans with nthreads > 1 executed from several caller threads at the same time
-   can hang (Julia runtime, after a garbage collection). Several caller threads: nthreads = 1 per
-   plan; threaded plans: one caller thread at a time. */
+   others call concurrently (nfftjl_num_threads() will do). */
 int nfftjl_num_threads(void);
 
 #endif

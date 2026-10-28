@@ -63,9 +63,7 @@ the adjoint equals type 1 with `isign = +1`.
 ## Threads
 
 - One plan must not be executed by two threads at the same time: create one plan per thread.
-- Several Python threads can use their own plans at the same time with `nthreads=1`.
-- A plan with `nthreads > 1` should be used from one Python thread at a time: threaded plans run
-  from several threads at once can hang in the embedded Julia runtime.
+  Separate plans run concurrently, each with its own `nthreads`.
 - numpy's OpenBLAS threads keep spinning for a while after a numpy call and slow down a transform
   that follows; `OPENBLAS_NUM_THREADS=1` avoids this when timing.
 
