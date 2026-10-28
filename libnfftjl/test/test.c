@@ -115,7 +115,7 @@ static int accuracy_many(int D, const int64_t *N, int64_t J, int64_t L1, int64_t
       for (int64_t m = 0; m < M; m++) gs[m] = g[a + L1 * (m + M * b)];
       e = relerr(gs, fs, M); if (e > e2) e2 = e;
     }
-  /* the strategy is in bits 24-27 of the handle (1 single, 2 loop, 3 slices, 4 lead, 5 trail) */
+  /* the strategy is in bits 24-27 of the handle (1 single, 2 slices, 3 lead, 4 trail) */
   printf("batch %lld x (D = %d, M = %lld) x %lld, J = %lld, strategy %lld: max error trafo %.1e, adjoint %.1e\n",
          L1, D, M, L3, J, (p >> 24) & 0xf, e1, e2);
   nfftjl_plan_destroy(p);

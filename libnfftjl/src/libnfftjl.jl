@@ -63,14 +63,15 @@ end
 load_fftw() = (NFFT.FFTW.dlopen(NFFT.FFTW.libfftw3); NFFT.FFTW.dlopen(NFFT.FFTW.libfftw3f); nothing)
 
 # The variants of the library, one compiled branch each: element type × dimension × window width
-# × batch strategy (as in NFFT.jl: no batch, slices one after the other on a threaded core, slices
-# in parallel on single-threaded cores, the batch kernels for batches before or after the
-# transformed dimensions). A handle is index << 28 | s << 24 | t << 16 | D << 8 | W, with s and t
-# the positions in STRATEGIES and TS.
+# × batch strategy (as in NFFT.jl: no batch; slices one at a time, on one threaded core or in
+# parallel on single-threaded cores; the batch kernels for batches before or after the transformed
+# dimensions). A handle is index << 28 | s << 24 | t << 16 | D << 8 | W, with s and t the positions
+# in STRATEGIES and TS. The parameter choice never takes W > 8 in single precision.
 const TS = (Float64, Float32)
 const DS = 1:3
-const WS = 4:16
-const STRATEGIES = (:single, :loop, :slices, :lead, :trail)
+widths(::Type{Float64}) = 4:16
+widths(::Type{Float32}) = 4:8
+const STRATEGIES = (:single, :slices, :lead, :trail)
 
 # The FFT passes of the FFTW backend: in-place complex plans along one dimension.
 fftw_pass(T, K, D) = NFFT.PassFFT{D,FFTW.cFFTWPlan{Complex{T},K,true,D,Int}}
@@ -81,25 +82,29 @@ core_type(T, D, W) = NFFTCore{D,kernel_type(T, W),T,Float64,fftw_pass(T, FFTW.FO
 batch_type(T, D, W) = NFFT.BatchCore{D,kernel_type(T, W),T,Float64,D + 1,4,fftw_pass(T, FFTW.FORWARD, D + 1),
                                      fftw_pass(T, FFTW.BACKWARD, D + 1),FFTWBackend}
 engine_core(S, T, D, W) =
-  S in (:single, :loop) ? core_type(T, D, W) :
+  W ∉ widths(T) ? Nothing :
+  S === :single ? core_type(T, D, W) :
   S === :slices ? Vector{core_type(T, D, W)} :
   D > 2 ? Nothing :                                        # batch kernels in 1D and 2D only
   S === :lead ? batch_type(T, D, W) :
   NFFT.TrailCore{batch_type(T, D, W),Array{Complex{T},D + 1},Matrix{Complex{T}}}
 
 # A plan of the library: its core, the batch sizes before (L1) and after (L3) the transformed
-# dimensions, and the number of nodes. Data are (L1, N..., L3) and (L1, J, L3), column major.
-struct Engine{S,C}
+# dimensions, the number of nodes, and for :slices one slice buffer per core. Data are
+# (L1, N..., L3) and (L1, J, L3), column major.
+struct Engine{S,C,F,G}
   core::C
   L1::Int
   L3::Int
   J::Int
+  fbufs::Vector{F}
+  gbufs::Vector{G}
 end
 
 # One registry of plans per variant; Nothing[] for combinations that do not exist.
-for S in STRATEGIES, T in TS, D in DS, W in WS
+for S in STRATEGIES, T in TS, D in DS, W in widths(Float64)
   C = engine_core(S, T, D, W)
-  E = C === Nothing ? Nothing : Union{Nothing,Engine{S,C}}
+  E = C === Nothing ? Nothing : Union{Nothing,Engine{S,C,Array{Complex{T},D},Vector{Complex{T}}}}
   @eval const $(Symbol(:plans_, S, :_, T, :_, D, :_, W)) = $E[]
 end
 @generated registry(::Val{S}, ::Type{T}, ::Val{D}, ::Val{W}) where {S,T,D,W} = Symbol(:plans_, S, :_, T, :_, D, :_, W)
@@ -110,17 +115,22 @@ handle(S, T, D, W, i) = Int64(i) << 28 | Int64(index(S, STRATEGIES)) << 24 | Int
                         Int64(D) << 8 | Int64(W)
 unhandle(h) = (Int((h >> 24) & 0xf), Int((h >> 16) & 0xff), Int((h >> 8) & 0xff), Int(h & 0xff), Int(h >> 28))
 
-# f(Val(STRATEGIES[s])), f(TS[t]), f(Val(D)), f(Val(W)) for run-time values, one branch per value.
-for (name, values, arg, err) in ((:with_strategy, 1:length(STRATEGIES), s -> :(Val($(QuoteNode(STRATEGIES[s])))),
-                                  "unsupported strategy"),
-                                 (:with_type, 1:length(TS), t -> :($(TS[t])), "unsupported element type"),
-                                 (:with_dim, DS, D -> :(Val($D)), "unsupported dimension"),
-                                 (:with_width, WS, W -> :(Val($W)), "unsupported window width"))
+# f(Val(STRATEGIES[s])), f(TS[t]), f(Val(D)), f(Val(W)) for run-time values, one branch per value
+# (window widths per element type).
+for (name, values, arg, err, T) in ((:with_strategy, 1:length(STRATEGIES), s -> :(Val($(QuoteNode(STRATEGIES[s])))),
+                                     "unsupported strategy", nothing),
+                                    (:with_type, 1:length(TS), t -> :($(TS[t])), "unsupported element type", nothing),
+                                    (:with_dim, DS, D -> :(Val($D)), "unsupported dimension", nothing),
+                                    ((:with_width, widths(T), W -> :(Val($W)), "unsupported window width", T) for T in TS)...)
   body = :(throw(ArgumentError($err)))
   for v in reverse(values)
     body = :(x == $v ? f($(arg(v))) : $body)
   end
-  @eval $name(f, x) = $body
+  if T === nothing
+    @eval $name(f, x) = $body
+  else
+    @eval $name(f, x, ::Type{$T}) = $body
+  end
 end
 
 # Plans can be created and destroyed from any thread; a plan must not run on two threads at once.
@@ -128,22 +138,25 @@ end
 const REGISTRY_LOCK = ReentrantLock()
 const PLAN_LOCK = ReentrantLock()
 
-# The batch strategy of NFFT.jl (`make_engine`), with the batch kernels for batches of at least 4.
+# The batch strategy of NFFT.jl (`make_engine`), with the batch kernels for batches of at least 4:
+# (strategy, slices in parallel).
 function strategy(D, N, J, L1, L3, nthreads)
   L = L1 * L3
-  L == 1 && return 1
-  NFFT.use_slices(L, J + prod(N), nthreads) && return 3
-  D <= 2 && L3 == 1 && L1 >= 4 && return 4
-  D <= 2 && L1 == 1 && L3 >= 4 && return 5
-  2
+  L == 1 && return 1, false
+  NFFT.use_slices(L, J + prod(N), nthreads) && return 2, true
+  D <= 2 && L3 == 1 && L1 >= 4 && return 3, false
+  D <= 2 && L1 == 1 && L3 >= 4 && return 4, false
+  2, false
 end
 
-function make_engine(::Val{S}, ::Type{T}, ::Val{D}, k, N, Ñ, W, φ::F, kernel, nthreads, L1, L3, J) where {S,T,D,F}
+function make_engine(::Val{S}, ::Type{T}, ::Val{D}, k, N, Ñ, W, φ::F, kernel, nthreads, L1, L3, J,
+                     parallel) where {S,T,D,F}
   fft = FFTWBackend()
-  core = if S === :single || S === :loop
+  core = if S === :single
     NFFTCore(k, N, Ñ, W, φ, T, fft, nothing, nthreads; kernel)
   elseif S === :slices
-    NFFT.single_cores(NFFTCore(k, N, Ñ, W, φ, T, fft, nothing, nthreads; kernel), L1 * L3)
+    c = NFFTCore(k, N, Ñ, W, φ, T, fft, nothing, nthreads; kernel)
+    parallel ? NFFT.single_cores(c, L1 * L3) : [c]
   elseif D > 2
     throw(ArgumentError("no batch kernels in $D dimensions"))
   elseif S === :lead
@@ -152,7 +165,9 @@ function make_engine(::Val{S}, ::Type{T}, ::Val{D}, k, N, Ñ, W, φ::F, kernel, 
     NFFT.TrailCore(NFFT.BatchCore(k, N, Ñ, W, φ, T, fft, L3, nothing, nthreads; kernel, chunk=Val(4)),
                    Array{Complex{T}}(undef, L3, N...), Matrix{Complex{T}}(undef, L3, J))
   end
-  Engine{S,typeof(core)}(core, L1, L3, J)
+  nbuf = S === :slices ? length(core) : 0
+  Engine{S,typeof(core),Array{Complex{T},D},Vector{Complex{T}}}(core, L1, L3, J,
+    [Array{Complex{T}}(undef, N) for _ in 1:nbuf], [Vector{Complex{T}}(undef, J) for _ in 1:nbuf])
 end
 
 function create(::Type{T}, ::Val{D}, Np::Ptr{Int64}, J::Int, kp::Ptr{Float64}, reltol::Float64,
@@ -165,10 +180,11 @@ function create(::Type{T}, ::Val{D}, Np::Ptr{Int64}, J::Int, kp::Ptr{Float64}, r
   W, β, e0 = e.W, e.β, e.e0
   φ = e.window isa KaiserBessel ? (z -> kb_window(z, W, β)) : (z -> es_window(z, W, β, e0))
   Ñ = grid_size(e.σ, N, W)
-  with_width(W) do w
+  st, parallel = strategy(D, N, J, L1, L3, nthreads)
+  with_width(W, T) do w
     kernel = make_kernel(φ, w, T)
-    with_strategy(strategy(D, N, J, L1, L3, nthreads)) do s
-      eng = make_engine(s, T, Val(D), k, N, Ñ, W, φ, kernel, nthreads, L1, L3, J)
+    with_strategy(st) do s
+      eng = make_engine(s, T, Val(D), k, N, Ñ, W, φ, kernel, nthreads, L1, L3, J, parallel)
       reg = registry(s, T, Val(D), w)
       @lock REGISTRY_LOCK begin
         push!(reg, eng)
@@ -184,7 +200,7 @@ function with_registry(f, h)
   with_strategy(s) do sv
     with_type(t) do T
       with_dim(D) do d
-        with_width(W) do w
+        with_width(W, T) do w
           f(registry(sv, T, d, w), i, T)
         end
       end
@@ -204,24 +220,78 @@ core_size(c::Vector) = c[1].N
 core_size(c::NFFT.BatchCore) = c.N
 core_size(t::NFFT.TrailCore) = t.core.N
 
-# The transforms on the data of the plan, (L1, N..., L3) and (L1, J, L3); the batch strategies of
-# NFFT.jl read only the full size and the transformed dimensions of their plan.
-function data(e::Engine, fp, gp)
-  N = core_size(e.core)
-  shape = (N=(e.L1, N..., e.L3), dims=2:length(N)+1)
-  shape, unsafe_wrap(Array, fp, shape.N), unsafe_wrap(Array, gp, (e.L1, e.J, e.L3))
-end
+# The transforms on the data of the plan, (L1, N..., L3) and (L1, J, L3). The batch kernels (:lead,
+# :trail) read only the full size and the transformed dimensions of their plan. :slices runs a
+# core on one slice at a time as an Array, so that the core is compiled for Arrays only (for
+# views of the slices it would be compiled a second time): with L1 = 1 the slices are contiguous
+# and are wrapped in place, otherwise they are copied through the buffers of the task.
 function run_trafo(e::Engine{S}, fp, gp) where {S}
-  shape, f, fhat = data(e, fp, gp)
-  S === :single ? trafo_core!(vec(fhat), e.core, reshape(f, core_size(e.core))) :
-                  NFFT.transform!(Val(S), shape, e.core, fhat, f)
+  N = core_size(e.core)
+  if S === :single
+    trafo_core!(unsafe_wrap(Array, gp, e.J), e.core, unsafe_wrap(Array, fp, N))
+  elseif S === :lead || S === :trail
+    NFFT.transform!(Val(S), (N=(e.L1, N..., e.L3), dims=2:length(N)+1), e.core,
+                    unsafe_wrap(Array, gp, (e.L1, e.J, e.L3)), unsafe_wrap(Array, fp, (e.L1, N..., e.L3)))
+  else
+    each_slice(e) do c, t, a, b
+      slice!(c, e, t, a, b, fp, gp, true)
+    end
+  end
   Cint(0)
 end
 function run_adjoint(e::Engine{S}, gp, fp) where {S}
-  shape, f, fhat = data(e, fp, gp)
-  S === :single ? adjoint_core!(reshape(f, core_size(e.core)), e.core, vec(fhat)) :
-                  NFFT.transform_adjoint!(Val(S), shape, e.core, f, fhat)
+  N = core_size(e.core)
+  if S === :single
+    adjoint_core!(unsafe_wrap(Array, fp, N), e.core, unsafe_wrap(Array, gp, e.J))
+  elseif S === :lead || S === :trail
+    NFFT.transform_adjoint!(Val(S), (N=(e.L1, N..., e.L3), dims=2:length(N)+1), e.core,
+                            unsafe_wrap(Array, fp, (e.L1, N..., e.L3)), unsafe_wrap(Array, gp, (e.L1, e.J, e.L3)))
+  else
+    each_slice(e) do c, t, a, b
+      slice!(c, e, t, a, b, fp, gp, false)
+    end
+  end
   Cint(0)
+end
+
+# f(core, task, a, b) for all slices: one after the other on one threaded core, or in parallel, one
+# single-threaded core per task taking the next slice when done.
+function each_slice(f, e::Engine)
+  if length(e.core) == 1
+    for b in 1:e.L3, a in 1:e.L1
+      f(e.core[1], 1, a, b)
+    end
+  else
+    next = Threads.Atomic{Int}(1)
+    NFFT.tasks(length(e.core)) do t
+      while (s = Threads.atomic_add!(next, 1)) <= e.L1 * e.L3
+        f(e.core[t], t, (s - 1) % e.L1 + 1, (s - 1) ÷ e.L1 + 1)
+      end
+    end
+  end
+end
+
+# The transform (forward) or the adjoint of slice (a, b) on core c with the buffers of task t.
+function slice!(c, e::Engine{S,C,F,G}, t, a, b, fp::Ptr{E}, gp::Ptr{E}, forward::Bool) where {S,C,F,G,E}
+  N = core_size(c); M = prod(N); J = e.J; L1 = e.L1
+  if L1 == 1
+    fs = unsafe_wrap(Array, fp + sizeof(E) * M * (b - 1), N)
+    gs = unsafe_wrap(Array, gp + sizeof(E) * J * (b - 1), J)
+    forward ? trafo_core!(gs, c, fs) : adjoint_core!(fs, c, gs)
+    return
+  end
+  f = unsafe_wrap(Array, fp, L1 * M * e.L3); g = unsafe_wrap(Array, gp, L1 * J * e.L3)
+  fs = e.fbufs[t]; gs = e.gbufs[t]
+  fo = a + L1 * M * (b - 1); go = a + L1 * J * (b - 1)
+  if forward
+    for m in 1:M; fs[m] = f[fo + L1 * (m - 1)]; end
+    trafo_core!(gs, c, fs)
+    for j in 1:J; g[go + L1 * (j - 1)] = gs[j]; end
+  else
+    for j in 1:J; gs[j] = g[go + L1 * (j - 1)]; end
+    adjoint_core!(fs, c, gs)
+    for m in 1:M; f[fo + L1 * (m - 1)] = fs[m]; end
+  end
 end
 
 function plan_create(::Type{T}, D, N, J, k, reltol, nthreads, L1=1, L3=1) where {T}
