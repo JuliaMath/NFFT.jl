@@ -41,4 +41,26 @@ using NFFTTools: sdc, sdc!
   w = reshape(w, nr, na)
   @test all(>(0), w)
   @test w[nr ÷ 2 + 9, 1] > 2 * w[nr ÷ 2 + 3, 1]
+
+  # Frobenius-optimal weights: with more nodes than the doubled array has modes (jittered grid,
+  # 40² nodes for 2·16 × 2·16 modes) Aᴴ diag(w) A is the identity; for an undersampled radial
+  # trajectory the Frobenius error is below that of Pipe–Menon. Checked with the dense matrix.
+  rng = Xoshiro(3)
+  N = (16, 16)
+  dense(k) = reshape([cispi(-2 * (k[1, j] * a + k[2, j] * b)) for j in axes(k, 2), a in -8:7, b in -8:7], :, prod(N))
+  frob(A, w) = norm(A' * (w .* A) - I) / sqrt(prod(N))
+  k = reduce(hcat, [[(a + 0.5 + 0.6rand(rng) - 0.3) / 40 - 0.5; (b + 0.5 + 0.6rand(rng) - 0.3) / 40 - 0.5]
+                    for a in 0:39, b in 0:39])
+  p = plan_nfft(k, N)
+  w = sdc(p; method = :frobenius, iters = 100)
+  @test frob(dense(k), w) < 1e-4
+  @test frob(dense(k), sdc(p)) > 1e-2
+
+  r = range(-0.5, 0.5; length = 33)[1:end-1]
+  θ = range(0, π; length = 21)[1:end-1]
+  k = reduce(hcat, [[ρ * cos(t); ρ * sin(t)] for ρ in r, t in θ])
+  p = plan_nfft(k, N)
+  A = dense(k)
+  @test frob(A, sdc(p; method = :frobenius)) < frob(A, sdc(p))
+  @test_throws ArgumentError sdc(p; method = :voronoi)
 end
