@@ -65,6 +65,10 @@ function tile_edges(D, W, T)
   bytes <= LOCAL_BYTES ? B : nothing
 end
 
+# Whether a backend runs the tile kernel, whose barriers sit inside loops: GPUs do, backends that
+# execute kernels as CPU loops (JLArrays in the tests) do not.
+use_tiles(backend) = true
+
 # Nodes k (CPU) on a periodic grid of Ñ points per dimension (`gridpos`), padded grid of size P.
 function Nodes(storage, k::Matrix, Ñ::NTuple{D,Int}, P::NTuple{D,Int}, W, φ, ::Type{T}) where {D,T}
   K = NFFT.make_kernel(φ, W, T)
@@ -77,7 +81,7 @@ function Nodes(storage, k::Matrix, Ñ::NTuple{D,Int}, P::NTuple{D,Int}, W, φ, :
     end
   end
   # binned order: work-items with neighbouring indices touch neighbouring parts of the grid
-  Bt = tile_edges(D, W, T)
+  Bt = use_tiles(KA.get_backend(storage(offs))) ? tile_edges(D, W, T) : nothing
   B = Bt === nothing ? ntuple(_ -> D == 1 ? 1024 : 16, D) : Bt
   nt = cld.(P, B)
   tstr = col_strides(nt)

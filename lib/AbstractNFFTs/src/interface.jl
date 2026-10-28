@@ -117,6 +117,8 @@ abstract type AbstractRNFFTPlan{T,D,R} <: AbstractFTPlan{T,D,R} end
 
 Base.eltype(p::AbstractComplexFTPlan{T}) where T = Complex{T}
 Base.eltype(p::AbstractRealFTPlan{T}) where T = T
+# complex like its adjoint, Adjoint{Complex{T}}
+Base.eltype(p::AbstractRNFFTPlan{T}) where T = Complex{T}
 
 Base.size(p::AbstractFTPlan) = (prod(size_out(p)), prod(size_in(p)))
 Base.length(p::AbstractFTPlan) = prod(size(p))
@@ -144,6 +146,8 @@ size_out(p::Adjoint{Complex{T},<:AbstractRNFFTPlan{T,D,R}}) where {T,D,R} = size
 Base.copy(p::Adjoint{Complex{T},<:AbstractRNFFTPlan{T,D,R}}) where {T,D,R} = adjoint(copy(p.parent))
 Base.show(io::IO, p::Adjoint{Complex{T},<:AbstractRNFFTPlan{T,D,R}}) where {T,D,R} =
   (print(io, "Adjoint "); print(io, p.parent))
+Base.show(io::IO, ::MIME{Symbol("text/plain")}, p::Adjoint{Complex{T},<:AbstractRNFFTPlan{T,D,R}}) where {T,D,R} =
+  show(io, p)
 
 size_in(p::Adjoint{Complex{T},<:AbstractComplexFTPlan{T,D,R}}) where {T,D,R} = size_out(p.parent)
 size_out(p::Adjoint{Complex{T},<:AbstractComplexFTPlan{T,D,R}}) where {T,D,R} = size_in(p.parent)

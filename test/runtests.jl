@@ -8,7 +8,8 @@ using SparseArrays
 using FFTA
 
 # Contract tests of the AbstractNFFTs interface (implementation-independent), then NFFT.jl's own
-# behaviour, then NFFTTools. The GPU tests run separately (test/gpu/run.jl, on Buildkite).
+# behaviour, then NFFTTools, the GPU code on the CPU and Aqua. The tests on GPU devices run
+# separately (test/gpu/run.jl, on Buildkite).
 include("contract.jl")
 
 nfft_plan(k, N; kwargs...) = plan_nfft(NFFT.backend(), k, N; kwargs...)
@@ -16,6 +17,7 @@ nfft_plan(k, N; kwargs...) = plan_nfft(NFFT.backend(), k, N; kwargs...)
 @testset "NFFT" begin
   @testset "contract Float64" begin contract_tests(nfft_plan; T=Float64) end
   @testset "contract Float32" begin contract_tests(nfft_plan; T=Float32) end
+  include("interface.jl")
   include("plan.jl")
   include("batch.jl")
   include("real.jl")
@@ -29,3 +31,7 @@ nfft_plan(k, N; kwargs...) = plan_nfft(NFFT.backend(), k, N; kwargs...)
   include("samplingDensity.jl")
   include("testToeplitz.jl")
 end
+
+# the GPU code on the CPU (JLArrays); the GPU devices run in test/gpu/run.jl
+include("gpu/jlarrays.jl")
+include("aqua.jl")
