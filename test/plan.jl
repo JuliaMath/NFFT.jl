@@ -92,11 +92,11 @@
     fft = NFFT.FFTWBackend(flags=NFFT.FFTW.MEASURE)
     p = plan_nfft(k, N; fft)
     @test NFFT.FFTW.get_num_threads() == n
-    @test copy(p).core.flags == NFFT.FFTW.MEASURE
+    @test copy(p).core.fft.flags == NFFT.FFTW.MEASURE
     for nt in (1, 4)
       q = plan_nfft(k, (N..., 16); dims=1:2, fft, nthreads=nt)
       cores = q.core isa Vector ? q.core : [q.core]
-      cores[1] isa NFFT.NFFTCore && @test all(c -> c.flags == NFFT.FFTW.MEASURE, cores)
+      cores[1] isa NFFT.NFFTCore && @test all(c -> c.fft.flags == NFFT.FFTW.MEASURE, cores)
     end
   end
 

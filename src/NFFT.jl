@@ -9,7 +9,7 @@ using Reexport
 
 export NFFTBackend, NFFTPlan, NFCTPlan, NFSTPlan, RNFFTPlan, NNFFTPlan, NDFTPlan, NDCTPlan, NDSTPlan, NNDFTPlan
 export AbstractWindow, KaiserBessel, ExpSemicircle, CustomWindow
-export AbstractFFTBackend, FFTWBackend
+export AbstractFFTBackend, FFTWBackend, FFTABackend
 
 """
     NFFTBackend()

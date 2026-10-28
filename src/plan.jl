@@ -2,7 +2,7 @@
 # plan). Its type depends on the kernel (width W is a compile-time constant of the hot loops); the
 # plan holds it in an untyped field, so plan types stay inferable and every transform crosses one
 # function barrier into the specialised loops.
-struct NFFTCore{D,K<:SymKernel,T,Tk}
+struct NFFTCore{D,K<:SymKernel,T,Tk,PF<:PassFFT,PB<:PassFFT}
   N::NTuple{D,Int}
   Ñ::NTuple{D,Int}
   W::Int
@@ -11,12 +11,12 @@ struct NFFTCore{D,K<:SymKernel,T,Tk}
   invphi::NTuple{D,Vector{T}}
   binned::Binned{D,Tk}
   gp::Array{Complex{T},D}           # padded grid, Ñ .+ W
-  fwd::FFTWPass{Complex{T},FFTW.FORWARD,D}
-  bwd::FFTWPass{Complex{T},FFTW.BACKWARD,D}
+  fwd::PF                           # FFT passes of the backend
+  bwd::PB
   locks::TileLocks{D}
   # one extra point: tile assignment and support may round differently at tile edges
   bufs::Vector{Array{Complex{T},D}} # tile buffers of edge B+W+1
-  flags::UInt32                     # FFTW flags, for copies
+  fft::Union{Nothing,AbstractFFTBackend}
   nthreads::Int
 end
 
@@ -33,7 +33,7 @@ function NFFTCore(k::AbstractMatrix, N::NTuple{D,Int}, Ñ::NTuple{D,Int}, W, φ:
   NFFTCore(N, Ñ, W, B, K, invphi, Binned(k, Ñ, B, nthreads), gp,
            PassFFT(fft, g, N; dir=:fwd, nthreads), PassFFT(fft, g, N; dir=:bwd, nthreads),
            TileLocks(size(gp), B), task_buffers(Complex{T}, ntuple(_ -> B + W + 1, D), nthreads),
-           something(fft, FFTWBackend()).flags, nthreads)
+           fft, nthreads)
 end
 
 function trafo_core!(out, c::NFFTCore, f)
@@ -88,7 +88,8 @@ Generic options (every AbstractNFFTs implementation): `reltol` (default 1e-8), `
   `ExpSemicircle()` or a `CustomWindow` (needs `W` and `σ`)
 * `W`: window width (integer, odd allowed; W = 2m in the notation of Knopp et al. 2023)
 * `σ`: oversampling factor
-* `fft`: FFT backend, default `FFTWBackend()`
+* `fft`: FFT backend, `FFTWBackend()` (default) or `FFTABackend()` (`using FFTA`), see
+  [`AbstractFFTBackend`](@ref)
 * `tilesize`: expert option, tile edge of the node binning
 * `measure`: `true` times the four parameter sets of lowest predicted cost at plan
   time (transform and adjoint) and keeps the fastest; the cost model cannot see how fast FFTW is
@@ -140,10 +141,9 @@ end
 function copy_core(c::NFFTCore{D,K,T}, nthreads) where {D,K,T}
   gp = similar(c.gp)
   g = interior(gp, halo(c.W))
-  fft = isempty(c.fwd.plans) ? nothing : FFTWBackend(flags=c.flags)
   NFFTCore(c.N, c.Ñ, c.W, c.B, c.kernel, c.invphi, c.binned, gp,
-           PassFFT(fft, g, c.N; dir=:fwd, nthreads), PassFFT(fft, g, c.N; dir=:bwd, nthreads),
-           TileLocks(size(gp), c.B), task_buffers(Complex{T}, size(c.bufs[1]), nthreads), c.flags, nthreads)
+           PassFFT(c.fft, g, c.N; dir=:fwd, nthreads), PassFFT(c.fft, g, c.N; dir=:bwd, nthreads),
+           TileLocks(size(gp), c.B), task_buffers(Complex{T}, size(c.bufs[1]), nthreads), c.fft, nthreads)
 end
 
 transform!(::Val{:lead}, p, c, fHat, f) = trafo_batch!(reshape(fHat, c.L, :), c, reshape(f, c.L, c.N...))
@@ -179,8 +179,8 @@ AbstractNFFTs.oversampled_size(p::NFFTPlan) = full_core(p).Ñ
 
 AbstractNFFTs.resampling_correction!(p::NFFTPlan, f::AbstractArray, g::AbstractArray) =
   (correction_stage!(check_stage(p, f, g, nothing), g, f); g)
-AbstractNFFTs.oversampled_fft!(p::NFFTPlan, g::AbstractArray) = (check_stage(p, nothing, g, nothing); FFTW.fft!(g); g)
-AbstractNFFTs.oversampled_bfft!(p::NFFTPlan, g::AbstractArray) = (check_stage(p, nothing, g, nothing); FFTW.bfft!(g); g)
+AbstractNFFTs.oversampled_fft!(p::NFFTPlan, g::AbstractArray) = full_fft!(check_stage(p, nothing, g, nothing).fft, g, :fwd)
+AbstractNFFTs.oversampled_bfft!(p::NFFTPlan, g::AbstractArray) = full_fft!(check_stage(p, nothing, g, nothing).fft, g, :bwd)
 AbstractNFFTs.resampling!(p::NFFTPlan, g::AbstractArray, fHat::AbstractArray) =
   (resampling_stage!(check_stage(p, nothing, g, fHat), vec(fHat), g); fHat)
 AbstractNFFTs.resampling_adjoint!(p::NFFTPlan, fHat::AbstractArray, g::AbstractArray) =

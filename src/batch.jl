@@ -7,7 +7,7 @@
 # The batch dimension is processed in chunks of CH = min(L, 4) values held in registers
 # (SVector); the grid has Lp = CH·cld(L, CH) rows, the extra rows stay zero. Accumulating into
 # memory instead makes every update wait for the previous one (store-to-load forwarding).
-struct BatchCore{D,K<:SymKernel,T,Tk,D1,CH}
+struct BatchCore{D,K<:SymKernel,T,Tk,D1,CH,PF<:PassFFT,PB<:PassFFT}
   L::Int
   N::NTuple{D,Int}
   Ñ::NTuple{D,Int}
@@ -17,14 +17,14 @@ struct BatchCore{D,K<:SymKernel,T,Tk,D1,CH}
   invphi::NTuple{D,Vector{T}}
   binned::Binned{D,Tk}
   gp::Array{Complex{T},D1}          # (Lp, Ñ .+ W)
-  fwd::FFTWPass{Complex{T},FFTW.FORWARD,D1}  # on the grid interior, in 1D on F
-  bwd::FFTWPass{Complex{T},FFTW.BACKWARD,D1}
+  fwd::PF                           # on the grid interior, in 1D on F
+  bwd::PB
   locks::TileLocks{D}
   bufs::Vector{Array{Complex{T},D1}} # tile buffers (Lp, B+W+1, …)
   # 1D: FFT buffer with the batch dimension last. A 1D FFT along dimension 2 of the batch-first grid
   # (stride Lp) is ≈ 3× slower than on contiguous columns (Ñ = 354294, L = 8: 11.6 vs 3.8 ms).
   F::Union{Nothing,Matrix{Complex{T}}}
-  flags::UInt32                     # FFTW flags, for copies
+  fft::AbstractFFTBackend
   nthreads::Int
 end
 
@@ -49,14 +49,15 @@ function BatchCore(k::AbstractMatrix, N::NTuple{D,Int}, Ñ::NTuple{D,Int}, W, φ
     x, Nf, tdims = g, (Lp, N...), 2:D+1
   end
   binned = binned === nothing ? Binned(k, Ñ, B, nthreads) : binned
-  BatchCore{D,typeof(K),T,nodetype(binned),D + 1,CH}(L, N, Ñ, W, B, K, invphi, binned, gp,
-    PassFFT(fft, x, Nf; dir=:fwd, nthreads, tdims), PassFFT(fft, x, Nf; dir=:bwd, nthreads, tdims),
-    TileLocks(Ñ .+ W, B), task_buffers(Complex{T}, (Lp, ntuple(_ -> B + W + 1, D)...), nthreads),
-    F, fft.flags, nthreads)
+  fwd = PassFFT(fft, x, Nf; dir=:fwd, nthreads, tdims)
+  bwd = PassFFT(fft, x, Nf; dir=:bwd, nthreads, tdims)
+  BatchCore{D,typeof(K),T,nodetype(binned),D + 1,CH,typeof(fwd),typeof(bwd)}(L, N, Ñ, W, B, K, invphi, binned,
+    gp, fwd, bwd, TileLocks(Ñ .+ W, B), task_buffers(Complex{T}, (Lp, ntuple(_ -> B + W + 1, D)...), nthreads),
+    F, fft, nthreads)
 end
 
 copy_core(c::BatchCore{D,K,T}, nthreads) where {D,K,T} =
-  BatchCore(zeros(0, 0), c.N, c.Ñ, c.W, nothing, T, FFTWBackend(flags=c.flags), c.L, c.B, nthreads;
+  BatchCore(zeros(0, 0), c.N, c.Ñ, c.W, nothing, T, c.fft, c.L, c.B, nthreads;
             kernel=c.kernel, invphi=c.invphi, binned=c.binned)
 
 function correction_b!(g, f, c::BatchCore{D}, adjoint::Bool) where {D}

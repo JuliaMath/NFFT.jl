@@ -126,7 +126,8 @@ end
 # Modes of the virtual NFFT: n = 0…N−1 (cosine) or 1…N (sine) need an NFFT of size 2N or 2N + 2.
 virtual_size(S, N) = S === :cos ? 2 .* N : 2 .* (N .+ 1)
 
-function RealCore{S}(k::AbstractMatrix, N::NTuple{D,Int}, Ñv::NTuple{D,Int}, W, φ, ::Type{T}, fft, B, nthreads) where {S,D,T}
+function RealCore{S}(k::AbstractMatrix, N::NTuple{D,Int}, Ñv::NTuple{D,Int}, W, φ, ::Type{T}, fft::FFTWBackend, B,
+                     nthreads) where {S,D,T}
   K = make_kernel(φ, W, T)
   Ñ = Ñv .÷ 2
   cfwd, cadj = real_factors(Val(S), φ, W, N, Ñv, T, nthreads)

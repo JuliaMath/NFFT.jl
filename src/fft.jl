@@ -1,22 +1,47 @@
 """
     AbstractFFTBackend
 
-FFT used for the oversampled grid. A backend must provide in-place batched 1D transforms along a
-chosen dimension of an array view (forward and unnormalised backward).
+FFT used for the oversampled grid by NFFT plans (and the NNFFT): batched 1D transforms along one
+dimension of an array view, in place as seen from NFFT.jl. A backend `B` implements
+
+* `NFFT.pass_plan(::B, ::Val{K}, v, d)`: a plan for the transform of the view `v` along dimension
+  `d`, forward for `K = -1`, unnormalised backward for `K = 1`
+* `NFFT.apply_pass!(plan, v)`: apply it to `v` in place (default: `plan * v`, an in-place plan)
+* optionally `NFFT.planning(f, ::B, nthreads)`: run the planning `f()` with `nthreads` threads per
+  plan (default: `f()`)
+
+The RNFFT, NFCT and NFST use FFTW's real and real-to-real transforms and need [`FFTWBackend`](@ref).
 """
 abstract type AbstractFFTBackend end
 
 """
     FFTWBackend(; flags = FFTW.ESTIMATE)
 
-FFTW on the CPU. In D ≥ 2 NFFT.jl threads the per-dimension passes itself over single-threaded
-FFTW plans: FFTW's own threading with ESTIMATE produces plans up to 17× slower than MEASURE, while
-single-threaded batched ESTIMATE plans are within 10–20 % of MEASURE. A transform with one
-dimension uses FFTW's own threading.
+FFTW on the CPU, the default. In D ≥ 2 NFFT.jl threads the per-dimension passes itself over
+single-threaded FFTW plans: FFTW's own threading with ESTIMATE produces plans up to 17× slower than
+MEASURE, while single-threaded batched ESTIMATE plans are within 10–20 % of MEASURE. A transform with
+one dimension uses FFTW's own threading.
 """
 Base.@kwdef struct FFTWBackend <: AbstractFFTBackend
   flags::UInt32 = FFTW.ESTIMATE
 end
+
+"""
+    FFTABackend()
+
+[FFTA.jl](https://github.com/JuliaMath/FFTA.jl), an FFT in pure Julia; needs `using FFTA`. For NFFT
+and NNFFT plans. Slower than FFTW; its plans work out of place, so every pass keeps a buffer.
+"""
+struct FFTABackend <: AbstractFFTBackend end
+
+pass_plan(fft::AbstractFFTBackend, args...) =
+  throw(ArgumentError("the FFT backend $(nameof(typeof(fft))) is not available; for FFTABackend load FFTA"))
+apply_pass!(plan, v) = (plan * v; nothing)
+planning(f, ::AbstractFFTBackend, nthreads) = f()
+
+pass_plan(fft::FFTWBackend, ::Val{K}, v, d) where {K} =
+  K == FFTW.FORWARD ? FFTW.plan_fft!(v, d; flags=fft.flags) : FFTW.plan_bfft!(v, d; flags=fft.flags)
+planning(f, ::FFTWBackend, nthreads) = with_fftw_threads(f, nthreads)
 
 # The thread count of FFTW's planner is global; planning restores it.
 function with_fftw_threads(f, n)
@@ -39,52 +64,54 @@ struct PassFFT{D,P}
   boxes::Vector{Vector{NTuple{D,UnitRange{Int}}}}
 end
 
-# The passes on arrays of element type C in direction K (FFTW.FORWARD or FFTW.BACKWARD).
-const FFTWPass{C,K,D} = PassFFT{D,FFTW.cFFTWPlan{C,K,true,D,Int}}
-
 # `dir` selects the transform (:fwd forward, :bwd unnormalised backward), `pattern` the pruning
 # (:fwd zero input outside the kept modes, :bwd only the kept outputs needed); they differ for the
-# RNFFT. With `fftw_threads`, a single pass is threaded by FFTW instead of split into boxes.
-function PassFFT(fft::FFTWBackend, x::AbstractArray{C,D}, N::NTuple{D,Int}; dir=:fwd, pattern=dir,
-                 nthreads=Threads.nthreads(), tdims=1:D, fftw_threads=length(tdims) == 1) where {C,D}
-  dir == :fwd ? fftw_passes(Val(FFTW.FORWARD), fft, x, N, pattern, nthreads, tdims, fftw_threads) :
-                fftw_passes(Val(FFTW.BACKWARD), fft, x, N, pattern, nthreads, tdims, fftw_threads)
+# RNFFT. With `fft_threads`, a single pass is threaded by the backend (FFTW) instead of split into
+# boxes.
+function PassFFT(fft::AbstractFFTBackend, x::AbstractArray{C,D}, N::NTuple{D,Int}; dir=:fwd, pattern=dir,
+                 nthreads=Threads.nthreads(), tdims=1:D, fft_threads=length(tdims) == 1) where {C,D}
+  K = dir == :fwd ? Val(-1) : Val(1)
+  order = pattern == :fwd ? reverse(tdims) : tdims
+  boxes = [pass_boxes(x, N, d, tdims, fft_threads, nthreads) for d in order]
+  plans = planning(fft, fft_threads ? nthreads : 1) do
+    [[pass_plan(fft, K, view(x, b...), d) for b in bs] for (d, bs) in zip(order, boxes)]
+  end
+  PassFFT(plans, boxes)
 end
 
-function fftw_passes(::Val{K}, fft, x::AbstractArray{C,D}, N, pattern, nthreads, tdims, fftw_threads) where {K,C,D}
+# The boxes of the pass along d: the kept index ranges along the transformed dims < d, everything
+# else; split along the outermost dimension other than d for threading.
+function pass_boxes(x::AbstractArray{C,D}, N, d, tdims, fft_threads, nthreads) where {C,D}
   Ñ = size(x)
-  order = pattern == :fwd ? reverse(tdims) : tdims
-  P = FFTW.cFFTWPlan{C,K,true,D,Int}
-  plans, boxes = Vector{P}[], Vector{NTuple{D,UnitRange{Int}}}[]
-  for d in order
-    sets = ntuple(k -> (k < d && k in tdims) ? UnitRange{Int}[r for r in keptranges(N[k], Ñ[k]) if !isempty(r)] :
-                                               UnitRange{Int}[1:Ñ[k]], Val(D))
-    bxs = vec(collect(Iterators.product(sets...)))
-    # split each box along the outermost dimension other than d
-    s = fftw_threads ? 0 : d == D ? D - 1 : D
-    pb = s == 0 ? bxs : NTuple{D,UnitRange{Int}}[]
-    s == 0 || for b in bxs, c in chunks(b[s], cld(nthreads, length(bxs)))
-      push!(pb, Base.setindex(b, c, s))
-    end
-    push!(boxes, pb)
-    push!(plans, with_fftw_threads(fftw_threads ? nthreads : 1) do
-      P[K == FFTW.FORWARD ? FFTW.plan_fft!(view(x, b...), d; flags=fft.flags) :
-                            FFTW.plan_bfft!(view(x, b...), d; flags=fft.flags) for b in pb]
-    end)
+  sets = ntuple(k -> (k < d && k in tdims) ? UnitRange{Int}[r for r in keptranges(N[k], Ñ[k]) if !isempty(r)] :
+                                             UnitRange{Int}[1:Ñ[k]], Val(D))
+  bxs = vec(collect(Iterators.product(sets...)))
+  s = fft_threads ? 0 : d == D ? D - 1 : D
+  s == 0 && return bxs
+  pb = NTuple{D,UnitRange{Int}}[]
+  for b in bxs, c in chunks(b[s], cld(nthreads, length(bxs)))
+    push!(pb, Base.setindex(b, c, s))
   end
-  PassFFT{D,P}(plans, boxes)
+  pb
 end
 
 # No FFT: the core of the NNFFT spreading only resamples.
-function PassFFT(::Nothing, x::AbstractArray{C,D}, N; dir=:fwd, kwargs...) where {C,D}
-  P = FFTW.cFFTWPlan{C,dir == :fwd ? FFTW.FORWARD : FFTW.BACKWARD,true,D,Int}
-  PassFFT{D,P}(Vector{P}[], Vector{NTuple{D,UnitRange{Int}}}[])
+PassFFT(::Nothing, x::AbstractArray{C,D}, N; kwargs...) where {C,D} =
+  PassFFT{D,Nothing}(Vector{Nothing}[], Vector{NTuple{D,UnitRange{Int}}}[])
+
+# The full FFT of `g` along all dimensions (the FFT stages of the stage interface).
+function full_fft!(fft, g::AbstractArray{C,D}, dir) where {C,D}
+  K = dir == :fwd ? Val(-1) : Val(1)
+  for d in 1:D
+    apply_pass!(planning(() -> pass_plan(fft, K, g, d), fft, 1), g)
+  end
+  g
 end
 
 function apply!(P::PassFFT, x)
   for (ps, bs) in zip(P.plans, P.boxes)
     @maybe_threads length(ps) :dynamic for i in eachindex(ps)
-      ps[i] * view(x, bs[i]...)
+      apply_pass!(ps[i], view(x, bs[i]...))
     end
   end
   x

@@ -20,6 +20,7 @@ out_ndims(::NTuple{D,Int}, kwargs) where {D} = Val(out_ndims(Val(D), get(kwargs,
 function fast_plan(::Type{P}, k::AbstractMatrix, N::NTuple{D,Int}, g::GenericOptions{T}, ::Val{R}=Val(D - length(g.dims) + 1);
                    window=:auto, W=nothing, σ=nothing, fft=nothing, tilesize=nothing, measure=false) where {P,D,T,R}
   fft = cpu_options(g.storage, fft, tilesize)
+  check_backend(P, fft)
   measure && !(g.storage <: Array) && throw(ArgumentError("measure is supported for plans on the CPU"))
   dims = g.dims; Nd = N[dims]; J = size(k, 2)
   kernels = select_kernels(window, W, σ, g.reltol, error_size(P, Nd), J, T; Ncost=Nd,
@@ -107,6 +108,11 @@ function cpu_options(storage, fft, tilesize)
     throw(ArgumentError("the options fft and tilesize are not supported with storage = $storage"))
   something(fft, FFTWBackend())
 end
+
+# The RNFFT, NFCT and NFST use FFTW's real and real-to-real transforms.
+check_backend(P, fft) = nothing
+check_backend(P::Type{<:Union{RNFFTPlan,NFCTPlan,NFSTPlan}}, fft) = fft isa FFTWBackend ||
+  throw(ArgumentError("$(nameof(P)) needs the FFT backend FFTWBackend, got $(nameof(typeof(fft)))"))
 
 # Core of a plan whose data live on a device (GPU array types); implemented by the GPU extension.
 device_core(storage, args...) = throw(ArgumentError(

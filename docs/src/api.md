@@ -19,7 +19,7 @@ size given as third argument, and its `window`, `W` and `σ` apply to its inner 
 | `nthreads` | number of threads, default `Threads.nthreads()` |
 | `window` | `:auto`, `KaiserBessel()`, `ExpSemicircle()`, `CustomWindow(φ)` |
 | `W`, `σ` | window width and oversampling factor |
-| `fft` | FFT backend, default `FFTWBackend()` |
+| `fft` | FFT backend: `FFTWBackend()` (default) or `FFTABackend()` (pure Julia, `using FFTA`; NFFT and NNFFT) |
 | `tilesize` | edge length of the tiles the nodes are sorted into (expert option) |
 | `measure` | `true`: time the four parameter sets of lowest predicted cost at plan time and keep the fastest (CPU) |
 
@@ -67,6 +67,7 @@ ExpSemicircle
 CustomWindow
 AbstractFFTBackend
 FFTWBackend
+FFTABackend
 ```
 
 ## Stages

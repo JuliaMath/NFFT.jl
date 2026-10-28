@@ -12,16 +12,19 @@ Reexport = "189a3867-3050-52da-a836-e630ba90ab69"
 StaticArrays = "90137ffa-7385-5640-81b9-e52037218182"
 
 [weakdeps]
+FFTA = "b86e33f2-c0db-4aa1-a6e0-ab43e668529e"
 GPUArrays = "0c68f7d7-f131-5f86-a1c3-88cf8149b2d7"
 KernelAbstractions = "63c18a36-062a-441e-b654-da1e3ab1ce7c"
 SparseArrays = "2f01184e-e22b-5df5-ae63-d93ebab69eaf"
 
 [extensions]
+NFFTFFTAExt = "FFTA"
 NFFTGPUExt = ["GPUArrays", "KernelAbstractions"]
 NFFTSparseArraysExt = "SparseArrays"
 
 [compat]
 AbstractNFFTs = "1"
+FFTA = "0.3"
 FFTW = "1.5"
 GPUArrays = "11, 12"
 KernelAbstractions = "0.9, 0.10"
@@ -33,6 +36,7 @@ StaticArrays = "1.4"
 julia = "1.10"
 
 [extras]
+FFTA = "b86e33f2-c0db-4aa1-a6e0-ab43e668529e"
 NFFTTools = "7424e34d-94f7-41d6-98a0-85abaf1b6c91"
 Random = "9a3f8284-a2c9-5f02-9a11-845980a1fd5c"
 SparseArrays = "2f01184e-e22b-5df5-ae63-d93ebab69eaf"
@@ -40,7 +44,7 @@ Test = "8dfed614-e22c-5e08-85e1-65c5234f0b40"
 Zygote = "e88e6eb3-aa80-5325-afca-941959d7151f"
 
 [targets]
-test = ["NFFTTools", "Random", "SparseArrays", "Test", "Zygote"]
+test = ["FFTA", "NFFTTools", "Random", "SparseArrays", "Test", "Zygote"]
 
 [sources]
 AbstractNFFTs = {path = "AbstractNFFTs"}

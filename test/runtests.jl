@@ -5,6 +5,7 @@ using LinearAlgebra
 using Zygote
 using NFFTTools
 using SparseArrays
+using FFTA
 
 # Contract tests of the AbstractNFFTs interface (implementation-independent), then NFFT.jl's own
 # behaviour, then NFFTTools. The GPU tests run separately (test/gpu/run.jl, on Buildkite).
@@ -22,6 +23,7 @@ nfft_plan(k, N; kwargs...) = plan_nfft(NFFT.backend(), k, N; kwargs...)
   include("nnfft.jl")
   include("stages.jl")
   include("stability.jl")
+  include("fftbackend.jl")
   include("issues.jl")
   include("chainrules.jl")
   include("samplingDensity.jl")
