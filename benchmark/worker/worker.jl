@@ -21,15 +21,20 @@ include(CFG["adapter"])
 @isdefined(release!) || (release!(p) = nothing)
 @isdefined(params) || (params(p) = Dict{String,Any}())
 @isdefined(stages) || (stages(p, prob) = Dict{String,Any}())
+# GPU libraries: data moved to the device before the measurements, results back for the error, and
+# a synchronisation inside every timed call
+@isdefined(upload) || (upload(x) = x)
+@isdefined(download) || (download(x) = x)
+@isdefined(sync) || (sync() = nothing)
 
 # Minimum and median wall time: one warm-up call, then repeated calls until `budget` seconds have
 # passed (at least 3, at most 1000).
 function timeit(f, budget)
-  f()
+  f(); sync()
   ts = Float64[]
   t0 = time()
   while length(ts) < 3 || (time() - t0 < budget && length(ts) < 1000)
-    push!(ts, @elapsed f())
+    push!(ts, @elapsed (f(); sync()))
   end
   minimum(ts), median(ts)
 end
@@ -43,7 +48,7 @@ end
 
 function measure(prob::Problem, task)
   tol = Float64(task["tol"]); budget = Float64(get(task, "budget", 0.1))
-  x, y = natural(prob)
+  x, y = map(upload, natural(prob))
   p = plan(prob, tol)                                  # compiles
   release!(p)
   t_plan = Inf
@@ -56,7 +61,7 @@ function measure(prob::Problem, task)
   t_trafo, t_trafo_med = timeit(() -> trafo!(p, outT, x), budget)
   t_adj, t_adj_med = timeit(() -> adjoint!(p, outA, y), budget)
   r = Dict{String,Any}(
-    "err_trafo" => err_trafo(prob, outT), "err_adj" => err_adjoint(prob, outA),
+    "err_trafo" => err_trafo(prob, download(outT)), "err_adj" => err_adjoint(prob, download(outA)),
     "t_plan" => t_plan, "t_trafo" => t_trafo, "t_adj" => t_adj,
     "t_trafo_med" => t_trafo_med, "t_adj_med" => t_adj_med,
     "alloc_trafo" => @allocated(trafo!(p, outT, x)), "alloc_adj" => @allocated(adjoint!(p, outA, y)))

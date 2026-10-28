@@ -20,6 +20,8 @@ const LIBS = Dict(
   "FINUFFT" => (env=joinpath(ROOT, "envs", "finufft"), adapter="finufft.jl"),
   "ducc" => (env=joinpath(ROOT, "envs", "ducc"), adapter="ducc.jl"),
   "NonuniformFFTs" => (env=joinpath(ROOT, "envs", "nonuniformffts"), adapter="nonuniformffts.jl"),
+  "NFFT Metal" => (env=joinpath(ROOT, "envs", "nfftmetal"), adapter="nfft_metal.jl"),
+  "mlx-nufft" => (env=joinpath(ROOT, "envs", "mlxnufft"), adapter="mlxnufft.jl"),
 )
 
 const COLUMNS = ["suite", "lib", "transform", "D", "N", "J", "L", "nodes", "T", "threads", "tol",

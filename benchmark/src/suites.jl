@@ -99,6 +99,12 @@ const BATCH_CASES = [("oct", [2048], 2048, [1, 8, 64, 512]), ("mri", [256, 256],
 # sources and targets: prod(N) each, with the space-frequency extent of an NFFT of size N
 const NNFFT_SIZES = Dict(1 => [2^16], 2 => [256, 256], 3 => [32, 32, 32])
 
+@suite "metal" "Apple GPU: NFFT.jl on Metal against mlx-nufft, Float32, tolerance sweep, D = 1…3" o -> [
+  task(; lib, N=SIZES[D], tol, T="Float32", threads=opt(o, :threads, [default_threads()])[1],
+       budget=opt(o, :budget, 0.1), suite="metal")
+  for D in opt(o, :dims, [1, 2, 3]) for tol in opt(o, :tols, [1e-2, 1e-3, 1e-4, 1e-5])
+  for lib in opt(o, :libs, ["NFFT Metal", "mlx-nufft"])]
+
 const HOMEPAGE = ["pareto", "threads", "sizes", "nodes", "batch", "real", "nnfft", "history"]
 @suite "all" "all suites of the documentation (" * join(HOMEPAGE, ", ") * ")" o ->
   reduce(vcat, [SUITES[s](o) for s in HOMEPAGE])

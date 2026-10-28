@@ -51,6 +51,20 @@ measured error (`pareto`), not against the tolerance. NonuniformFFTs.jl has no t
 parameter; its half support comes from the tolerance as in NFFT.jl 0.14. ducc has no batched
 transform; batches loop over the slices.
 
+## Apple GPUs
+
+`run metal` compares NFFT.jl on Metal (`storage = MtlArray`) with
+[mlx-nufft](https://github.com/martinlachaine/mlx-nufft) (Python, MLX), both in Float32 with the
+data on the GPU. mlx-nufft runs through PythonCall in a Python of your choice:
+
+```
+python3 -m venv .venv-mlx && .venv-mlx/bin/pip install mlx-nufft
+MLX_NUFFT_PYTHON=$PWD/.venv-mlx/bin/python julia benchmark/bench.jl run metal
+```
+
+Without `MLX_NUFFT_PYTHON` its tasks are skipped. GPU timings include a synchronisation after
+every call.
+
 ## Native builds of the competitors
 
 By default FINUFFT and ducc come from their release binaries (JLL packages). To benchmark builds
