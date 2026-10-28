@@ -1,7 +1,7 @@
 # libnfftjl (experimental)
 
 NFFT.jl as a C library, compiled with `juliac --trim`: NFFT and adjoint NFFT in 1–3 dimensions,
-Float64, parameters chosen from NFFT.jl's kernel table for a requested relative error. The
+double and single precision, parameters chosen from NFFT.jl's kernel table for a requested relative error. The
 library carries its Julia runtime; no Julia installation is needed to use it. Bindings for other
 languages (`../bindings/`) are thin wrappers around `include/nfftjl.h`.
 
@@ -31,4 +31,4 @@ Known limitations:
 - the Julia runtime starts on the first call: make it from one thread before others call (two
   threads making it at once abort the process);
 - FFTW.jl is not trimmable: `src/libnfftjl.jl` replaces three of its methods for the build;
-- only NFFT, Float64, no batch dimensions, no GPU.
+- only NFFT, no batch dimensions, no GPU.

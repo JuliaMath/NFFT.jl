@@ -12,6 +12,12 @@ int64_t nfftjl_plan_create(int D, const int64_t *N, int64_t J, const double *k, 
 int nfftjl_trafo(int64_t plan, const double complex *f, double complex *fhat);
 int nfftjl_adjoint(int64_t plan, const double complex *fhat, double complex *f);
 int nfftjl_plan_destroy(int64_t plan);
+
+/* The same in single precision (data in float complex; nodes and reltol stay double). */
+int64_t nfftjlf_plan_create(int D, const int64_t *N, int64_t J, const double *k, double reltol, int nthreads);
+int nfftjlf_trafo(int64_t plan, const float complex *f, float complex *fhat);
+int nfftjlf_adjoint(int64_t plan, const float complex *fhat, float complex *f);
+int nfftjlf_plan_destroy(int64_t plan);
 /* The default number of threads of a plan: the environment variable NFFTJL_NUM_THREADS if set,
    otherwise all CPU threads (the library starts one Julia thread per CPU thread, which is also
    the upper limit for nthreads). Plans can be created and

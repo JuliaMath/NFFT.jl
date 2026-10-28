@@ -65,6 +65,31 @@ static void timing(int D, const int64_t *N, int64_t J, double reltol, int nthrea
   free(k); free(f); free(fh);
 }
 
+/* single precision against the direct sum in double precision */
+static int accuracy_f32(int D, const int64_t *N, int64_t J, double reltol, int nthreads) {
+  int64_t M = 1; for (int d = 0; d < D; d++) M *= N[d];
+  double *k = malloc(sizeof(double) * D * J);
+  double complex *f = malloc(sizeof(double complex) * M), *g = malloc(sizeof(double complex) * M),
+                 *fh = malloc(sizeof(double complex) * J), *gh = malloc(sizeof(double complex) * J);
+  float complex *ff = malloc(sizeof(float complex) * M), *fhf = malloc(sizeof(float complex) * J);
+  for (int64_t i = 0; i < D * J; i++) k[i] = urand() - 0.5;
+  for (int64_t i = 0; i < M; i++) { ff[i] = urand() - 0.5 + I * (urand() - 0.5); f[i] = ff[i]; }
+  int64_t p = nfftjlf_plan_create(D, N, J, k, reltol, nthreads);
+  if (p < 0) { printf("plan failed\n"); return 1; }
+  nfftjlf_trafo(p, ff, fhf); ndft(D, N, J, k, f, gh, 0);
+  for (int64_t j = 0; j < J; j++) fh[j] = fhf[j];
+  double e1 = relerr(fh, gh, J);
+  for (int64_t j = 0; j < J; j++) fhf[j] = gh[j];
+  nfftjlf_adjoint(p, fhf, ff); ndft(D, N, J, k, gh, f, 1);
+  for (int64_t i = 0; i < M; i++) g[i] = ff[i];
+  double e2 = relerr(g, f, M);
+  printf("float, D = %d, M = %lld, J = %lld, reltol %.0e: error trafo %.1e, adjoint %.1e\n", D, M, J, reltol, e1, e2);
+  int bad = nfftjl_trafo(p, f, fh) != -1;   /* a single-precision plan is not a double one */
+  nfftjlf_plan_destroy(p);
+  free(k); free(f); free(g); free(fh); free(gh); free(ff); free(fhf);
+  return bad || !(e1 < 10 * reltol && e2 < 10 * reltol);
+}
+
 int main(int argc, char **argv) {
   int nthreads = argc > 1 ? atoi(argv[1]) : 1, fail = 0;
   setvbuf(stdout, NULL, _IONBF, 0);
@@ -74,9 +99,11 @@ int main(int argc, char **argv) {
   fail |= accuracy(2, N2, 300, 1e-9, nthreads);
   fail |= accuracy(3, N3, 300, 1e-9, nthreads);
   fail |= accuracy(2, N2, 300, 1e-4, nthreads);
+  fail |= accuracy_f32(1, N1, 300, 1e-5, nthreads);
+  fail |= accuracy_f32(2, N2, 300, 1e-5, nthreads);
+  fail |= accuracy_f32(3, N3, 300, 1e-3, nthreads);
   int64_t T1[] = {262144}, T2[] = {512, 512}, T3[] = {64, 64, 64};
   timing(1, T1, 262144, 1e-4, nthreads);   /* warm-up: the threads of FFTW start on first use */
-  timing(1, T1, 262144, 1e-4, nthreads);   /* warm-up: FFTW's threads start on first use */
   for (int i = 0; i < 2; i++) {
     double tol = i == 0 ? 1e-4 : 1e-8;
     timing(1, T1, 262144, tol, nthreads);

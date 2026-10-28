@@ -4,7 +4,7 @@
     The Python package `nfftjl` wraps `libnfftjl`, NFFT.jl compiled into a library with
     `juliac --trim` (see [C](c.md)). The wheel carries the library and its Julia runtime; no Julia
     installation is needed to use it. It covers the NFFT and its adjoint in 1–3 dimensions in
-    double precision; the table on the [home page](index.md) lists what the Julia package offers
+    single and double precision; the table on the [home page](index.md) lists what the Julia package offers
     beyond that. The interface may still change.
 
 ## Installation
@@ -33,15 +33,17 @@ computes both and checks the first values against the direct sum:
 
 ## Interface
 
-`nfftjl.Plan(k, N, reltol=1e-8, nthreads=None)`
+`nfftjl.Plan(k, N, reltol=1e-8, nthreads=None, dtype=numpy.complex128)`
 : Plan for the nodes `k`, an array of shape `(J, D)` (one node per row; shape `(J,)` in 1D) with
   entries in ``[-1/2, 1/2)``, and the array size `N` (an integer or a tuple of `D` = 1, 2, 3
   integers). `reltol` is the requested relative error: window, window width and oversampling
   factor are chosen for it at the lowest predicted cost (see [Accuracy and Parameters](@ref)).
-  `nthreads` defaults to `num_threads()`.
+  `nthreads` defaults to `num_threads()`. `dtype` is the element type of the data,
+  `numpy.complex128` or `numpy.complex64`; the nodes are given in double precision either way, and
+  grid positions are computed from them in double precision.
 
 `p.trafo(f, out=None)`
-: The NFFT of `f` (shape `N`, complex): an array of shape `(J,)`.
+: The NFFT of `f` (shape `N`, converted to `dtype`): an array of shape `(J,)`.
 
 `p.adjoint(fhat, out=None)`
 : The adjoint NFFT of `fhat` (shape `(J,)`): an array of shape `N`.

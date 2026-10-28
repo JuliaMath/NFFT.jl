@@ -3,7 +3,7 @@
 !!! note "Experimental"
     `libnfftjl` is NFFT.jl compiled into a shared library with `juliac --trim`. It carries its
     Julia runtime; programs that use it need no Julia installation. It covers the NFFT and its
-    adjoint in 1–3 dimensions in double precision; the table on the [home page](index.md) lists
+    adjoint in 1–3 dimensions in single and double precision; the table on the [home page](index.md) lists
     what the Julia package offers beyond that. The interface may still change.
 
 ## Building
@@ -61,6 +61,11 @@ computes both and checks the first values against the direct sum:
 
 `nfftjl_plan_destroy(p)`
 : Releases the plan.
+
+`nfftjlf_plan_create`, `nfftjlf_trafo`, `nfftjlf_adjoint`, `nfftjlf_plan_destroy`
+: The same in single precision: data in `float complex`; the nodes and `reltol` stay `double`, and
+  grid positions are computed from the nodes in double precision. A plan belongs to one precision:
+  the functions of the other return −1.
 
 `nfftjl_num_threads()`
 : The default number of threads of a plan: `NFFTJL_NUM_THREADS` if set, otherwise all CPU

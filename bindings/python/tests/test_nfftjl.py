@@ -38,6 +38,21 @@ def test_accuracy():
             assert relerr(p.adjoint(fhat), ndft_adjoint(k, fhat, N)) < 10 * tol
 
 
+def test_float32():
+    rng = np.random.default_rng(5)
+    for N, tol in (((64,), 1e-5), ((16, 12), 1e-5), ((8, 6, 10), 1e-3)):
+        J = 300
+        k = rng.random((J, len(N))) - 0.5
+        f = (rng.standard_normal(N) + 1j * rng.standard_normal(N)).astype(np.complex64)
+        p = nfftjl.Plan(k, N, reltol=tol, dtype=np.complex64)
+        fhat = p.trafo(f)
+        assert fhat.dtype == np.complex64
+        assert relerr(fhat, ndft(k, f.astype(np.complex128))) < 10 * tol
+        g = p.adjoint(fhat)
+        assert g.dtype == np.complex64
+        assert relerr(g, ndft_adjoint(k, fhat.astype(np.complex128), N)) < 10 * tol
+
+
 def test_finufft():
     import finufft
     rng = np.random.default_rng(2)
@@ -95,6 +110,7 @@ def test_threaded_plan():
 
 if __name__ == "__main__":
     test_accuracy()
+    test_float32()
     test_finufft()
     test_threads()
     test_threaded_plan()

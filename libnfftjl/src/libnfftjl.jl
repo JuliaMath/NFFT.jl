@@ -1,10 +1,11 @@
 # C library of NFFT.jl, compiled with `juliac --trim`: NFFT and adjoint NFFT in 1–3 dimensions,
-# Float64, parameters chosen from NFFT.jl's kernel table. Interface in include/nfftjl.h.
+# double and single precision, parameters chosen from NFFT.jl's kernel table. Interface in
+# include/nfftjl.h.
 #
 # Trimming needs every call to be resolved at compile time. The plans of NFFT.jl choose the window
 # width W at run time, and the type of the core depends on it; this file is the boundary that turns
-# the run-time (D, W) into one compiled branch per combination and keeps the cores in registries of
-# concrete type.
+# the run-time (T, D, W) into one compiled branch per combination and keeps the cores in registries
+# of concrete type.
 
 using NFFT
 using NFFT: NFFTCore, SymKernel, KaiserBessel, FFTWBackend, kb_window, es_window, grid_size,
@@ -61,35 +62,36 @@ end
 end
 load_fftw() = (NFFT.FFTW.dlopen(NFFT.FFTW.libfftw3); NFFT.FFTW.dlopen(NFFT.FFTW.libfftw3f); nothing)
 
+# The variants of the library, one compiled branch each: element type × dimension × window width.
+# A handle is index << 24 | t << 16 | D << 8 | W, t the position of the element type in TS.
+const TS = (Float64, Float32)
 const DS = 1:3
 const WS = 4:16
 
 # The FFT passes of the FFTW backend: in-place complex plans along one dimension.
-fftw_pass(K, D) = NFFT.PassFFT{D,FFTW.cFFTWPlan{ComplexF64,K,true,D,Int}}
-core_type(D, W) = NFFTCore{D,SymKernel{W,cld(W, 2),cld(W + 4, 2),(W + 4) ÷ 2,Float64},Float64,Float64,
-                           fftw_pass(FFTW.FORWARD, D),fftw_pass(FFTW.BACKWARD, D)}
+fftw_pass(T, K, D) = NFFT.PassFFT{D,FFTW.cFFTWPlan{Complex{T},K,true,D,Int}}
+core_type(T, D, W) = NFFTCore{D,SymKernel{W,cld(W, 2),cld(W + 4, 2),(W + 4) ÷ 2,T},T,Float64,
+                              fftw_pass(T, FFTW.FORWARD, D),fftw_pass(T, FFTW.BACKWARD, D)}
 
-# One registry per (D, W); a handle is index << 16 | D << 8 | W, index 1-based.
-for D in DS, W in WS
-  @eval const $(Symbol(:plans_, D, :_, W)) = Union{Nothing,$(core_type(D, W))}[]
+# One registry of plans per variant.
+for T in TS, D in DS, W in WS
+  @eval const $(Symbol(:plans_, T, :_, D, :_, W)) = Union{Nothing,$(core_type(T, D, W))}[]
 end
-@generated registry(::Val{D}, ::Val{W}) where {D,W} = Symbol(:plans_, D, :_, W)
+@generated registry(::Type{T}, ::Val{D}, ::Val{W}) where {T,D,W} = Symbol(:plans_, T, :_, D, :_, W)
 
-handle(D, W, i) = Int64(i) << 16 | Int64(D) << 8 | Int64(W)
-unhandle(h) = (Int((h >> 8) & 0xff), Int(h & 0xff), Int(h >> 16))
+tcode(::Type{T}) where {T} = findfirst(==(T), TS)
+handle(T, D, W, i) = Int64(i) << 24 | Int64(tcode(T)) << 16 | Int64(D) << 8 | Int64(W)
+unhandle(h) = (Int((h >> 16) & 0xff), Int((h >> 8) & 0xff), Int(h & 0xff), Int(h >> 24))
 
-# f(Val(D)) and f(Val(W)) for run-time values, one branch per supported value.
-let body = :(throw(ArgumentError("unsupported dimension")))
-  for D in reverse(DS)
-    body = :(D == $D ? f(Val($D)) : $body)
+# f(TS[t]), f(Val(D)), f(Val(W)) for run-time values, one branch per supported value.
+for (name, values, arg, err) in ((:with_type, 1:length(TS), t -> :($(TS[t])), "unsupported element type"),
+                                 (:with_dim, DS, D -> :(Val($D)), "unsupported dimension"),
+                                 (:with_width, WS, W -> :(Val($W)), "unsupported window width"))
+  body = :(throw(ArgumentError($err)))
+  for v in reverse(values)
+    body = :(x == $v ? f($(arg(v))) : $body)
   end
-  @eval with_dim(f, D) = $body
-end
-let body = :(throw(ArgumentError("unsupported window width")))
-  for W in reverse(WS)
-    body = :(W == $W ? f(Val($W)) : $body)
-  end
-  @eval with_width(f, W) = $body
+  @eval $name(f, x) = $body
 end
 
 # Plans can be created and destroyed from any thread; a plan must not run on two threads at once.
@@ -97,46 +99,47 @@ end
 const REGISTRY_LOCK = ReentrantLock()
 const PLAN_LOCK = ReentrantLock()
 
-function create(::Val{D}, Np::Ptr{Int64}, J::Int, kp::Ptr{Float64}, reltol::Float64, nthreads::Int) where {D}
+function create(::Type{T}, ::Val{D}, Np::Ptr{Int64}, J::Int, kp::Ptr{Float64}, reltol::Float64,
+                nthreads::Int) where {T,D}
   load_fftw()
   N = ntuple(d -> Int(unsafe_load(Np, d)), Val(D))
   k = copy(unsafe_wrap(Array, kp, (D, J)))
-  e = first(choose_kernels(reltol, N, J, Float64)[1])
+  e = first(choose_kernels(reltol, N, J, T)[1])
   W, β, e0 = e.W, e.β, e.e0
   φ = e.window isa KaiserBessel ? (z -> kb_window(z, W, β)) : (z -> es_window(z, W, β, e0))
   Ñ = grid_size(e.σ, N, W)
   with_width(W) do w
-    c = NFFTCore(k, N, Ñ, W, φ, Float64, FFTWBackend(), nothing, nthreads;
-                 kernel=make_kernel(φ, w, Float64))
-    reg = registry(Val(D), w)
+    c = NFFTCore(k, N, Ñ, W, φ, T, FFTWBackend(), nothing, nthreads; kernel=make_kernel(φ, w, T))
+    reg = registry(T, Val(D), w)
     @lock REGISTRY_LOCK begin
       push!(reg, c)
-      handle(D, W, length(reg))
+      handle(T, D, W, length(reg))
     end
   end
 end
 
 # f(registry, index) for the registry of plan h
 function with_registry(f, h)
-  D, W, i = unhandle(h)
-  with_dim(D) do d
-    with_width(W) do w
-      f(registry(d, w), i)
+  t, D, W, i = unhandle(h)
+  with_type(t) do T
+    with_dim(D) do d
+      with_width(W) do w
+        f(registry(T, d, w), i)
+      end
     end
   end
 end
 
-# f(core) for plan h; -1 for an unknown handle
-lookup(f, h) = with_registry(h) do reg, i
+# f(core) for plan h of element type T; -1 for an unknown handle or another element type
+lookup(f, ::Type{T}, h) where {T} = with_registry(h) do reg, i
   c = @lock REGISTRY_LOCK (1 <= i <= length(reg) ? reg[i] : nothing)
-  c === nothing ? Cint(-1) : f(c)
+  c isa NFFTCore{<:Any,<:Any,T} ? f(c) : Cint(-1)
 end
 
-Base.@ccallable function nfftjl_plan_create(D::Cint, N::Ptr{Int64}, J::Int64, k::Ptr{Float64}, reltol::Cdouble,
-                                          nthreads::Cint)::Int64
+function plan_create(::Type{T}, D, N, J, k, reltol, nthreads) where {T}
   try
     @lock PLAN_LOCK with_dim(Int(D)) do d
-      create(d, N, Int(J), k, Float64(reltol), nthreads > 0 ? min(Int(nthreads), Threads.nthreads()) : default_threads())
+      create(T, d, N, Int(J), k, Float64(reltol), nthreads > 0 ? min(Int(nthreads), Threads.nthreads()) : default_threads())
     end
   catch e
     Core.println(Core.stderr, e)
@@ -144,9 +147,9 @@ Base.@ccallable function nfftjl_plan_create(D::Cint, N::Ptr{Int64}, J::Int64, k:
   end
 end
 
-Base.@ccallable function nfftjl_trafo(h::Int64, f::Ptr{ComplexF64}, fhat::Ptr{ComplexF64})::Cint
+function trafo(::Type{T}, h, f, fhat) where {T}
   try
-    lookup(h) do c
+    lookup(T, h) do c
       trafo_core!(unsafe_wrap(Array, fhat, length(c.binned.perm)), c, unsafe_wrap(Array, f, c.N))
       Cint(0)
     end
@@ -155,9 +158,9 @@ Base.@ccallable function nfftjl_trafo(h::Int64, f::Ptr{ComplexF64}, fhat::Ptr{Co
   end
 end
 
-Base.@ccallable function nfftjl_adjoint(h::Int64, fhat::Ptr{ComplexF64}, f::Ptr{ComplexF64})::Cint
+function adjoint(::Type{T}, h, fhat, f) where {T}
   try
-    lookup(h) do c
+    lookup(T, h) do c
       adjoint_core!(unsafe_wrap(Array, f, c.N), c, unsafe_wrap(Array, fhat, length(c.binned.perm)))
       Cint(0)
     end
@@ -166,7 +169,7 @@ Base.@ccallable function nfftjl_adjoint(h::Int64, fhat::Ptr{ComplexF64}, f::Ptr{
   end
 end
 
-Base.@ccallable function nfftjl_plan_destroy(h::Int64)::Cint
+function plan_destroy(h)
   try
     with_registry(h) do reg, i
       @lock REGISTRY_LOCK begin
@@ -177,6 +180,19 @@ Base.@ccallable function nfftjl_plan_destroy(h::Int64)::Cint
     end
   catch
     Cint(-1)
+  end
+end
+
+# The C functions: nfftjl_… in double precision, nfftjlf_… in single precision (nodes and
+# reltol stay double).
+for (T, prefix) in ((Float64, "nfftjl_"), (Float32, "nfftjlf_"))
+  C = Complex{T}
+  @eval begin
+    Base.@ccallable $(Symbol(prefix, :plan_create))(D::Cint, N::Ptr{Int64}, J::Int64, k::Ptr{Float64},
+      reltol::Cdouble, nthreads::Cint)::Int64 = plan_create($T, D, N, J, k, reltol, nthreads)
+    Base.@ccallable $(Symbol(prefix, :trafo))(h::Int64, f::Ptr{$C}, fhat::Ptr{$C})::Cint = trafo($T, h, f, fhat)
+    Base.@ccallable $(Symbol(prefix, :adjoint))(h::Int64, fhat::Ptr{$C}, f::Ptr{$C})::Cint = adjoint($T, h, fhat, f)
+    Base.@ccallable $(Symbol(prefix, :plan_destroy))(h::Int64)::Cint = plan_destroy(h)
   end
 end
 
