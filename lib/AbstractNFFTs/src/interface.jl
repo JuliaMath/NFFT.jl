@@ -327,3 +327,11 @@ Third step of the adjoint NFFT: crop the oversampled spectrum `ĝ` and divide by
 transform of the window function.
 """
 @mustimplement resampling_correction_adjoint!(p::AbstractFTPlan, ĝ::AbstractArray, f::AbstractArray)
+
+# Plans and their adjoints or transposes, the linear maps that automatic differentiation sees.
+# The pullback of a plan is its adjoint, for the real transforms (NFCT, NFST) its transpose; the
+# pullback of an adjoint or transposed plan is the plan itself.
+const WrappedPlan = Union{Adjoint{<:Any,<:AbstractFTPlan},Transpose{<:Any,<:AbstractFTPlan}}
+pullback_plan(plan::AbstractRealFTPlan) = transpose(plan)
+pullback_plan(plan::AbstractFTPlan) = adjoint(plan)
+pullback_plan(plan::WrappedPlan) = parent(plan)

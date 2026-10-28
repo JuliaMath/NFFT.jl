@@ -88,7 +88,8 @@ LinearAlgebra.mul!(f, p::Adjoint{<:Complex,<:MyPlan}, fHat) = ...
 
 In the type parameters, `T` is the real element type of the data, `D` the number of dimensions
 of the input and `R` that of the output (`R = 1` without batch dimensions). Everything else,
-`*`, `nfft`, `size`, ChainRules, is derived from these functions.
+`*`, `nfft`, `size` and the rules for automatic differentiation (ChainRules for Zygote, Enzyme),
+is derived from these functions.
 
 The test suite of NFFT.jl contains contract tests (`test/contract.jl`) that check an implementation
 against the NDFT, for several tolerances `reltol` and with batch dimensions (`dims`); they take a

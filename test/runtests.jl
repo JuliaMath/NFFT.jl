@@ -28,6 +28,7 @@ nfft_plan(k, N; kwargs...) = plan_nfft(NFFT.backend(), k, N; kwargs...)
   include("fftbackend.jl")
   include("issues.jl")
   include("chainrules.jl")
+  include("enzyme.jl")
   include("samplingDensity.jl")
   include("testToeplitz.jl")
 end

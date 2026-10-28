@@ -8,12 +8,8 @@ const NT = ChainRulesCore.NoTangent
 ###############
 # mul-interface
 ###############
-# The pullback of a plan is its adjoint, for the real transforms (NFCT, NFST) its transpose; the
-# pullback of an adjoint or transposed plan is the plan itself.
-const WrappedPlan = Union{Adjoint{<:Any,<:AbstractFTPlan},Transpose{<:Any,<:AbstractFTPlan}}
-pullback_plan(plan::AbstractRealFTPlan) = transpose(plan)
-pullback_plan(plan::AbstractFTPlan) = adjoint(plan)
-pullback_plan(plan::WrappedPlan) = parent(plan)
+const WrappedPlan = AbstractNFFTs.WrappedPlan
+const pullback_plan = AbstractNFFTs.pullback_plan
 
 # Adjoint and Transpose are AbstractMatrix: the second signature is more specific than the
 # matrix-times-vector rule of ChainRules.

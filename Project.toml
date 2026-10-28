@@ -25,6 +25,7 @@ NFFTSparseArraysExt = "SparseArrays"
 [compat]
 AbstractNFFTs = "1"
 Aqua = "0.8"
+Enzyme = "0.13"
 FFTA = "0.3"
 FFTW = "1.5"
 GPUArrays = "11, 12"
@@ -43,6 +44,7 @@ julia = "1.10"
 
 [extras]
 Aqua = "4c88cf16-eb10-579e-8560-4a9242c79595"
+Enzyme = "7da242da-08ed-463a-9acd-ee780be4f1d9"
 FFTA = "b86e33f2-c0db-4aa1-a6e0-ab43e668529e"
 JLArrays = "27aeb0d3-9eb9-45fb-866b-73c2ecf80fcb"
 NFFTTools = "7424e34d-94f7-41d6-98a0-85abaf1b6c91"
@@ -52,7 +54,7 @@ Test = "8dfed614-e22c-5e08-85e1-65c5234f0b40"
 Zygote = "e88e6eb3-aa80-5325-afca-941959d7151f"
 
 [targets]
-test = ["Aqua", "FFTA", "JLArrays", "NFFTTools", "Random", "SparseArrays", "Test", "Zygote"]
+test = ["Aqua", "Enzyme", "FFTA", "JLArrays", "NFFTTools", "Random", "SparseArrays", "Test", "Zygote"]
 
 [sources]
 AbstractNFFTs = {path = "lib/AbstractNFFTs"}

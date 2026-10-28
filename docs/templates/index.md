@@ -87,6 +87,8 @@ as the Julia package. Its interface is experimental and covers the core transfor
 - **The three stages of the algorithm as an interface**: resampling correction, FFT and
   resampling can be called one by one, for example to embed the NFFT into a Toeplitz approach or to
   profile it.
+- **Automatic differentiation** with Zygote (ChainRules) and Enzyme: a plan is a constant linear
+  map, its derivative is the plan itself or its adjoint.
 - **One interface for several implementations.** `AbstractNFFTs.jl` defines plans, options and
   operations; NFFT.jl and NonuniformFFTs.jl implement it. Code written against the interface runs
   with each of them.
