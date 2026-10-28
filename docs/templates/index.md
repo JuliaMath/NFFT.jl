@@ -149,9 +149,11 @@ the [discussions](https://github.com/JuliaMath/NFFT.jl/discussions).
 ## Contributors
 
 - [Tobias Knopp](https://www.imt.uni-luebeck.de)
+- [Niklas Hackelberg](https://github.com/nHackel)
 - [Robert Dahl Jacobsen](https://github.com/robertdj)
 - [Mirco Grosser](https://github.com/migrosser)
 - [Jakob Assländer](https://med.nyu.edu/faculty/jakob-asslaender)
 - [Mosè Giordano](https://github.com/giordano)
+- [Jeff Fessler](https://github.com/JeffFessler)
 
 The complete list is on [GitHub](https://github.com/JuliaMath/NFFT.jl/graphs/contributors).
