@@ -1,0 +1,45 @@
+name: libnfftjl
+# The C library (juliac --trim) and the Python package: keeps NFFT.jl trimmable. Experimental,
+# so a failure does not fail the pull request.
+on:
+  pull_request:
+    branches:
+      - main
+  push:
+    branches:
+      - main
+jobs:
+  libnfftjl:
+    name: libnfftjl - ${{ matrix.os }}
+    runs-on: ${{ matrix.os }}
+    continue-on-error: true
+    strategy:
+      fail-fast: false
+      matrix:
+        os:
+          - ubuntu-latest
+          - macos-latest
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+      - uses: julia-actions/setup-julia@4c0cb0fce8556fdb04a90347310e5db8b1f98fb9 # v2.7.0
+        with:
+          version: '1'
+      - uses: actions/cache@668228422ae6a00e4ad889ee87cd7109ec5666a7 # v5.0.4
+        env:
+          cache-name: cache-artifacts
+        with:
+          path: ~/.julia/artifacts
+          key: ${{ runner.os }}-libnfftjl-${{ env.cache-name }}-${{ hashFiles('**/Project.toml') }}
+          restore-keys: |
+            ${{ runner.os }}-libnfftjl-${{ env.cache-name }}-
+      - name: Build the library and the C test
+        run: libnfftjl/build.sh
+      - name: C test
+        run: libnfftjl/test/test 4
+      - name: Python wheel and tests
+        run: |
+          python3 -m venv .venv
+          .venv/bin/pip install numpy build wheel setuptools finufft
+          PYTHON=$PWD/.venv/bin/python bindings/python/build_wheel.sh
+          .venv/bin/pip install bindings/python/dist/*.whl
+          cd /tmp && $GITHUB_WORKSPACE/.venv/bin/python $GITHUB_WORKSPACE/bindings/python/tests/test_nfftjl.py

@@ -47,5 +47,5 @@ Zygote = "e88e6eb3-aa80-5325-afca-941959d7151f"
 test = ["FFTA", "NFFTTools", "Random", "SparseArrays", "Test", "Zygote"]
 
 [sources]
-AbstractNFFTs = {path = "AbstractNFFTs"}
-NFFTTools = {path = "NFFTTools"}
+AbstractNFFTs = {path = "lib/AbstractNFFTs"}
+NFFTTools = {path = "lib/NFFTTools"}

@@ -52,6 +52,8 @@ function ref_lib(rev)
     run(`git -C $REPO worktree add --detach --force $src $sha`)
   end
   env = joinpath(dir, "env")
+  # AbstractNFFTs is in lib/, in older revisions at the top level
+  abs = isdir(joinpath(src, "lib", "AbstractNFFTs")) ? joinpath(src, "lib", "AbstractNFFTs") : joinpath(src, "AbstractNFFTs")
   if !isfile(joinpath(env, "Project.toml"))
     mkpath(env)
     write(joinpath(env, "Project.toml"), """
@@ -60,7 +62,7 @@ function ref_lib(rev)
     NFFT = "efe261a4-0d2b-5849-be55-fc731d526b0d"
 
     [sources]
-    AbstractNFFTs = {path = "$(joinpath(src, "AbstractNFFTs"))"}
+    AbstractNFFTs = {path = "$abs"}
     NFFT = {path = "$src"}
     """)
   end

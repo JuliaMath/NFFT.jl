@@ -22,7 +22,7 @@ that runs multi-threaded on the CPU and on GPUs (CUDA, AMD, Apple) from the same
 >
 > To try the development version (AbstractNFFTs 1.0 is not registered yet, so it comes first):
 > ```
-> pkg> add https://github.com/JuliaMath/NFFT.jl:AbstractNFFTs#main
+> pkg> add https://github.com/JuliaMath/NFFT.jl:lib/AbstractNFFTs#main
 > pkg> add NFFT#main
 > ```
 
@@ -37,6 +37,9 @@ that runs multi-threaded on the CPU and on GPUs (CUDA, AMD, Apple) from the same
 - **The stages of the algorithm** (resampling correction, FFT, resampling) as an interface.
 - **A benchmark suite** in `benchmark/` that compares with other libraries and with earlier
   revisions.
+- **Experimental: a C library and a Python package** compiled from the same code with
+  `juliac --trim`, no Julia installation needed to use them: `libnfftjl/` (C interface
+  `nfftjl.h`) and `bindings/python/` (`nfftjl`). NFFT in 1–3 dimensions, Float64, CPU.
 
 ```julia
 using NFFT

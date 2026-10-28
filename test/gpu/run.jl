@@ -7,8 +7,8 @@ haskey(BACKENDS, backend) || error("unknown backend $backend, expected one of $(
 
 root = joinpath(@__DIR__, "..", "..")
 Pkg.activate(; temp=true)
-Pkg.develop([PackageSpec(path=joinpath(root, "AbstractNFFTs")),
-             PackageSpec(path=joinpath(root, "NFFTTools")),
+Pkg.develop([PackageSpec(path=joinpath(root, "lib", "AbstractNFFTs")),
+             PackageSpec(path=joinpath(root, "lib", "NFFTTools")),
              PackageSpec(path=root)])
 Pkg.add([BACKENDS[backend], "Test", "Random", "LinearAlgebra"])
 
