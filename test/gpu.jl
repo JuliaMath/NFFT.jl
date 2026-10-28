@@ -38,6 +38,11 @@ include("contract.jl")                       # relerr, allowed
     if p.core.nodes.tiles !== nothing
       @test Array(adjoint(p) * arrayType(fHat)) == x
     end
+    # by subproblems (Float32), the tiles are added to the grid with atomics: repeated calls agree
+    # up to rounding
+    if p.core.nodes.subs !== nothing
+      @test relerr(Array(adjoint(p) * arrayType(fHat)), x) < 10 * eps(T)
+    end
 
     # options of the CPU code are rejected, not ignored
     @test_throws ArgumentError plan_nfft(k, N; reltol, storage=arrayType, tilesize=8)

@@ -31,6 +31,13 @@ const TILE_CHUNK = 32
 tile_edge(D) = D == 2 ? 32 : 8
 const LOCAL_BYTES = 32 * 1024
 
+# Adjoint resampling by subproblems (`adjoint_sub_kernel!`, Float32): workgroup size, nodes per
+# subproblem and per chunk, largest bin edge.
+const SUB_WORKGROUP = 256
+const SUB_MAX = 1024
+const SUB_CHUNK = 32
+sub_edge(D) = D == 1 ? 2048 : D == 2 ? 64 : 16
+
 ## nodes and resampling (shared by all transforms)
 
 # Nodes are sorted by bins of the start of their support in the padded grid; bin edges are the tile
@@ -44,13 +51,25 @@ struct Tiles{D,P}
   tileptr::P
 end
 
-struct Nodes{K,O,S,P,TL}
+# Subproblems: the nodes of bin `bin[i]` (linear bin index, dimension 1 fastest) from `start[i]`,
+# `count[i]` ≤ SUB_MAX of them; `nb` bins of edge B per dimension.
+struct Subproblems{D,P}
+  B::NTuple{D,Int}
+  nb::NTuple{D,Int}
+  bstr::NTuple{D,Int}
+  start::P
+  count::P
+  bin::P
+end
+
+struct Nodes{K,O,S,P,TL,SP}
   W::Int
   kernel::K
   offs::O                    # (D, J) Int32: index of support point 0 in the padded grid, minus 1
   ss::S                      # (D, J) fractional coordinates s = 2t − 1 in T
   perm::P                    # binned order → input index
-  tiles::TL                  # Tiles: adjoint resampling by tiles; nothing: by atomic additions
+  tiles::TL                  # Tiles: adjoint resampling by tiles
+  subs::SP                   # Subproblems: by subproblems; both nothing: by atomic additions
 end
 
 col_strides(n) = (s = 1; map(x -> (r = s; s *= x; r), n))
@@ -65,8 +84,21 @@ function tile_edges(D, W, T)
   bytes <= LOCAL_BYTES ? B : nothing
 end
 
-# Whether a backend runs the tile kernel, whose barriers sit inside loops: GPUs do, backends that
-# execute kernels as CPU loops (JLArrays in the tests) do not.
+# Bin edges for the adjoint resampling by subproblems: the largest for which the padded tile (B + W
+# per dimension, two Int32) and a chunk of nodes fit into the local memory; the larger the bins, the
+# fewer tile points overlap and are flushed twice. Float32 only: Float64 would need more than the 32
+# bits of the fixed-point accumulation.
+function sub_edges(D, W, T)
+  T === Float32 || return nothing
+  chunk = SUB_CHUNK * (D * W * sizeof(T) + 4D + 2sizeof(T))
+  for b in sub_edge(D):-1:1
+    8 * (b + W)^D + chunk <= LOCAL_BYTES && return ntuple(_ -> b, D)
+  end
+  nothing
+end
+
+# Whether a backend runs the tile and subproblem kernels, whose barriers sit inside loops: GPUs do,
+# backends that execute kernels as CPU loops (JLArrays in the tests) do not.
 use_tiles(backend) = true
 
 # Nodes k (CPU) on a periodic grid of Ñ points per dimension (`gridpos`), padded grid of size P.
@@ -81,8 +113,10 @@ function Nodes(storage, k::Matrix, Ñ::NTuple{D,Int}, P::NTuple{D,Int}, W, φ, :
     end
   end
   # binned order: work-items with neighbouring indices touch neighbouring parts of the grid
-  Bt = use_tiles(KA.get_backend(storage(offs))) ? tile_edges(D, W, T) : nothing
-  B = Bt === nothing ? ntuple(_ -> D == 1 ? 1024 : 16, D) : Bt
+  gpu = use_tiles(KA.get_backend(storage(offs)))
+  Bs = gpu ? sub_edges(D, W, T) : nothing
+  Bt = gpu && Bs === nothing ? tile_edges(D, W, T) : nothing
+  B = something(Bs, Bt, ntuple(_ -> D == 1 ? 1024 : 16, D))
   nt = cld.(P, B)
   tstr = col_strides(nt)
   tile = [1 + sum(ntuple(d -> (offs[d, j] ÷ B[d]) * tstr[d], D)) for j in 1:J]
@@ -93,7 +127,16 @@ function Nodes(storage, k::Matrix, Ñ::NTuple{D,Int}, P::NTuple{D,Int}, W, φ, :
   end
   tileptr = cumsum([1; counts])
   tiles = Bt === nothing ? nothing : Tiles(B, nt, tstr, col_strides(B), storage(Int32.(tileptr)))
-  Nodes(W, K, storage(offs[:, perm]), storage(ss[:, perm]), storage(Int32.(perm)), tiles)
+  subs = Bs === nothing ? nothing : subproblems(storage, B, nt, tileptr)
+  Nodes(W, K, storage(offs[:, perm]), storage(ss[:, perm]), storage(Int32.(perm)), tiles, subs)
+end
+
+function subproblems(storage, B, nb, binptr)
+  start = Int32[]; count = Int32[]; bin = Int32[]
+  for t in 1:prod(nb), q in binptr[t]:SUB_MAX:binptr[t+1]-1
+    push!(start, q); push!(count, min(SUB_MAX, binptr[t+1] - q)); push!(bin, t)
+  end
+  Subproblems(B, nb, col_strides(nb), storage(start), storage(count), storage(bin))
 end
 
 @inline node_weights(K, ss, q, ::Val{D}) where {D} = ntuple(d -> weights(K, @inbounds(ss[d, q])), Val(D))
@@ -230,6 +273,107 @@ real_view(gp::AbstractArray{<:Real}) = reshape(gp, 1, size(gp)...)
   end
 end
 
+# Adjoint resampling by subproblems (after cuFINUFFT's subproblems, Shih et al. 2021, and the
+# fixed-point accumulation of mlx-nufft): one workgroup per subproblem and transform accumulates
+# into the padded tile of its bin, o .+ (1:B+W), in local memory. The work-items split the
+# (node, support point) pairs of a chunk of nodes and add with Int32 atomics: Metal has no atomic
+# float additions in local memory, and integer additions make the tile independent of their order.
+# The scale 2^30/(count·vmax) keeps every tile value below 2^30 (weights ≤ 1, |v| ≤ vmax); each of
+# the at most `count` additions to a value rounds by half a unit, together at most 2^-21 of the
+# bound count·vmax. The tile is then added with atomic additions to the padded grid, or with WRAP
+# directly to the periodic grid (`gr`: the grid as real numbers, see `atomic_add!`).
+@kernel function adjoint_sub_kernel!(gr, K, @Const(offs), @Const(ss), @Const(perm), @Const(vals),
+                                     @Const(sstart), @Const(scount), @Const(sbin), @Const(vmax), nsub, nb,
+                                     bstr, h, L1, ::Val{D}, ::Val{W}, ::Val{B}, ::Val{S}, ::Val{C}, ::Type{T},
+                                     ::Type{G}, ::Val{WRAP}) where {D,W,B,S,C,T,G,WRAP}
+  s, l = batch(@index(Group, Linear), nsub)
+  a0, b0 = batch(l, L1)
+  li = @index(Local, Linear)
+  gs = @groupsize()[1]
+  bre = @localmem Int32 (S,)
+  bim = @localmem Int32 (S,)
+  wb = @localmem T (C * D * W,)
+  ob = @localmem Int32 (C * D,)
+  vre = @localmem T (C,)
+  vim = @localmem T (C,)
+  for i in li:gs:S
+    @inbounds bre[i] = Int32(0); @inbounds bim[i] = Int32(0)
+  end
+  q0 = Int(@inbounds sstart[s]); cnt = Int(@inbounds scount[s])
+  o = map(Int32, map(*, lin2cart(Int(@inbounds sbin[s]), bstr, nb), B))
+  # B and W are compile-time constants: the divisions by tile edges become multiplications
+  pe = map(b -> Int32(b + W), B)       # tile edges
+  pstr = strides_of(pe, Val(D))
+  vm = @inbounds vmax[1]
+  scale = vm > 0 ? T(2^30) / (T(cnt) * vm) : zero(T)
+  for qc in 0:C:cnt-1
+    m = min(C, cnt - qc)
+    @synchronize
+    for a in li:gs:m*D
+      c = (a - 1) ÷ D; d = (a - 1) % D + 1
+      q = q0 + qc + c
+      ws = weights(K, @inbounds ss[d, q])
+      for i in 1:W
+        @inbounds wb[(c * D + d - 1) * W + i] = ws[i]
+      end
+      @inbounds ob[c * D + d] = offs[d, q]
+    end
+    for a in li:gs:m
+      v = @inbounds vals[a0, perm[q0 + qc + a - 1], b0]
+      @inbounds vre[a] = real(v) * scale; @inbounds vim[a] = imag(v) * scale
+    end
+    @synchronize
+    # a work-item takes a node and support point in dimensions 1…D−1 and runs along dimension D;
+    # Int32 index arithmetic (64-bit integer division is slow on GPUs)
+    for task in Int32(li - 1):Int32(gs):Int32(m * W^(D - 1) - 1)
+      c = task ÷ Int32(W^(D - 1))
+      tp = lead_taps(task - c * Int32(W^(D - 1)), Val(D), Val(W))
+      w0 = lead_weight(wb, c, tp, Val(D), Val(W))
+      i0 = lead_index(ob, c, o, tp, pstr, Val(D))
+      for t in Int32(0):Int32(W - 1)
+        w = w0 * @inbounds(wb[(c * D + D - 1) * W + t + 1])
+        i = i0 + t * pstr[D]
+        KA.@atomic bre[i] += fixed(w * @inbounds(vre[c+1]))
+        KA.@atomic bim[i] += fixed(w * @inbounds(vim[c+1]))
+      end
+    end
+  end
+  @synchronize
+  n = map(Int32, front(Base.tail(size(gr)), Val(D)))
+  isc = vm > 0 ? inv(scale) : zero(T)
+  for i in Int32(li):Int32(gs):Int32(S)
+    r = @inbounds bre[i]; u = @inbounds bim[i]
+    if r != 0 || u != 0
+      gi = target_index(o, lin2cart(i, pstr, pe), Int32(h), n, Val(WRAP))
+      if WRAP || all(map((x, m) -> 1 <= x <= m, gi, n))
+        atomic_add!(gr, (map(Int, gi)..., l), grid_value(G, r * isc, u * isc))
+      end
+    end
+  end
+end
+
+# Index of tile point t (0-based) of the bin at o in the target: the padded grid, or with WRAP the
+# grid of n points, padded point p at grid point mod(p − h, n) (one correction: p ∈ 0:n+W−1, W ≤ n).
+@inline target_index(o, t, h, n, ::Val{false}) = map((x, y) -> x + y + Int32(1), o, t)
+@inline function target_index(o, t, h, n, ::Val{true})
+  map(o, t, n) do x, y, m
+    p = x + y - h
+    p + m * (p < 0) - m * (p >= m) + Int32(1)
+  end
+end
+
+# column-major strides of an array of size n, for kernels (`col_strides` mutates a captured variable)
+@inline strides_of(n, ::Val{D}) where {D} = ntuple(d -> prod(ntuple(i -> i < d ? n[i] : one(eltype(n)), Val(D))), Val(D))
+@inline fixed(x) = unsafe_trunc(Int32, x + copysign(oftype(x, 0.5), x))
+# For node c of the chunk and its support point tp (0-based) in dimensions 1…D−1: the weight
+# product and the tile index of support point 0 in dimension D.
+@inline lead_taps(r::Int32, ::Val{D}, ::Val{W}) where {D,W} = ntuple(d -> (r ÷ Int32(W^(d - 1))) % Int32(W), Val(D - 1))
+@inline lead_weight(wb, c, tp, ::Val{D}, ::Val{W}) where {D,W} =
+  prod(ntuple(d -> @inbounds(wb[(c * D + d - 1) * W + tp[d] + 1]), Val(D - 1)); init=one(eltype(wb)))
+@inline lead_index(ob, c, o, tp, pstr, ::Val{D}) where {D} =
+  Int32(1) + sum(ntuple(d -> (@inbounds(ob[c * D + d]) - o[d] + tp[d]) * pstr[d], Val(D - 1)); init=Int32(0)) +
+  (@inbounds(ob[c * D + D]) - o[D]) * pstr[D]
+
 @inline lin2cart(i, str, n) = map((s, m) -> ((i - 1) ÷ s) % m, str, n)
 @inline grid_value(::Type{<:Complex}, re, im) = complex(re, im)
 @inline grid_value(::Type{<:Real}, re, im) = re
@@ -250,8 +394,10 @@ resample!(backend, nd::Nodes, vals, gp, L1, ::Val{D}) where {D} =
 
 # padded grids gp (all points written) from the values (L1, J, L3)
 function resample_adjoint!(backend, nd::Nodes, gp, vals, L1, ::Val{D}) where {D}
-  tl = nd.tiles
-  if tl === nothing
+  tl = nd.tiles; sp = nd.subs
+  if sp !== nothing
+    adjoint_sub!(backend, nd, gp, vals, L1, 0, Val(D), Val(false))
+  elseif tl === nothing
     fill!(gp, 0)
     launch(backend, resample_adjoint_kernel!, real_view(gp), nd.kernel, nd.offs, nd.ss, nd.perm, vals, L1,
            Val(D), Val(nd.W); ndrange=(length(nd.perm), size(gp, D + 1)))
@@ -261,6 +407,28 @@ function resample_adjoint!(backend, nd::Nodes, gp, vals, L1, ::Val{D}) where {D}
       ndrange=prod(tl.nt) * size(gp, D + 1) * TILE_WORKGROUP)
   end
   gp
+end
+
+# Grids g (periodic) from the values: by subproblems directly into g, else into the padded grids gp
+# and folded.
+function resample_adjoint_periodic!(backend, nd::Nodes, g, gp, vals, L1, ::Val{D}) where {D}
+  nd.subs === nothing && return unpad!(backend, g, resample_adjoint!(backend, nd, gp, vals, L1, Val(D)), nd.W, Val(D))
+  adjoint_sub!(backend, nd, g, vals, L1, halo(nd.W)[1], Val(D), Val(true))
+end
+
+function adjoint_sub!(backend, nd, g, vals, L1, h, ::Val{D}, ::Val{WRAP}) where {D,WRAP}
+  sp = nd.subs
+  fill!(g, 0)
+  nsub = length(sp.start)
+  nsub == 0 && return g
+  # max |v| stays on the device (no synchronisation)
+  vmax = fill!(similar(g, real(eltype(g)), ntuple(_ -> 1, ndims(vals))), 0)
+  Base.mapreducedim!(abs, max, vmax, vals)
+  adjoint_sub_kernel!(backend, SUB_WORKGROUP)(real_view(g), nd.kernel, nd.offs, nd.ss, nd.perm, vals,
+    sp.start, sp.count, sp.bin, vmax, nsub, sp.nb, sp.bstr, h, L1, Val(D), Val(nd.W), Val(sp.B),
+    Val(prod(sp.B .+ nd.W)), Val(SUB_CHUNK), real(eltype(g)), eltype(g), Val(WRAP);
+    ndrange=nsub * size(g, D + 1) * SUB_WORKGROUP)
+  g
 end
 
 ## periodic padding (NFFT, RNFFT)
@@ -393,7 +561,7 @@ correction_adjoint!(c::GPUCore{D}, f, g) where {D} =
 resampling!(c::GPUCore{D}, vals, g) where {D} =
   (pad!(c.backend, c.gp, g, c.W, Val(D)); resample!(c.backend, c.nodes, vals, c.gp, c.L1, Val(D)); vals)
 resampling_adjoint!(c::GPUCore{D}, g, vals) where {D} =
-  (resample_adjoint!(c.backend, c.nodes, c.gp, vals, c.L1, Val(D)); unpad!(c.backend, g, c.gp, c.W, Val(D)); g)
+  (resample_adjoint_periodic!(c.backend, c.nodes, g, c.gp, vals, c.L1, Val(D)); g)
 
 function NFFT.trafo_core!(out, c::GPUCore, f)
   check_device(c.backend, out, f)
@@ -499,8 +667,7 @@ end
 
 function NFFT.adjoint_core!(h, c::RGPUCore{D}, vals) where {D}
   check_device(c.backend, h, vals)
-  resample_adjoint!(c.backend, c.nodes, c.gp, node_values(c, vals), c.L1, Val(D))
-  unpad!(c.backend, c.gf, c.gp, c.W, Val(D))
+  resample_adjoint_periodic!(c.backend, c.nodes, c.gf, c.gp, node_values(c, vals), c.L1, Val(D))
   mul!(c.H, c.r2c, c.gf)
   D > 1 && c.pf * c.H
   launch(c.backend, rnfft_correction_kernel!, c.H, modes(c, h), c.invphi, c.N, c.L1, Val(D), true;

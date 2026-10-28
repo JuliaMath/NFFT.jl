@@ -111,17 +111,16 @@ with 8 threads, ms (direct / adjoint; including the allocation of the output):
 
 | | CPU | GPU |
 |:--|--:|--:|
-| NFFT, 1D ``2^{18}`` | 1.6 / 1.1 | 1.1 / 2.7 |
-| NFFT, 2D ``512^2`` | 2.4 / 1.9 | 2.0 / 5.9 |
-| NFFT, 3D ``64^3`` | 3.5 / 4.9 | 1.9 / 21.5 |
-| RNFFT, 3D | 3.2 / 3.1 | 3.0 / 14.7 |
-| NFFT, OCT ``2048 \times 512`` | 2.5 / 2.1 | 1.7 / 6.3 |
+| NFFT, 1D ``2^{18}`` | 1.6 / 1.1 | 1.1 / 1.9 |
+| NFFT, 2D ``512^2`` | 2.4 / 1.9 | 1.7 / 2.4 |
+| NFFT, 3D ``64^3`` | 3.5 / 4.9 | 1.8 / 4.2 |
+| RNFFT, 3D | 3.2 / 3.1 | 2.1 / 4.3 |
+| NFFT, OCT ``2048 \times 512`` | 2.5 / 2.1 | 2.0 / 3.8 |
 
-The direct transforms are as fast as or faster than on the CPU. The adjoint transforms are slower:
-in 2D and 3D a workgroup adds the nodes of its tile one after the other, and the 32 KB of local
-memory of Apple GPUs keep the tiles small; in 1D the adjoint uses floating point atomics, which are
-slow on Apple GPUs (see [How NFFT.jl Works](@ref "GPUs")). Measurements on Nvidia and AMD GPUs are
-still missing.
+The direct transforms are faster than on the CPU, the adjoint transforms about as fast in 3D and
+slower in 1D and 2D; [mlx-nufft](https://github.com/martinlachaine/mlx-nufft), with the same
+subproblem scheme (see [How NFFT.jl Works](@ref "GPUs")), takes 0.5 / 0.7 / 1.7 ms for the adjoint
+transforms of the first three rows. Measurements on Nvidia and AMD GPUs are still missing.
 
 ## NFFT.jl 1.0 against 0.14
 
