@@ -1,14 +1,33 @@
-# `Threads.@threads` loop, or a plain loop when `n == 1`: scheduling the tasks costs ≈ 10 µs, as
-# much as a whole small transform on a single-threaded core.
+# A threaded loop over an indexable collection, or a plain loop when `n == 1`: scheduling the tasks
+# costs ≈ 10 µs, as much as a whole small transform on a single-threaded core. The threaded loop
+# runs on `threaded_foreach`, not `Threads.@threads`: leaving a `@threads` region takes the libuv
+# lock, which deadlocks against a garbage collection when foreign threads (a C or Python caller of
+# the compiled library) run transforms concurrently. A schedule argument (`:dynamic`) is accepted
+# and ignored, the elements are always handed out dynamically.
 macro maybe_threads(n, args...)
   loop = args[end]
+  (loop isa Expr && loop.head === :for) || error("@maybe_threads expects a for loop")
+  var, itr = loop.args[1].args
   esc(quote
     if $n == 1
       $loop
     else
-      Threads.@threads $(args...)
+      $(GlobalRef(@__MODULE__, :threaded_foreach))($itr) do $var
+        $(loop.args[2])
+      end
     end
   end)
+end
+
+# f(x) for all x in xs, on min(length(xs), nthreads()) tasks that take the next element when done.
+function threaded_foreach(f, xs)
+  next = Threads.Atomic{Int}(1)
+  tasks(min(length(xs), Threads.nthreads())) do _
+    while (i = Threads.atomic_add!(next, 1)) <= length(xs)
+      f(xs[i])
+    end
+  end
+  nothing
 end
 
 # Split a range into at most k contiguous chunks of nearly equal length.
