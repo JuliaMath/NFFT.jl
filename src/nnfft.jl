@@ -214,7 +214,7 @@ function choose_nnfft(reltol, Y::NTuple{D}, K::NTuple{D}, N, J, ::Type{T}; windo
 end
 
 # entries whose key tuple is not dominated (all components ≥, one >) by another entry's
-function pareto_front(entries, key)
+function pareto_front(entries, key::F) where {F}
   ks = map(key, entries)
   order = sortperm(ks)
   front = Int[]
