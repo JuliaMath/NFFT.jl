@@ -136,7 +136,7 @@ Base.@ccallable function nfftjl_plan_create(D::Cint, N::Ptr{Int64}, J::Int64, k:
                                           nthreads::Cint)::Int64
   try
     @lock PLAN_LOCK with_dim(Int(D)) do d
-      create(d, N, Int(J), k, Float64(reltol), Int(nthreads))
+      create(d, N, Int(J), k, Float64(reltol), nthreads > 0 ? min(Int(nthreads), Threads.nthreads()) : default_threads())
     end
   catch e
     Core.println(Core.stderr, e)
@@ -180,5 +180,10 @@ Base.@ccallable function nfftjl_plan_destroy(h::Int64)::Cint
   end
 end
 
-# Number of threads of the Julia runtime in the library (the upper limit for nthreads).
-Base.@ccallable nfftjl_num_threads()::Cint = Cint(Threads.nthreads())
+# The library starts one Julia thread per CPU thread; plans use `nthreads` of them, by default
+# NFFTJL_NUM_THREADS if set, otherwise all.
+function default_threads()
+  n = tryparse(Int, get(ENV, "NFFTJL_NUM_THREADS", ""))
+  n === nothing ? Threads.nthreads() : clamp(n, 1, Threads.nthreads())
+end
+Base.@ccallable nfftjl_num_threads()::Cint = Cint(default_threads())

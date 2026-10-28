@@ -6,12 +6,15 @@
 #include <stdint.h>
 #include <complex.h>
 
-/* A plan for D = 1..3 dimensions, J nodes, relative error reltol; -1 on error. */
+/* A plan for D = 1..3 dimensions, J nodes, relative error reltol, using nthreads threads
+   (0: the default, nfftjl_num_threads()); -1 on error. */
 int64_t nfftjl_plan_create(int D, const int64_t *N, int64_t J, const double *k, double reltol, int nthreads);
 int nfftjl_trafo(int64_t plan, const double complex *f, double complex *fhat);
 int nfftjl_adjoint(int64_t plan, const double complex *fhat, double complex *f);
 int nfftjl_plan_destroy(int64_t plan);
-/* Threads of the Julia runtime in the library (upper limit for nthreads). Plans can be created and
+/* The default number of threads of a plan: the environment variable NFFTJL_NUM_THREADS if set,
+   otherwise all CPU threads (the library starts one Julia thread per CPU thread, which is also
+   the upper limit for nthreads). Plans can be created and
    destroyed from any thread; one plan must not be executed on two threads at once. The Julia
    runtime starts on the first call into the library: make that call from one thread before
    others call concurrently (nfftjl_num_threads() will do). */

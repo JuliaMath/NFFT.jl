@@ -17,7 +17,7 @@ fi
 rm -rf build
 julia --project=jc -m JuliaC --output-lib build/libnfftjl --project . --bundle build \
   --trim=safe --compile-ccallable --experimental \
-  --jl-option threads=8 --jl-option handle-signals=yes "$@" src/libnfftjl.jl
+  --jl-option threads=auto --jl-option handle-signals=yes "$@" src/libnfftjl.jl
 cc -O2 -o test/test test/test.c -Iinclude -Lbuild/lib -lnfftjl -lm -Wl,-rpath,"$(pwd)/build/lib"
 for src in examples/*.c; do
   cc -O2 -o "${src%.c}" "$src" -Iinclude -Lbuild/lib -lnfftjl -lm -Wl,-rpath,"$(pwd)/build/lib"

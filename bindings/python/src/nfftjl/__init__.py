@@ -40,7 +40,8 @@ _lib.nfftjl_num_threads()
 
 
 def num_threads():
-    """Threads of the library, the default and upper limit of `nthreads`."""
+    """The default number of threads of a plan: the environment variable NFFTJL_NUM_THREADS if
+    set, otherwise all CPU threads (also the upper limit)."""
     return _lib.nfftjl_num_threads()
 
 
@@ -48,8 +49,8 @@ class Plan:
     """NFFT plan for the nodes `k` (shape (J, D), or (J,) in 1D; entries in [-1/2, 1/2)) and the
     mode array size `N` (an integer or a tuple of D = 1, 2, 3 integers).
 
-    `reltol` is the requested relative error, `nthreads` the number of threads (default: all
-    threads of the library). One plan must not be executed by two threads at once; separate
+    `reltol` is the requested relative error, `nthreads` the number of threads (default:
+    `num_threads()`). One plan must not be executed by two threads at once; separate
     plans can run concurrently.
     """
 
@@ -62,7 +63,7 @@ class Plan:
         if k.ndim != 2 or k.shape[1] != D:
             raise ValueError(f"nodes must have shape (J, {D}), got {k.shape}")
         self.J = k.shape[0]
-        nthreads = num_threads() if nthreads is None else int(nthreads)
+        nthreads = 0 if nthreads is None else int(nthreads)
         # The library is column major: a C-ordered array of shape N is its array of shape
         # reversed(N), with the node coordinates reversed to match; rows of k (C order) are then
         # the columns of its D x J node matrix. No copy of the data per transform.

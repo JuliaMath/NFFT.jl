@@ -38,7 +38,7 @@ computes both and checks the first values against the direct sum:
   entries in ``[-1/2, 1/2)``, and the array size `N` (an integer or a tuple of `D` = 1, 2, 3
   integers). `reltol` is the requested relative error: window, window width and oversampling
   factor are chosen for it at the lowest predicted cost (see [Accuracy and Parameters](@ref)).
-  `nthreads` defaults to all threads of the library.
+  `nthreads` defaults to `num_threads()`.
 
 `p.trafo(f, out=None)`
 : The NFFT of `f` (shape `N`, complex): an array of shape `(J,)`.
@@ -50,7 +50,8 @@ computes both and checks the first values against the direct sum:
 : Releases the plan; garbage collection does the same.
 
 `nfftjl.num_threads()`
-: The threads of the library, the default and the upper limit of `nthreads`.
+: The default number of threads of a plan: the environment variable `NFFTJL_NUM_THREADS` if set,
+  otherwise all CPU threads, which is also the upper limit of `nthreads`.
 
 Along axis `d` of `f`, index `i` stands for the frequency ``l_d = i - N_d/2`` (``N_d/2`` rounded
 down), in increasing order, as `numpy.fft.fftshift` orders them. Arrays in numpy's default (C)

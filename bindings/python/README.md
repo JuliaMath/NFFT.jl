@@ -8,7 +8,7 @@ No Julia installation is needed to use it.
 ```python
 import numpy as np, nfftjl
 k = np.random.rand(10_000, 2) - 0.5          # nodes in [-1/2, 1/2)^2, one per row
-p = nfftjl.Plan(k, (256, 256), reltol=1e-8)  # nthreads: default all threads of the library
+p = nfftjl.Plan(k, (256, 256), reltol=1e-8)  # nthreads: default NFFTJL_NUM_THREADS or all
 fhat = p.trafo(np.random.randn(256, 256) + 0j)
 f = p.adjoint(fhat)
 ```

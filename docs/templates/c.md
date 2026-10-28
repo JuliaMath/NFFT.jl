@@ -23,8 +23,10 @@ against the header `libnfftjl/include/nfftjl.h`:
 cc -O2 prog.c -Ilibnfftjl/include -Llibnfftjl/build/lib -lnfftjl -lm -Wl,-rpath,$PWD/libnfftjl/build/lib
 ```
 
-The library is built with 8 threads of the Julia runtime, with Julia's signal handling, which the
-garbage collector needs to stop threads, and for one CPU target (see `libnfftjl/README.md`).
+The library starts one Julia thread per CPU thread; a plan uses `nthreads` of them, by default
+the value of the environment variable `NFFTJL_NUM_THREADS` or all. It is built with Julia's signal
+handling, which the garbage collector needs to stop threads, and for one CPU target (see
+`libnfftjl/README.md`).
 
 ## A first transform
 
@@ -48,7 +50,8 @@ computes both and checks the first values against the direct sum:
   (``D \times J``, column major: node `j` is `k[D*j]`, …, `k[D*j + D-1]`, entries in
   ``[-1/2, 1/2)``). `reltol` is the requested relative error: window, window width and
   oversampling factor are chosen for it at the lowest predicted cost (see
-  [Accuracy and Parameters](@ref)). Returns a handle, or −1 on error. The nodes are copied.
+  [Accuracy and Parameters](@ref)). `nthreads = 0` uses `nfftjl_num_threads()`. Returns a handle,
+  or −1 on error. The nodes are copied.
 
 `nfftjl_trafo(p, f, fhat)`, `nfftjl_adjoint(p, fhat, f)`
 : The NFFT of `f` (``N_0 \times \dots \times N_{D-1}`` complex values, column major: element
@@ -60,7 +63,8 @@ computes both and checks the first values against the direct sum:
 : Releases the plan.
 
 `nfftjl_num_threads()`
-: The threads of the library, the upper limit of `nthreads`.
+: The default number of threads of a plan: `NFFTJL_NUM_THREADS` if set, otherwise all CPU
+  threads, which is also the upper limit of `nthreads`.
 
 Row-major data of size ``N_0 \times \dots \times N_{D-1}`` is column-major data of the reversed
 size: pass the sizes and the coordinates of each node in reversed order (the Python package does
