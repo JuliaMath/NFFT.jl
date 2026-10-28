@@ -11,6 +11,12 @@ using NFFT
 using NFFT: NFFTCore, SymKernel, KaiserBessel, FFTWBackend, kb_window, es_window, grid_size,
             choose_kernels, make_kernel, trafo_core!, adjoint_core!
 
+# NFFT.jl calls no BLAS or LAPACK routine (planning has its own least squares and quadrature): the
+# library starts without loading OpenBLAS, and build.sh leaves it out of the bundle.
+using LinearAlgebra
+@eval LinearAlgebra.OpenBLAS_jll __init__() = nothing
+@eval LinearAlgebra __init__() = nothing
+
 # FFTW.jl destroys plans queued by finalizers through a call on its abstract plan type, which
 # trimming cannot resolve; this version calls the C functions directly.
 using NFFT: FFTW
@@ -89,18 +95,15 @@ const STRATEGIES = (:single, :slices, :lead, :trail)
 # Element types of the input and the output of a transform.
 eltypes(X, T) = X === :nfft ? (Complex{T}, Complex{T}) : X === :rnfft ? (Complex{T}, T) : (T, T)
 
-# The window of a table entry as a callable of concrete type (the cores are built for it).
-struct KBWindow
-  W::Int
-  β::Float64
-end
-(w::KBWindow)(z) = kb_window(z, w.W, w.β)
-struct ESWindow
+# The window of a table entry as one callable type for both families (Kaiser–Bessel and
+# exponential of semicircle): the planning code is compiled once instead of once per family.
+struct TableWindow
+  kb::Bool
   W::Int
   β::Float64
   e0::Float64
 end
-(w::ESWindow)(z) = es_window(z, w.W, w.β, w.e0)
+(w::TableWindow)(z) = w.kb ? kb_window(z, w.W, w.β) : es_window(z, w.W, w.β, w.e0)
 
 plan_type(X) = X === :nfft ? NFFTPlan : X === :rnfft ? RNFFTPlan : X === :nfct ? NFCTPlan : NFSTPlan
 kernel_type(T, W) = SymKernel{W,cld(W, 2),cld(W + 4, 2),(W + 4) ÷ 2,T}
@@ -129,7 +132,7 @@ function inferred(f, argtypes...)
   isconcretetype(R) || error("not concrete: $R for $f$(argtypes)")
   R
 end
-argtypes(T, D, W) = (Matrix{Float64}, NTuple{D,Int}, Float64, Int, KBWindow, kernel_type(T, W))
+argtypes(T, D, W) = (Matrix{Float64}, NTuple{D,Int}, Float64, Int, TableWindow, kernel_type(T, W))
 core_type(X, T, D, W) = inferred(make_core, Val{X}, Type{T}, argtypes(T, D, W)..., Int)
 batch_type(T, D, W) = inferred(make_batch, Type{T}, argtypes(T, D, W)..., Int, Int)
 
@@ -237,34 +240,31 @@ function create(::Val{X}, ::Type{T}, ::Val{D}, Np::Ptr{Int64}, J::Int, kp::Ptr{F
   e = first(choose_kernels(reltol, NFFT.error_size(plan_type(X), N), J, T; Ncost=N)[1])
   W = e.W
   st, parallel = strategy(X, D, N, J, L1, L3, nthreads)
-  window(e.window isa KaiserBessel ? KBWindow(W, e.β) : ESWindow(W, e.β, e.e0)) do φ
-    with_width(W, T) do w
-      kernel = make_kernel(φ, w, T)
-      with_strategy(st) do s
-        eng = make_engine(Val(X), s, T, k, N, e.σ, W, φ, kernel, nthreads, L1, L3, J, parallel)
-        reg = registry(Val(X), s, T, Val(D), w)
-        @lock REGISTRY_LOCK begin
-          push!(reg, eng)
-          handle(X, name(s), T, D, W, length(reg))
-        end
+  φ = TableWindow(e.window isa KaiserBessel, W, e.β, e.e0)
+  with_width(W, T) do w
+    kernel = make_kernel(φ, w, T)
+    with_strategy(st) do s
+      eng = make_engine(Val(X), s, T, k, N, e.σ, W, φ, kernel, nthreads, L1, L3, J, parallel)
+      reg = registry(Val(X), s, T, Val(D), w)
+      @lock REGISTRY_LOCK begin
+        push!(reg, eng)
+        handle(X, name(s), T, D, W, length(reg))
       end
     end
   end
 end
-# f(φ) with φ of concrete type: one branch per window family
-window(f, φ::Union{KBWindow,ESWindow}) = φ isa KBWindow ? f(φ) : f(φ)
 
-# f(registry, index, transform, element type) for the registry of plan h
-function with_registry(f, h)
+# f(registry, index) for the registry of plan h, which must be of transform X and element type T
+# (-1 otherwise). The dispatch runs over the strategy, the dimension and the window width only:
+# over all transforms and element types it would compile every transform for the data pointers of
+# every other.
+function with_registry(f, h, ::Val{X}, ::Type{T}) where {X,T}
   x, s, t, D, W, i = unhandle(h)
-  with_transform(x) do xv
-    with_strategy(s) do sv
-      with_type(t) do T
-        with_dim(D) do d
-          with_width(W, T) do w
-            f(registry(xv, sv, T, d, w), i, name(xv), T)
-          end
-        end
+  (x == index(X, TRANSFORMS) && t == index(T, TS)) || return Cint(-1)
+  with_strategy(s) do sv
+    with_dim(D) do d
+      with_width(W, T) do w
+        f(registry(Val(X), sv, T, d, w), i)
       end
     end
   end
@@ -272,8 +272,7 @@ end
 
 # f(engine) for plan h of transform X and element type T; -1 for an unknown handle or another
 # transform or element type
-lookup(f, X, ::Type{T}, h) where {T} = with_registry(h) do reg, i, Xh, Th
-  (Xh === X && Th === T) || return Cint(-1)
+lookup(f, ::Val{X}, ::Type{T}, h) where {X,T} = with_registry(h, Val(X), T) do reg, i
   e = @lock REGISTRY_LOCK (1 <= i <= length(reg) ? reg[i] : nothing)
   e === nothing ? Cint(-1) : f(e)
 end
@@ -372,7 +371,7 @@ end
 
 function trafo(::Val{X}, ::Type{T}, h, f, fhat) where {X,T}
   try
-    lookup(e -> run_trafo(e, f, fhat), X, T, h)
+    lookup(e -> run_trafo(e, f, fhat), Val(X), T, h)
   catch
     Cint(-1)
   end
@@ -380,7 +379,7 @@ end
 
 function adjoint(::Val{X}, ::Type{T}, h, fhat, f) where {X,T}
   try
-    lookup(e -> run_adjoint(e, fhat, f), X, T, h)
+    lookup(e -> run_adjoint(e, fhat, f), Val(X), T, h)
   catch
     Cint(-1)
   end
@@ -388,11 +387,16 @@ end
 
 function plan_destroy(h)
   try
-    with_registry(h) do reg, i, _, _
-      @lock REGISTRY_LOCK begin
-        (1 <= i <= length(reg) && reg[i] !== nothing) || return Cint(-1)
-        reg[i] = nothing
-        Cint(0)
+    x, _, t, _, _, _ = unhandle(h)
+    with_transform(x) do xv
+      with_type(t) do T
+        with_registry(h, xv, T) do reg, i
+          @lock REGISTRY_LOCK begin
+            (1 <= i <= length(reg) && reg[i] !== nothing) || return Cint(-1)
+            reg[i] = nothing
+            Cint(0)
+          end
+        end
       end
     end
   catch

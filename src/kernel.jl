@@ -11,11 +11,33 @@ function PolyKernel(φ, ::Val{W}, ::Val{P}, ::Type{T}) where {W,P,T}
   ns = 4P
   s = [cospi((2k - 1) / (2ns)) for k in 1:ns]
   V = [sk^k for sk in s, k in 0:P]
-  C = zeros(P + 1, W)
-  for i in 0:W-1
-    C[:, i+1] = V \ [φ(1 + i - W / 2 - (sk + 1) / 2) for sk in s]
-  end
+  B = [φ(1 + i - W / 2 - (sk + 1) / 2) for sk in s, i in 0:W-1]
+  C = least_squares!(V, B)
   PolyKernel{W,P + 1,T}(ntuple(k -> SVector{W,T}(view(C, k, :)), Val(P + 1)))
+end
+
+# The least-squares solution X (n × m) of A X ≈ B for A (r × n, r ≥ n, full rank) by Householder QR;
+# A and B are overwritten. In Julia rather than LAPACK, so that planning needs no BLAS library
+# (the C library of NFFT.jl is shipped without one).
+function least_squares!(A::Matrix{Float64}, B::Matrix{Float64})
+  r, n = size(A)
+  for j in 1:n
+    α = sqrt(sum(abs2, view(A, j:r, j)))
+    α = A[j, j] > 0 ? -α : α
+    v = A[j:r, j]; v[1] -= α
+    β = sum(abs2, v)
+    for M in (A, B), c in (M === A ? (j:n) : axes(B, 2))
+      t = 2 * sum(v[i] * M[j+i-1, c] for i in eachindex(v)) / β
+      for i in eachindex(v)
+        M[j+i-1, c] -= t * v[i]
+      end
+    end
+  end
+  X = B[1:n, :]
+  for c in axes(X, 2), j in n:-1:1          # back substitution with R = triu(A[1:n, :])
+    X[j, c] = (X[j, c] - sum(A[j, l] * X[l, c] for l in j+1:n; init=0.0)) / A[j, j]
+  end
+  X
 end
 
 # The window kernel of the resampling (polynomial degree W+3, accurate to the window itself) and the
@@ -62,10 +84,33 @@ end
   end
 end
 
+# Nodes (increasing) and weights of the n-point Gauss–Legendre rule, by Newton's method on the
+# Legendre polynomial P_n (no eigenvalue solver: planning needs no LAPACK).
 function gausslegendre(n)
-  J = SymTridiagonal(zeros(n), [k / sqrt(4k^2 - 1) for k in 1:n-1])
-  x, V = eigen(J)
-  x, 2 .* V[1, :] .^ 2
+  x = zeros(n); w = zeros(n)
+  for i in 1:cld(n, 2)
+    z = cospi((i - 0.25) / (n + 0.5))
+    dp = 0.0
+    for _ in 1:100
+      p0, p1 = 1.0, z                         # P_{k-1}, P_k
+      for k in 2:n
+        p0, p1 = p1, ((2k - 1) * z * p1 - (k - 1) * p0) / k
+      end
+      n == 1 && (p0, p1 = 1.0, z)
+      dp = n * (z * p1 - p0) / (z^2 - 1)
+      dz = p1 / dp
+      z -= dz
+      abs(dz) <= 4eps() && break
+    end
+    p0, p1 = 1.0, z
+    for k in 2:n
+      p0, p1 = p1, ((2k - 1) * z * p1 - (k - 1) * p0) / k
+    end
+    dp = n * (z * p1 - p0) / (z^2 - 1)
+    x[i] = -z; x[n+1-i] = z
+    w[i] = w[n+1-i] = 2 / ((1 - z^2) * dp^2)
+  end
+  x, w
 end
 
 # φ̂(ξ) = ∫ φ(z) cos(2πξz) dz for ξ = k/Ñ, k = −N÷2 … N−N÷2−1. φ̂ is even and smooth on [0, 1/2], so

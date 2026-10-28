@@ -18,6 +18,11 @@ rm -rf build
 julia --project=jc -m JuliaC --output-lib build/libnfftjl --project . --bundle build \
   --trim=safe --compile-ccallable --experimental \
   --jl-option threads=auto --jl-option handle-signals=yes "$@" src/libnfftjl.jl
+# Libraries of the Julia installation that the library never loads (checked with
+# DYLD_PRINT_LIBRARIES / LD_DEBUG=libs): BLAS (see src/libnfftjl.jl), networking, git, C++.
+for lib in openblas gfortran quadmath gomp crypto ssl git2 ssh2 curl nghttp2 stdc++ ssp gmpxx dSFMT atomic; do
+  rm -f build/lib/julia/lib${lib}*.{so,dylib,dll} build/lib/julia/lib${lib}*.so.* build/bin/lib${lib}*.dll
+done
 cc -O2 -o test/test test/test.c -Iinclude -Lbuild/lib -lnfftjl -lm -Wl,-rpath,"$(pwd)/build/lib"
 for src in examples/*.c; do
   cc -O2 -o "${src%.c}" "$src" -Iinclude -Lbuild/lib -lnfftjl -lm -Wl,-rpath,"$(pwd)/build/lib"
