@@ -33,20 +33,23 @@ computes both and checks the first values against the direct sum:
 
 ## Interface
 
-`nfftjl.Plan(k, N, reltol=1e-8, nthreads=None, dtype=numpy.complex128)`
+`nfftjl.Plan(k, shape, reltol=1e-8, nthreads=None, dtype=numpy.complex128, axes=None)`
 : Plan for the nodes `k`, an array of shape `(J, D)` (one node per row; shape `(J,)` in 1D) with
-  entries in ``[-1/2, 1/2)``, and the array size `N` (an integer or a tuple of `D` = 1, 2, 3
-  integers). `reltol` is the requested relative error: window, window width and oversampling
-  factor are chosen for it at the lowest predicted cost (see [Accuracy and Parameters](@ref)).
+  entries in ``[-1/2, 1/2)``, and data of shape `shape` (an integer or a tuple), transformed along
+  `axes`: all axes by default, otherwise `D` = 1, 2 or 3 consecutive axes (column `d` of `k`
+  belongs to `axes[d]`). The other axes are batch axes, see [Batches](#Batches). `reltol` is the
+  requested relative error: window, window width and oversampling factor are chosen for it at the
+  lowest predicted cost (see [Accuracy and Parameters](@ref)).
   `nthreads` defaults to `num_threads()`. `dtype` is the element type of the data,
   `numpy.complex128` or `numpy.complex64`; the nodes are given in double precision either way, and
   grid positions are computed from them in double precision.
 
 `p.trafo(f, out=None)`
-: The NFFT of `f` (shape `N`, converted to `dtype`): an array of shape `(J,)`.
+: The NFFT of `f` (shape `p.shape`, converted to `dtype`): an array of shape `p.out_shape`, the
+  transformed axes replaced by one axis of length `J`.
 
 `p.adjoint(fhat, out=None)`
-: The adjoint NFFT of `fhat` (shape `(J,)`): an array of shape `N`.
+: The adjoint NFFT of `fhat` (shape `p.out_shape`): an array of shape `p.shape`.
 
 `p.close()`
 : Releases the plan; garbage collection does the same.
@@ -62,6 +65,16 @@ array.
 
 The transform equals FINUFFT's type 2 with `x = 2π k`, `isign = -1` and the default mode ordering;
 the adjoint equals type 1 with `isign = +1`.
+
+## Batches
+
+Every slice along the batch axes is transformed with the same nodes, for example the coil images
+in MRI. One plan for all slices is faster than a loop over slices: the nodes are binned once, and
+the batch kernels of NFFT.jl process several slices per pass over the nodes.
+
+```python
+{{include bindings/python/examples/batch.py}}
+```
 
 ## Threads
 

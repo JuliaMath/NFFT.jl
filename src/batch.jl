@@ -7,7 +7,7 @@
 # The batch dimension is processed in chunks of CH = min(L, 4) values held in registers
 # (SVector); the grid has Lp = CH·cld(L, CH) rows, the extra rows stay zero. Accumulating into
 # memory instead makes every update wait for the previous one (store-to-load forwarding).
-struct BatchCore{D,K<:SymKernel,T,Tk,D1,CH,PF<:PassFFT,PB<:PassFFT}
+struct BatchCore{D,K<:SymKernel,T,Tk,D1,CH,PF<:PassFFT,PB<:PassFFT,FB<:AbstractFFTBackend}
   L::Int
   N::NTuple{D,Int}
   Ñ::NTuple{D,Int}
@@ -24,7 +24,7 @@ struct BatchCore{D,K<:SymKernel,T,Tk,D1,CH,PF<:PassFFT,PB<:PassFFT}
   # 1D: FFT buffer with the batch dimension last. A 1D FFT along dimension 2 of the batch-first grid
   # (stride Lp) is ≈ 3× slower than on contiguous columns (Ñ = 354294, L = 8: 11.6 vs 3.8 ms).
   F::Union{Nothing,Matrix{Complex{T}}}
-  fft::AbstractFFTBackend
+  fft::FB
   nthreads::Int
 end
 
@@ -32,11 +32,11 @@ end
 batch_tile(D, W, Lp) = D == 1 ? clamp(8192 ÷ Lp - W - 1, 64, 1024) :
                        max(8, floor(Int, (8192 / Lp)^(1 / D)) - W - 1)
 
-function BatchCore(k::AbstractMatrix, N::NTuple{D,Int}, Ñ::NTuple{D,Int}, W, φ, ::Type{T}, fft, L, B, nthreads;
-                   kernel=nothing, invphi=nothing, binned=nothing) where {D,T}
+# `chunk = Val(CH)` fixes the chunk size at compile time (CH ≤ L).
+function BatchCore(k::AbstractMatrix, N::NTuple{D,Int}, Ñ::NTuple{D,Int}, W, φ::Fφ, ::Type{T}, fft, L, B, nthreads;
+                   kernel=nothing, invphi=nothing, binned=nothing, chunk::Val{CH}=Val(min(L, 4))) where {D,Fφ,T,CH}
   K = kernel === nothing ? make_kernel(φ, W, T) : kernel
   invphi = invphi === nothing ? inv_kernel_ft(φ, W, N, Ñ, T, nthreads) : invphi
-  CH = L <= 4 ? L : 4
   Lp = CH * cld(L, CH)
   B = B === nothing ? batch_tile(D, W, Lp) : B
   gp = Array{Complex{T}}(undef, Lp, (Ñ .+ W)...)
@@ -49,9 +49,9 @@ function BatchCore(k::AbstractMatrix, N::NTuple{D,Int}, Ñ::NTuple{D,Int}, W, φ
     x, Nf, tdims = g, (Lp, N...), 2:D+1
   end
   binned = binned === nothing ? Binned(k, Ñ, B, nthreads) : binned
-  fwd = PassFFT(fft, x, Nf; dir=:fwd, nthreads, tdims)
-  bwd = PassFFT(fft, x, Nf; dir=:bwd, nthreads, tdims)
-  BatchCore{D,typeof(K),T,nodetype(binned),D + 1,CH,typeof(fwd),typeof(bwd)}(L, N, Ñ, W, B, K, invphi, binned,
+  fwd = PassFFT(fft, x, Nf, Val(:fwd); nthreads, tdims)
+  bwd = PassFFT(fft, x, Nf, Val(:bwd); nthreads, tdims)
+  BatchCore{D,typeof(K),T,nodetype(binned),D + 1,CH,typeof(fwd),typeof(bwd),typeof(fft)}(L, N, Ñ, W, B, K, invphi, binned,
     gp, fwd, bwd, TileLocks(Ñ .+ W, B), task_buffers(Complex{T}, (Lp, ntuple(_ -> B + W + 1, D)...), nthreads),
     F, fft, nthreads)
 end

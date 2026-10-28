@@ -2,7 +2,7 @@
 # plan). Its type depends on the kernel (width W is a compile-time constant of the hot loops); the
 # plan holds it in an untyped field, so plan types stay inferable and every transform crosses one
 # function barrier into the specialised loops.
-struct NFFTCore{D,K<:SymKernel,T,Tk,PF<:PassFFT,PB<:PassFFT}
+struct NFFTCore{D,K<:SymKernel,T,Tk,PF<:PassFFT,PB<:PassFFT,FB<:Union{Nothing,AbstractFFTBackend}}
   N::NTuple{D,Int}
   Ñ::NTuple{D,Int}
   W::Int
@@ -16,7 +16,7 @@ struct NFFTCore{D,K<:SymKernel,T,Tk,PF<:PassFFT,PB<:PassFFT}
   locks::TileLocks{D}
   # one extra point: tile assignment and support may round differently at tile edges
   bufs::Vector{Array{Complex{T},D}} # tile buffers of edge B+W+1
-  fft::Union{Nothing,AbstractFFTBackend}
+  fft::FB                           # the backend, for copies
   nthreads::Int
 end
 
@@ -31,7 +31,7 @@ function NFFTCore(k::AbstractMatrix, N::NTuple{D,Int}, Ñ::NTuple{D,Int}, W, φ:
   gp = Array{Complex{T}}(undef, Ñ .+ W)         # zeroed by every transform
   g = interior(gp, h)
   NFFTCore(N, Ñ, W, B, K, invphi, Binned(k, Ñ, B, nthreads), gp,
-           PassFFT(fft, g, N; dir=:fwd, nthreads), PassFFT(fft, g, N; dir=:bwd, nthreads),
+           PassFFT(fft, g, N, Val(:fwd); nthreads), PassFFT(fft, g, N, Val(:bwd); nthreads),
            TileLocks(size(gp), B), task_buffers(Complex{T}, ntuple(_ -> B + W + 1, D), nthreads),
            fft, nthreads)
 end
@@ -148,7 +148,7 @@ function copy_core(c::NFFTCore{D,K,T}, nthreads) where {D,K,T}
   gp = similar(c.gp)
   g = interior(gp, halo(c.W))
   NFFTCore(c.N, c.Ñ, c.W, c.B, c.kernel, c.invphi, c.binned, gp,
-           PassFFT(c.fft, g, c.N; dir=:fwd, nthreads), PassFFT(c.fft, g, c.N; dir=:bwd, nthreads),
+           PassFFT(c.fft, g, c.N, Val(:fwd); nthreads), PassFFT(c.fft, g, c.N, Val(:bwd); nthreads),
            TileLocks(size(gp), c.B), task_buffers(Complex{T}, size(c.bufs[1]), nthreads), c.fft, nthreads)
 end
 

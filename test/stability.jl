@@ -11,8 +11,7 @@ concrete_type(T) = T isa Union ? all(concrete_type, Base.uniontypes(T)) :
                         T <: Tuple ? all(concrete_type, fieldtypes(T)) : true)
 
 # All fields of the engine `x` and of the NFFT.jl structs inside it have concrete types (plans are
-# barriers of their own; `fft`, the backend, is only read when a core is copied). Returns the
-# offending fields.
+# barriers of their own). Returns the offending fields.
 function concrete_core(x, path="core", bad=String[])
   if x isa AbstractArray
     isempty(x) || parentmodule(typeof(first(x))) === NFFT && concrete_core(first(x), "$path[1]", bad)
@@ -21,7 +20,6 @@ function concrete_core(x, path="core", bad=String[])
   T = typeof(x)
   (parentmodule(T) === NFFT && !(x isa AbstractNFFTs.AbstractFTPlan) && isstructtype(T)) || return bad
   for (name, FT) in zip(fieldnames(T), fieldtypes(T))
-    name === :fft && continue
     concrete_type(FT) || push!(bad, "$path.$name::$FT")
     concrete_core(getfield(x, name), "$path.$name", bad)
   end

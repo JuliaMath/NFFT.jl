@@ -59,10 +59,15 @@ computes both and checks the first values against the direct sum:
   the adjoint. Index ``i_d`` stands for the frequency ``l_d = i_d - \lfloor N_d/2 \rfloor``. Return
   0, or −1 for an unknown handle.
 
+`nfftjl_plan_create_many(D, N, J, k, L1, L3, reltol, nthreads)`
+: A plan for many transforms with the same nodes: the data are ``L_1 \times N_0 \times \dots \times
+  N_{D-1} \times L_3`` and ``L_1 \times J \times L_3`` (column major), transformed along the
+  dimensions in between. `nfftjl_plan_create` is the case ``L_1 = L_3 = 1``.
+
 `nfftjl_plan_destroy(p)`
 : Releases the plan.
 
-`nfftjlf_plan_create`, `nfftjlf_trafo`, `nfftjlf_adjoint`, `nfftjlf_plan_destroy`
+`nfftjlf_plan_create`, `nfftjlf_plan_create_many`, `nfftjlf_trafo`, `nfftjlf_adjoint`, `nfftjlf_plan_destroy`
 : The same in single precision: data in `float complex`; the nodes and `reltol` stay `double`, and
   grid positions are computed from the nodes in double precision. A plan belongs to one precision:
   the functions of the other return −1.
@@ -74,6 +79,16 @@ computes both and checks the first values against the direct sum:
 Row-major data of size ``N_0 \times \dots \times N_{D-1}`` is column-major data of the reversed
 size: pass the sizes and the coordinates of each node in reversed order (the Python package does
 this).
+
+## Batches
+
+One plan for many transforms with the same nodes is faster than a loop over single transforms:
+the nodes are binned once, and the batch kernels of NFFT.jl process several transforms per pass
+over the nodes.
+
+```c
+{{include libnfftjl/examples/batch.c}}
+```
 
 ## Threads
 

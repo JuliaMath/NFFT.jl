@@ -8,7 +8,8 @@ languages (`../bindings/`) are thin wrappers around `include/nfftjl.h`.
 ```
 ./build.sh                   # → build/lib/libnfftjl.{so,dylib} with its runtime, the C test and examples
 ./test/test 8                # accuracy against the direct sum, timings, 8 threads
-./examples/getting_started   # the example of the documentation
+./examples/getting_started   # the examples of the documentation
+./examples/batch
 ```
 
 Documentation: the pages "C" and "Python" of the NFFT.jl documentation; their examples are the
@@ -31,4 +32,4 @@ Known limitations:
 - the Julia runtime starts on the first call: make it from one thread before others call (two
   threads making it at once abort the process);
 - FFTW.jl is not trimmable: `src/libnfftjl.jl` replaces three of its methods for the build;
-- only NFFT, no batch dimensions, no GPU.
+- only the NFFT (no RNFFT, NFCT, NFST, NNFFT), no GPU.

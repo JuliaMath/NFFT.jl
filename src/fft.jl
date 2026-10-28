@@ -64,13 +64,13 @@ struct PassFFT{D,P}
   boxes::Vector{Vector{NTuple{D,UnitRange{Int}}}}
 end
 
-# `dir` selects the transform (:fwd forward, :bwd unnormalised backward), `pattern` the pruning
-# (:fwd zero input outside the kept modes, :bwd only the kept outputs needed); they differ for the
-# RNFFT. With `fft_threads`, a single pass is threaded by the backend (FFTW) instead of split into
-# boxes.
-function PassFFT(fft::AbstractFFTBackend, x::AbstractArray{C,D}, N::NTuple{D,Int}; dir=:fwd, pattern=dir,
-                 nthreads=Threads.nthreads(), tdims=1:D, fft_threads=length(tdims) == 1) where {C,D}
-  K = dir == :fwd ? Val(-1) : Val(1)
+# `Val(dir)` selects the transform (:fwd forward, :bwd unnormalised backward; a type, so that the
+# plan type is inferred), `pattern` the pruning (:fwd zero input outside the kept modes, :bwd only
+# the kept outputs needed); they differ for the RNFFT. With `fft_threads`, a single pass is
+# threaded by the backend (FFTW) instead of split into boxes.
+function PassFFT(fft::AbstractFFTBackend, x::AbstractArray{C,D}, N::NTuple{D,Int}, ::Val{dir}; pattern=dir,
+                 nthreads=Threads.nthreads(), tdims=1:D, fft_threads=length(tdims) == 1) where {C,D,dir}
+  K = dir === :fwd ? Val(-1) : Val(1)
   order = pattern == :fwd ? reverse(tdims) : tdims
   boxes = [pass_boxes(x, N, d, tdims, fft_threads, nthreads) for d in order]
   plans = planning(fft, fft_threads ? nthreads : 1) do
@@ -96,7 +96,7 @@ function pass_boxes(x::AbstractArray{C,D}, N, d, tdims, fft_threads, nthreads) w
 end
 
 # No FFT: the core of the NNFFT spreading only resamples.
-PassFFT(::Nothing, x::AbstractArray{C,D}, N; kwargs...) where {C,D} =
+PassFFT(::Nothing, x::AbstractArray{C,D}, N, dir; kwargs...) where {C,D} =
   PassFFT{D,Nothing}(Vector{Nothing}[], Vector{NTuple{D,UnitRange{Int}}}[])
 
 # The full FFT of `g` along all dimensions (the FFT stages of the stage interface).

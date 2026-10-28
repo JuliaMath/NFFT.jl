@@ -38,6 +38,27 @@ def test_accuracy():
             assert relerr(p.adjoint(fhat), ndft_adjoint(k, fhat, N)) < 10 * tol
 
 
+def test_axes():
+    # batch axes before, after and around the transformed ones; every slice against the direct sum
+    rng = np.random.default_rng(6)
+    for shape, axes in (((5, 300), 1), ((40, 7), 0), ((3, 20, 22), (1, 2)), ((20, 22, 4), (0, 1)),
+                        ((2, 12, 3), 1), ((6, 8, 9), (0, 1, 2)), ((9, 64, 8), -2)):
+        k = rng.random((150, 1 if np.isscalar(axes) else len(axes))) - 0.5
+        p = nfftjl.Plan(k, shape, reltol=1e-9, axes=axes)
+        a0, a1 = p.axes[0], p.axes[-1]
+        f = rng.standard_normal(shape) + 1j * rng.standard_normal(shape)
+        fhat = p.trafo(f)
+        assert fhat.shape == shape[:a0] + (150,) + shape[a1 + 1:]
+        g = p.adjoint(fhat)
+        assert g.shape == shape
+        fb = np.moveaxis(f.reshape(shape[:a0] + (-1,) + shape[a1 + 1:]), a0, -1)
+        hb = np.moveaxis(fhat, a0, -1)
+        gb = np.moveaxis(g.reshape(shape[:a0] + (-1,) + shape[a1 + 1:]), a0, -1)
+        for idx in np.ndindex(hb.shape[:-1]):
+            assert relerr(hb[idx], ndft(k, fb[idx].reshape(p.N))) < 1e-8
+            assert relerr(gb[idx].reshape(p.N), ndft_adjoint(k, hb[idx], p.N)) < 1e-8
+
+
 def test_float32():
     rng = np.random.default_rng(5)
     for N, tol in (((64,), 1e-5), ((16, 12), 1e-5), ((8, 6, 10), 1e-3)):
@@ -110,6 +131,7 @@ def test_threaded_plan():
 
 if __name__ == "__main__":
     test_accuracy()
+    test_axes()
     test_float32()
     test_finufft()
     test_threads()

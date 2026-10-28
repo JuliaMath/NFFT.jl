@@ -27,9 +27,9 @@ _i64 = ctypes.c_int64
 # the functions per element type: double (nfftjl_…) and single precision (nfftjlf_…)
 _FUNCS = {}
 for _dtype, _prefix in ((np.complex128, "nfftjl_"), (np.complex64, "nfftjlf_")):
-    _f = {name: getattr(_lib, _prefix + name) for name in ("plan_create", "trafo", "adjoint", "plan_destroy")}
-    _f["plan_create"].argtypes = [ctypes.c_int, _p, _i64, _p, ctypes.c_double, ctypes.c_int]
-    _f["plan_create"].restype = _i64
+    _f = {name: getattr(_lib, _prefix + name) for name in ("plan_create_many", "trafo", "adjoint", "plan_destroy")}
+    _f["plan_create_many"].argtypes = [ctypes.c_int, _p, _i64, _p, _i64, _i64, ctypes.c_double, ctypes.c_int]
+    _f["plan_create_many"].restype = _i64
     for _name in ("trafo", "adjoint"):
         _f[_name].argtypes = [_i64, _p, _p]
         _f[_name].restype = ctypes.c_int
@@ -51,21 +51,33 @@ def num_threads():
 
 
 class Plan:
-    """NFFT plan for the nodes `k` (shape (J, D), or (J,) in 1D; entries in [-1/2, 1/2)) and the
-    mode array size `N` (an integer or a tuple of D = 1, 2, 3 integers).
+    """NFFT plan for the nodes `k` (shape (J, D), or (J,) in 1D; entries in [-1/2, 1/2)) and data
+    of shape `shape` (an integer or a tuple), transformed along `axes` (default: all axes; D = 1, 2
+    or 3 consecutive axes, column d of k belongs to axes[d]). The other axes are batch axes: every
+    slice along them is transformed with the same nodes, and they appear unchanged in the result.
 
     `reltol` is the requested relative error, `nthreads` the number of threads (default:
     `num_threads()`), `dtype` the element type of the data, `numpy.complex128` or
-    `numpy.complex64` (the nodes are given in double precision either way). One plan must not be executed by two threads at once; separate
-    plans can run concurrently.
+    `numpy.complex64` (the nodes are given in double precision either way). One plan must not be
+    executed by two threads at once; separate plans can run concurrently.
     """
 
-    def __init__(self, k, N, reltol=1e-8, nthreads=None, dtype=np.complex128):
+    def __init__(self, k, shape, reltol=1e-8, nthreads=None, dtype=np.complex128, axes=None):
         self.dtype = np.dtype(dtype)
         if self.dtype not in _FUNCS:
             raise ValueError(f"dtype must be complex128 or complex64, got {self.dtype}")
         self._f = _FUNCS[self.dtype]
-        self.N = (int(N),) if np.isscalar(N) else tuple(int(n) for n in N)
+        self.shape = (int(shape),) if np.isscalar(shape) else tuple(int(n) for n in shape)
+        n = len(self.shape)
+        if axes is None:
+            axes = tuple(range(n))
+        axes = (axes,) if np.isscalar(axes) else tuple(axes)
+        axes = tuple(a % n for a in axes)
+        if not axes or list(axes) != list(range(axes[0], axes[0] + len(axes))):
+            raise ValueError(f"axes must be consecutive and increasing, got {axes}")
+        self.axes = axes
+        a0, a1 = axes[0], axes[-1]
+        self.N = self.shape[a0:a1 + 1]
         D = len(self.N)
         k = np.asarray(k, dtype=np.float64)
         if k.ndim == 1:
@@ -73,35 +85,42 @@ class Plan:
         if k.ndim != 2 or k.shape[1] != D:
             raise ValueError(f"nodes must have shape (J, {D}), got {k.shape}")
         self.J = k.shape[0]
+        self.out_shape = self.shape[:a0] + (self.J,) + self.shape[a1 + 1:]
         nthreads = 0 if nthreads is None else int(nthreads)
-        # The library is column major: a C-ordered array of shape N is its array of shape
-        # reversed(N), with the node coordinates reversed to match; rows of k (C order) are then
-        # the columns of its D x J node matrix. No copy of the data per transform.
+        # The library is column major: a C-ordered array of shape s is its array of shape
+        # reversed(s). The transformed sizes and the node coordinates are reversed to match (rows of
+        # k in C order are then the columns of its D x J node matrix), the axes after the
+        # transformed ones become the batch before them (L1) and vice versa (L3). No copy of the
+        # data per transform.
         k = np.ascontiguousarray(k[:, ::-1])
         Nc = (ctypes.c_int64 * D)(*reversed(self.N))
-        self._h = self._f["plan_create"](D, ctypes.addressof(Nc), self.J, k.ctypes.data, reltol, nthreads)
+        L1 = int(np.prod(self.shape[a1 + 1:], dtype=np.int64))
+        L3 = int(np.prod(self.shape[:a0], dtype=np.int64))
+        self._h = self._f["plan_create_many"](D, ctypes.addressof(Nc), self.J, k.ctypes.data, L1, L3,
+                                              reltol, nthreads)
         if self._h < 0:
             raise ValueError("plan creation failed (D must be 1, 2 or 3)")
 
     def trafo(self, f, out=None):
-        """fhat (shape (J,)) from the mode array f (shape N)."""
+        """fhat (shape `out_shape`: the transformed axes replaced by the J nodes) from f (shape
+        `shape`)."""
         f = np.ascontiguousarray(f, dtype=self.dtype)
-        if f.shape != self.N:
-            raise ValueError(f"f must have shape {self.N}, got {f.shape}")
-        out = np.empty(self.J, dtype=self.dtype) if out is None else out
-        if out.shape != (self.J,) or out.dtype != self.dtype or not out.flags.c_contiguous:
-            raise ValueError(f"out must be a contiguous {self.dtype} array of shape (J,)")
+        if f.shape != self.shape:
+            raise ValueError(f"f must have shape {self.shape}, got {f.shape}")
+        out = np.empty(self.out_shape, dtype=self.dtype) if out is None else out
+        if out.shape != self.out_shape or out.dtype != self.dtype or not out.flags.c_contiguous:
+            raise ValueError(f"out must be a contiguous {self.dtype} array of shape {self.out_shape}")
         self._check(self._f["trafo"](self._h, f.ctypes.data, out.ctypes.data))
         return out
 
     def adjoint(self, fhat, out=None):
-        """The mode array f (shape N) from fhat (shape (J,))."""
+        """f (shape `shape`) from fhat (shape `out_shape`)."""
         fhat = np.ascontiguousarray(fhat, dtype=self.dtype)
-        if fhat.shape != (self.J,):
-            raise ValueError(f"fhat must have shape ({self.J},), got {fhat.shape}")
-        out = np.empty(self.N, dtype=self.dtype) if out is None else out
-        if out.shape != self.N or out.dtype != self.dtype or not out.flags.c_contiguous:
-            raise ValueError(f"out must be a contiguous {self.dtype} array of shape {self.N}")
+        if fhat.shape != self.out_shape:
+            raise ValueError(f"fhat must have shape {self.out_shape}, got {fhat.shape}")
+        out = np.empty(self.shape, dtype=self.dtype) if out is None else out
+        if out.shape != self.shape or out.dtype != self.dtype or not out.flags.c_contiguous:
+            raise ValueError(f"out must be a contiguous {self.dtype} array of shape {self.shape}")
         self._check(self._f["adjoint"](self._h, fhat.ctypes.data, out.ctypes.data))
         return out
 

@@ -13,8 +13,15 @@ int nfftjl_trafo(int64_t plan, const double complex *f, double complex *fhat);
 int nfftjl_adjoint(int64_t plan, const double complex *fhat, double complex *f);
 int nfftjl_plan_destroy(int64_t plan);
 
+/* A plan for many transforms with the same nodes: data of size L1 x N[0] x ... x N[D-1] x L3 and
+   L1 x J x L3 (column major), the transforms along the dimensions in between. */
+int64_t nfftjl_plan_create_many(int D, const int64_t *N, int64_t J, const double *k, int64_t L1, int64_t L3,
+                                double reltol, int nthreads);
+
 /* The same in single precision (data in float complex; nodes and reltol stay double). */
 int64_t nfftjlf_plan_create(int D, const int64_t *N, int64_t J, const double *k, double reltol, int nthreads);
+int64_t nfftjlf_plan_create_many(int D, const int64_t *N, int64_t J, const double *k, int64_t L1, int64_t L3,
+                                 double reltol, int nthreads);
 int nfftjlf_trafo(int64_t plan, const float complex *f, float complex *fhat);
 int nfftjlf_adjoint(int64_t plan, const float complex *fhat, float complex *f);
 int nfftjlf_plan_destroy(int64_t plan);

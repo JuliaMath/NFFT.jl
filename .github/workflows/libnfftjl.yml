@@ -37,7 +37,7 @@ jobs:
       - name: C test and example
         run: |
           libnfftjl/test/test 4
-          libnfftjl/examples/getting_started
+          for e in libnfftjl/examples/*.c; do "${e%.c}"; done
       - name: Python wheel and tests
         run: |
           python3 -m venv .venv

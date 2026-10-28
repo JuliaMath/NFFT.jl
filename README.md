@@ -39,7 +39,7 @@ that runs multi-threaded on the CPU and on GPUs (CUDA, AMD, Apple) from the same
   revisions.
 - **Experimental: a C library and a Python package** compiled from the same code with
   `juliac --trim`, no Julia installation needed to use them: `libnfftjl/` (C interface
-  `nfftjl.h`) and `bindings/python/` (`nfftjl`). NFFT in 1–3 dimensions, single and double precision, CPU.
+  `nfftjl.h`) and `bindings/python/` (`nfftjl`). NFFT in 1–3 dimensions with batches, single and double precision, CPU.
 
 ```julia
 using NFFT

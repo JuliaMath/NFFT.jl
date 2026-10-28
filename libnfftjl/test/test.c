@@ -90,6 +90,39 @@ static int accuracy_f32(int D, const int64_t *N, int64_t J, double reltol, int n
   return bad || !(e1 < 10 * reltol && e2 < 10 * reltol);
 }
 
+/* batches: data L1 x N x L3 and L1 x J x L3; every slice against the direct sum */
+static int accuracy_many(int D, const int64_t *N, int64_t J, int64_t L1, int64_t L3, double reltol, int nthreads) {
+  int64_t M = 1; for (int d = 0; d < D; d++) M *= N[d];
+  double *k = malloc(sizeof(double) * D * J);
+  double complex *f = malloc(sizeof(double complex) * L1 * M * L3), *g = malloc(sizeof(double complex) * L1 * M * L3),
+                 *fh = malloc(sizeof(double complex) * L1 * J * L3), *fs = malloc(sizeof(double complex) * M),
+                 *gs = malloc(sizeof(double complex) * M), *hs = malloc(sizeof(double complex) * J),
+                 *rs = malloc(sizeof(double complex) * J);
+  for (int64_t i = 0; i < D * J; i++) k[i] = urand() - 0.5;
+  for (int64_t i = 0; i < L1 * M * L3; i++) f[i] = urand() - 0.5 + I * (urand() - 0.5);
+  int64_t p = nfftjl_plan_create_many(D, N, J, k, L1, L3, reltol, nthreads);
+  if (p < 0) { printf("plan failed\n"); return 1; }
+  nfftjl_trafo(p, f, fh);
+  nfftjl_adjoint(p, fh, g);
+  double e1 = 0, e2 = 0;
+  for (int64_t b = 0; b < L3; b++)
+    for (int64_t a = 0; a < L1; a++) {
+      for (int64_t m = 0; m < M; m++) fs[m] = f[a + L1 * (m + M * b)];
+      for (int64_t j = 0; j < J; j++) hs[j] = fh[a + L1 * (j + J * b)];
+      ndft(D, N, J, k, fs, rs, 0);
+      double e = relerr(hs, rs, J); if (e > e1) e1 = e;
+      ndft(D, N, J, k, hs, fs, 1);
+      for (int64_t m = 0; m < M; m++) gs[m] = g[a + L1 * (m + M * b)];
+      e = relerr(gs, fs, M); if (e > e2) e2 = e;
+    }
+  /* the strategy is in bits 24-27 of the handle (1 single, 2 loop, 3 slices, 4 lead, 5 trail) */
+  printf("batch %lld x (D = %d, M = %lld) x %lld, J = %lld, strategy %lld: max error trafo %.1e, adjoint %.1e\n",
+         L1, D, M, L3, J, (p >> 24) & 0xf, e1, e2);
+  nfftjl_plan_destroy(p);
+  free(k); free(f); free(g); free(fh); free(fs); free(gs); free(hs); free(rs);
+  return !(e1 < 10 * reltol && e2 < 10 * reltol);
+}
+
 int main(int argc, char **argv) {
   int nthreads = argc > 1 ? atoi(argv[1]) : 1, fail = 0;
   setvbuf(stdout, NULL, _IONBF, 0);
@@ -99,6 +132,14 @@ int main(int argc, char **argv) {
   fail |= accuracy(2, N2, 300, 1e-9, nthreads);
   fail |= accuracy(3, N3, 300, 1e-9, nthreads);
   fail |= accuracy(2, N2, 300, 1e-4, nthreads);
+  /* the batch strategies: before (lead), after (trail), around (loop) the transformed dimensions,
+     many small slices (slices) */
+  int64_t B1[] = {300}, B2[] = {32, 28};
+  fail |= accuracy_many(1, B1, 200, 5, 1, 1e-9, nthreads);
+  fail |= accuracy_many(2, B2, 300, 1, 6, 1e-9, nthreads);
+  fail |= accuracy_many(2, B2, 300, 2, 3, 1e-9, nthreads);
+  fail |= accuracy_many(3, N3, 200, 1, 2, 1e-9, nthreads);
+  fail |= accuracy_many(1, N1, 50, 8, 9, 1e-9, nthreads);
   fail |= accuracy_f32(1, N1, 300, 1e-5, nthreads);
   fail |= accuracy_f32(2, N2, 300, 1e-5, nthreads);
   fail |= accuracy_f32(3, N3, 300, 1e-3, nthreads);
