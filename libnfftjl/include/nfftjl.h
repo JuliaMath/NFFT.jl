@@ -65,8 +65,8 @@ int64_t nfftjlf_nfst_plan_create_many(int D, const int64_t *N, int64_t J, const 
 int nfftjlf_nfst_trafo(int64_t plan, const float *f, float *fhat);
 int nfftjlf_nfst_adjoint(int64_t plan, const float *fhat, float *f);
 /* The default number of threads of a plan: the environment variable NFFTJL_NUM_THREADS if set,
-   otherwise all CPU threads (the library starts one Julia thread per CPU thread, which is also
-   the upper limit for nthreads). Plans can be created and
+   otherwise the number of performance cores (Apple Silicon) or of all CPU threads (the library
+   starts one Julia thread per CPU thread, which is also the upper limit for nthreads). Plans can be created and
    destroyed from any thread; one plan must not be executed on two threads at once. The Julia
    runtime starts on the first call into the library: make that call from one thread before
    others call concurrently (nfftjl_num_threads() will do). */

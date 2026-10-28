@@ -426,9 +426,23 @@ Base.@ccallable nfftjl_plan_destroy(h::Int64)::Cint = plan_destroy(h)
 Base.@ccallable nfftjlf_plan_destroy(h::Int64)::Cint = plan_destroy(h)
 
 # The library starts one Julia thread per CPU thread; plans use `nthreads` of them, by default
-# NFFTJL_NUM_THREADS if set, otherwise all.
+# NFFTJL_NUM_THREADS if set, otherwise one per performance core. The 1D FFT is split by FFTW into
+# one piece per thread, and a piece on an efficiency core (Apple Silicon) or a busy core holds up
+# the whole transform: up to 2× slower with all 10 threads of an M1 Max than with its 8
+# performance cores.
 function default_threads()
   n = tryparse(Int, get(ENV, "NFFTJL_NUM_THREADS", ""))
-  n === nothing ? Threads.nthreads() : clamp(n, 1, Threads.nthreads())
+  n === nothing || return clamp(n, 1, Threads.nthreads())
+  p = performance_cores()
+  p === nothing ? Threads.nthreads() : clamp(p, 1, Threads.nthreads())
+end
+
+# The number of performance cores on macOS (hw.perflevel0, Apple Silicon), otherwise nothing.
+function performance_cores()
+  Sys.isapple() || return nothing
+  n = Ref{Cint}(0); len = Ref{Csize_t}(sizeof(Cint))
+  r = ccall(:sysctlbyname, Cint, (Cstring, Ptr{Cint}, Ptr{Csize_t}, Ptr{Cvoid}, Csize_t),
+            "hw.perflevel0.logicalcpu", n, len, C_NULL, 0)
+  r == 0 && n[] > 0 ? Int(n[]) : nothing
 end
 Base.@ccallable nfftjl_num_threads()::Cint = Cint(default_threads())

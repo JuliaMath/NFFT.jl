@@ -46,7 +46,7 @@ _lib.nfftjl_num_threads()
 
 def num_threads():
     """The default number of threads of a plan: the environment variable NFFTJL_NUM_THREADS if
-    set, otherwise all CPU threads (also the upper limit)."""
+    set, otherwise the number of performance cores (Apple Silicon) or of all CPU threads."""
     return _lib.nfftjl_num_threads()
 
 

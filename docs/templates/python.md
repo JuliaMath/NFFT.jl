@@ -56,7 +56,8 @@ computes both and checks the first values against the direct sum:
 
 `nfftjl.num_threads()`
 : The default number of threads of a plan: the environment variable `NFFTJL_NUM_THREADS` if set,
-  otherwise all CPU threads, which is also the upper limit of `nthreads`.
+  otherwise the number of performance cores (Apple Silicon) or of all CPU threads. The library
+  has one thread per CPU thread, the upper limit of `nthreads`.
 
 Along axis `d` of `f`, index `i` stands for the frequency ``l_d = i - N_d/2`` (``N_d/2`` rounded
 down), in increasing order, as `numpy.fft.fftshift` orders them. Arrays in numpy's default (C)
@@ -80,6 +81,11 @@ the batch kernels of NFFT.jl process several slices per pass over the nodes.
 
 - One plan must not be executed by two threads at the same time: create one plan per thread.
   Separate plans run concurrently, each with its own `nthreads`.
+- The default number of threads of a plan is the environment variable `NFFTJL_NUM_THREADS` if
+  set, otherwise the number of performance cores on Apple Silicon and of all CPU threads
+  elsewhere. A 1D transform runs its FFT in one piece per thread, so a thread on an efficiency
+  core or on a core busy with other work holds it up (up to 2× slower with all 10 threads of an
+  M1 Max); on a busy machine fewer threads than cores are faster.
 - numpy's OpenBLAS threads keep spinning for a while after a numpy call and slow down a transform
   that follows; `OPENBLAS_NUM_THREADS=1` avoids this when timing.
 

@@ -62,7 +62,10 @@ eltype(fHat32), norm(fHat32 - pd * f) / norm(pd * f)
 # ## Threads
 #
 # All stages run multi-threaded with `Threads.nthreads()` threads (start Julia with `julia -t 8`
-# or `-t auto`). `nthreads` limits the number for one plan:
+# or `-t auto`). `nthreads` limits the number for one plan. On Apple Silicon use the number of
+# performance cores (`-t auto` counts the efficiency cores too), and on a machine busy with other
+# work fewer threads than cores: a 1D transform runs its FFT in one piece per thread, and a piece
+# on a slow or busy core holds up the whole transform.
 
 p1 = plan_nfft(k, N; nthreads=1)
 p1 * f ≈ p * f

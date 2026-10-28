@@ -25,7 +25,7 @@ cc -O2 prog.c -Ilibnfftjl/include -Llibnfftjl/build/lib -lnfftjl -lm -Wl,-rpath,
 ```
 
 The library starts one Julia thread per CPU thread; a plan uses `nthreads` of them, by default
-the value of the environment variable `NFFTJL_NUM_THREADS` or all. It is built with Julia's signal
+the value of the environment variable `NFFTJL_NUM_THREADS` or one per performance core. It is built with Julia's signal
 handling, which the garbage collector needs to stop threads, and for one CPU target (see
 `libnfftjl/README.md`).
 
@@ -74,8 +74,9 @@ computes both and checks the first values against the direct sum:
   the functions of the other return −1.
 
 `nfftjl_num_threads()`
-: The default number of threads of a plan: `NFFTJL_NUM_THREADS` if set, otherwise all CPU
-  threads, which is also the upper limit of `nthreads`.
+: The default number of threads of a plan: `NFFTJL_NUM_THREADS` if set, otherwise the number of
+  performance cores (Apple Silicon) or of all CPU threads. The library has one thread per CPU
+  thread, the upper limit of `nthreads`.
 
 Row-major data of size ``N_0 \times \dots \times N_{D-1}`` is column-major data of the reversed
 size: pass the sizes and the coordinates of each node in reversed order (the Python package does
@@ -99,3 +100,8 @@ over the nodes.
   threads at the same time.
 - Separate plans can be executed by several threads at the same time, each with its own
   `nthreads`.
+- The default number of threads of a plan (`nthreads = 0`) is `NFFTJL_NUM_THREADS` if set,
+  otherwise the number of performance cores on Apple Silicon and of all CPU threads elsewhere. A
+  1D transform runs its FFT in one piece per thread, so a thread on an efficiency core or on a
+  core busy with other work holds it up (up to 2× slower with all 10 threads of an M1 Max); on a
+  busy machine fewer threads than cores are faster.
