@@ -31,15 +31,15 @@ struct RNFFTCore{D,K<:SymKernel,T,Tk,PF<:PassFFT,PB<:PassFFT,PC,PR}
 end
 
 # Correction factors: dimension 1 for the modes n₁ = 0 … N₁÷2, the others as in the NFFT.
-function rnfft_invphi(φ, W, N::NTuple{D,Int}, Ñ, ::Type{T}, nthreads) where {D,T}
+function rnfft_invphi(φ::F, W, N::NTuple{D,Int}, Ñ, ::Type{T}, nthreads) where {F,D,T}
   Nh = N[1] ÷ 2 + 1
   phi1 = kernel_ft(φ, W, 2Nh, Ñ[1]; nthreads)[Nh+1:2Nh]          # modes −Nh…Nh−1, keep 0…Nh−1
   ntuple(d -> d == 1 ? T.(1 ./ phi1) : T.(1 ./ kernel_ft(φ, W, N[d], Ñ[d]; nthreads)), D)
 end
 
 # The c2r/r2c transforms along dimension 1 are FFTW plans: the RNFFT needs the FFTW backend.
-function RNFFTCore(k::AbstractMatrix, N::NTuple{D,Int}, Ñ::NTuple{D,Int}, W, φ, ::Type{T}, fft::FFTWBackend, B, nthreads;
-                   binned=nothing, kernel=nothing, invphi=nothing) where {D,T}
+function RNFFTCore(k::AbstractMatrix, N::NTuple{D,Int}, Ñ::NTuple{D,Int}, W, φ::F, ::Type{T}, fft::FFTWBackend, B, nthreads;
+                   binned=nothing, kernel=nothing, invphi=nothing) where {D,F,T}
   K = kernel === nothing ? make_kernel(φ, W, T) : kernel
   Nh = N[1] ÷ 2 + 1
   invphi = invphi === nothing ? rnfft_invphi(φ, W, N, Ñ, T, nthreads) : invphi

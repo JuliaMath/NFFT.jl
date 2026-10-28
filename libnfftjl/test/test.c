@@ -123,6 +123,62 @@ static int accuracy_many(int D, const int64_t *N, int64_t J, int64_t L1, int64_t
   return !(e1 < 10 * reltol && e2 < 10 * reltol);
 }
 
+/* the real transforms against their direct sums, with a batch of L3 slices (kind 0 RNFFT, 1 NFCT, 2 NFST) */
+static double cterm(int kind, int64_t n, double x) { return kind == 1 ? cos(2 * M_PI * n * x) : sin(2 * M_PI * n * x); }
+static int accuracy_real(int kind, int D, const int64_t *N, int64_t J, int64_t L3, double reltol, int nthreads) {
+  int64_t Nin[3], M = 1, Mr = 1;
+  for (int d = 0; d < D; d++) { Nin[d] = (kind == 0 && d == 0) ? N[0] / 2 + 1 : N[d]; M *= Nin[d]; Mr *= N[d]; }
+  double *k = malloc(sizeof(double) * D * J), *fhat = malloc(sizeof(double) * J * L3), *fr = malloc(sizeof(double) * M * L3),
+         *gr = malloc(sizeof(double) * M * L3);
+  double complex *h = malloc(sizeof(double complex) * M * L3), *gh = malloc(sizeof(double complex) * M * L3);
+  for (int64_t i = 0; i < D * J; i++) k[i] = kind == 0 ? urand() - 0.5 : urand() / 2;
+  for (int64_t i = 0; i < M * L3; i++) { h[i] = urand() - 0.5 + I * (urand() - 0.5); fr[i] = urand() - 0.5; }
+  int64_t p = kind == 0 ? nfftjl_rnfft_plan_create_many(D, N, J, k, 1, L3, reltol, nthreads) :
+              kind == 1 ? nfftjl_nfct_plan_create_many(D, N, J, k, 1, L3, reltol, nthreads) :
+                          nfftjl_nfst_plan_create_many(D, N, J, k, 1, L3, reltol, nthreads);
+  if (p < 0) { printf("plan failed\n"); return 1; }
+  if (kind == 0) { nfftjl_rnfft_trafo(p, h, fhat); nfftjl_rnfft_adjoint(p, fhat, gh); }
+  else if (kind == 1) { nfftjl_nfct_trafo(p, fr, fhat); nfftjl_nfct_adjoint(p, fhat, gr); }
+  else { nfftjl_nfst_trafo(p, fr, fhat); nfftjl_nfst_adjoint(p, fhat, gr); }
+  double e1 = 0, s1 = 0, e2 = 0, s2 = 0;
+  for (int64_t b = 0; b < L3; b++) {
+    for (int64_t j = 0; j < J; j++) {           /* trafo */
+      double ref = 0;
+      for (int64_t m = 0; m < M; m++) {
+        int64_t r = m; double ph = 0, pr = 1;
+        for (int d = 0; d < D; d++) {
+          int64_t i = r % Nin[d]; r /= Nin[d];
+          if (kind == 0) ph += (d == 0 ? i : i - N[d] / 2) * k[d + D * j];
+          else pr *= cterm(kind, kind == 1 ? i : i + 1, k[d + D * j]);
+        }
+        ref += kind == 0 ? creal(h[m + M * b] * cexp(-2 * M_PI * I * ph)) : fr[m + M * b] * pr;
+      }
+      e1 += pow(fhat[j + J * b] - ref, 2); s1 += ref * ref;
+    }
+    for (int64_t m = 0; m < M; m++) {           /* adjoint */
+      double complex ref = 0;
+      for (int64_t j = 0; j < J; j++) {
+        int64_t r = m; double ph = 0, pr = 1;
+        for (int d = 0; d < D; d++) {
+          int64_t i = r % Nin[d]; r /= Nin[d];
+          if (kind == 0) ph += (d == 0 ? i : i - N[d] / 2) * k[d + D * j];
+          else pr *= cterm(kind, kind == 1 ? i : i + 1, k[d + D * j]);
+        }
+        ref += kind == 0 ? fhat[j + J * b] * cexp(2 * M_PI * I * ph) : fhat[j + J * b] * pr;
+      }
+      double complex v = kind == 0 ? gh[m + M * b] : gr[m + M * b];
+      e2 += pow(cabs(v - ref), 2); s2 += pow(cabs(ref), 2);
+    }
+  }
+  e1 = sqrt(e1 / s1); e2 = sqrt(e2 / s2);
+  printf("%s, D = %d, J = %lld, %lld slices: error trafo %.1e, adjoint %.1e\n", kind == 0 ? "RNFFT" : kind == 1 ? "NFCT" : "NFST",
+         D, J, L3, e1, e2);
+  int bad = nfftjl_trafo(p, h, (double complex *)fhat) != -1;   /* the NFFT functions reject it */
+  nfftjl_plan_destroy(p);
+  free(k); free(fhat); free(fr); free(gr); free(h); free(gh);
+  return bad || !(e1 < 10 * reltol && e2 < 10 * reltol);
+}
+
 int main(int argc, char **argv) {
   int nthreads = argc > 1 ? atoi(argv[1]) : 1, fail = 0;
   setvbuf(stdout, NULL, _IONBF, 0);
@@ -140,6 +196,12 @@ int main(int argc, char **argv) {
   fail |= accuracy_many(2, B2, 300, 2, 3, 1e-9, nthreads);
   fail |= accuracy_many(3, N3, 200, 1, 2, 1e-9, nthreads);
   fail |= accuracy_many(1, N1, 50, 8, 9, 1e-9, nthreads);
+  for (int kind = 0; kind < 3; kind++) {
+    int64_t R1[] = {40}, R2[] = {12, 10}, R3[] = {6, 5, 4};
+    fail |= accuracy_real(kind, 1, R1, 150, 1, 1e-9, nthreads);
+    fail |= accuracy_real(kind, 2, R2, 150, 3, 1e-9, nthreads);
+    fail |= accuracy_real(kind, 3, R3, 100, 1, 1e-9, nthreads);
+  }
   fail |= accuracy_f32(1, N1, 300, 1e-5, nthreads);
   fail |= accuracy_f32(2, N2, 300, 1e-5, nthreads);
   fail |= accuracy_f32(3, N3, 300, 1e-3, nthreads);

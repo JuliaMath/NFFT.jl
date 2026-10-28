@@ -2,8 +2,9 @@
 
 !!! note "Experimental"
     `libnfftjl` is NFFT.jl compiled into a shared library with `juliac --trim`. It carries its
-    Julia runtime; programs that use it need no Julia installation. It covers the NFFT and its
-    adjoint in 1–3 dimensions in single and double precision; the table on the [home page](index.md) lists
+    Julia runtime; programs that use it need no Julia installation. It covers the NFFT, RNFFT,
+    NFCT and NFST and their adjoints in 1–3 dimensions, with batches, in single and double
+    precision (functions `nfftjl_rnfft_…`, `nfftjl_nfct_…`, `nfftjl_nfst_…`, see the header below); the table on the [home page](index.md) lists
     what the Julia package offers beyond that. The interface may still change.
 
 ## Building

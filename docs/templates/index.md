@@ -60,7 +60,8 @@ as the Julia package. Its interface is experimental and covers the core transfor
 | precision | Float32, Float64 | complex64, complex128 | float, double |
 | multi-threaded | ✓ | ✓ | ✓ |
 | transforms along dimensions (batches) | ✓ | ✓ | ✓ |
-| RNFFT, NFCT, NFST, NNFFT | ✓ | – | – |
+| RNFFT, NFCT, NFST | ✓ | – | ✓ |
+| NNFFT | ✓ | – | – |
 | GPUs | ✓ | – | – |
 | stages, density compensation, Toeplitz | ✓ | – | – |
 | status | 1.0 (in development) | experimental | experimental |

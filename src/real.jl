@@ -25,22 +25,33 @@ end
 
 const R2R_LINES = 16
 
+# lines along dimension e that a pruned pass visits
+r2r_length(pruned, N, M, e) = pruned ? N[e] : M[e]
+
 function R2RPass(::Type{T}, F, d, Ñ, N, flags, nthreads; pruned=true) where {T}
   M = size(F); D = ndims(F)
-  A = prod(M[1:d-1]; init=1); C = prod(M[d+1:end]; init=1)
+  A = 1; for e in 1:d-1; A *= M[e]; end
+  C = 1; for e in d+1:D; C *= M[e]; end
   items = NTuple{3,Int}[]
+  Lb = d == 1 && D == 1 ? 1 : R2R_LINES
   if d == 1
-    Lb = D == 1 ? 1 : R2R_LINES
     for c0 in 1:Lb:C
       push!(items, (c0, min(Lb, C - c0 + 1), 0))
     end
   else
-    Lb = R2R_LINES
-    # dimensions below d: only 1:N where the data are zero elsewhere
-    R = ntuple(e -> pruned ? (1:N[e]) : (1:M[e]), d - 1)
-    LA = LinearIndices(M[1:d-1])
-    for c in 1:C, m in CartesianIndices(Base.tail(R)), a0 in first(R[1]):Lb:last(R[1])
-      push!(items, (LA[a0, Tuple(m)...], min(Lb, last(R[1]) - a0 + 1), c))
+    # dimensions below d: only 1:N where the data are zero elsewhere; dimension 1 in chunks of Lb,
+    # the others (2…d−1) one index at a time, in column-major order
+    P = 1; for e in 2:d-1; P *= r2r_length(pruned, N, M, e); end
+    for c in 1:C, q in 0:P-1
+      lin = 1; r = q; stride = M[1]
+      for e in 2:d-1
+        n = r2r_length(pruned, N, M, e)
+        lin += (r % n) * stride; r ÷= n; stride *= M[e]
+      end
+      n1 = r2r_length(pruned, N, M, 1)
+      for a0 in 1:Lb:n1
+        push!(items, (lin + a0 - 1, min(Lb, n1 - a0 + 1), c))
+      end
     end
   end
   ntasks = D == 1 ? 1 : min(4nthreads, length(items))
@@ -126,9 +137,9 @@ end
 # Modes of the virtual NFFT: n = 0…N−1 (cosine) or 1…N (sine) need an NFFT of size 2N or 2N + 2.
 virtual_size(S, N) = S === :cos ? 2 .* N : 2 .* (N .+ 1)
 
-function RealCore{S}(k::AbstractMatrix, N::NTuple{D,Int}, Ñv::NTuple{D,Int}, W, φ, ::Type{T}, fft::FFTWBackend, B,
-                     nthreads) where {S,D,T}
-  K = make_kernel(φ, W, T)
+function RealCore{S}(k::AbstractMatrix, N::NTuple{D,Int}, Ñv::NTuple{D,Int}, W, φ::Fφ, ::Type{T}, fft::FFTWBackend, B,
+                     nthreads; kernel=make_kernel(φ, W, T)) where {S,D,Fφ,T}
+  K = kernel
   Ñ = Ñv .÷ 2
   cfwd, cadj = real_factors(Val(S), φ, W, N, Ñv, T, nthreads)
   B = B === nothing ? default_tile(D, W) : B
@@ -143,7 +154,7 @@ end
 # Correction factors of the direct and the transposed transform per mode: 1/φ̂ of the virtual grid
 # at the modes n ≥ 0, with the factors 1/2 of the DCT-I/DST-I normalisation
 # (Y_l = X_0 + 2 Σ X_n cos(π n l / Ñ), resp. 2 Σ X_n sin(π n l / Ñ)).
-function real_factors(::Val{S}, φ, W, N::NTuple{D,Int}, Ñv, ::Type{T}, nthreads) where {S,D,T}
+function real_factors(::Val{S}, φ::Fφ, W, N::NTuple{D,Int}, Ñv, ::Type{T}, nthreads) where {S,D,Fφ,T}
   phihat = ntuple(D) do d
     if S === :cos
       kernel_ft(φ, W, 2N[d], Ñv[d]; nthreads)[N[d]+1:2N[d]]
@@ -166,13 +177,19 @@ function mirror(l, Ñ, s)
   r <= Ñ ? (r, one(s)) : (2Ñ - r, s)
 end
 
+# The indices of A with index i along dimension d (selectdim with a run-time dimension, as indices).
+hyperplane(A::AbstractArray{T,N}, d, i) where {T,N} =
+  CartesianIndices(ntuple(e -> e == d ? (i:i) : (1:size(A, e)), Val(N)))
+
 # Fill the halo from the stored points (before the resampling), or fold it back onto them (after
 # the adjoint resampling): one dimension after the other over whole slices, which covers corners.
 function fill_mirror!(gp, h, Ñ, s)
   for d in 1:ndims(gp)
     for l in [-h[1]:-1; Ñ[d]+1:Ñ[d]+h[2]]
       r, σ = mirror(l, Ñ[d], s)
-      selectdim(gp, d, l + h[1] + 1) .= σ .* selectdim(gp, d, r + h[1] + 1)
+      for I in hyperplane(gp, d, l + h[1] + 1)
+        gp[I] = σ * gp[shift(I, d, r - l)]
+      end
     end
   end
   gp
@@ -181,7 +198,9 @@ function fold_mirror!(gp, h, Ñ, s)
   for d in ndims(gp):-1:1
     for l in [-h[1]:-1; Ñ[d]+1:Ñ[d]+h[2]]
       r, σ = mirror(l, Ñ[d], s)
-      selectdim(gp, d, r + h[1] + 1) .+= σ .* selectdim(gp, d, l + h[1] + 1)
+      for I in hyperplane(gp, d, l + h[1] + 1)
+        gp[shift(I, d, r - l)] += σ * gp[I]
+      end
     end
   end
   gp
@@ -237,9 +256,8 @@ end
 function real_resample!(out, c::RealCore{S}, F) where {S}
   h = halo(c.W)
   if S === :sin                          # the grid vanishes at l = 0 and l = Ñ
-    for d in 1:ndims(c.gp)
-      selectdim(c.gp, d, h[1] + 1) .= 0
-      selectdim(c.gp, d, h[1] + 1 + c.Ñ[d]) .= 0
+    for d in 1:ndims(c.gp), i in (h[1] + 1, h[1] + 1 + c.Ñ[d]), I in hyperplane(c.gp, d, i)
+      c.gp[I] = 0
     end
   end
   threaded_copy!(stored(c.gp, h, c.Ñ, Val(S)), F, c.nthreads)
@@ -266,9 +284,8 @@ end
 function r2r_transposed!(F, passes, ::Val{S}) where {S}
   if S === :cos
     # the transposed DCT-I is the DCT-I with the end points l = 0 and l = Ñ doubled
-    for d in 1:ndims(F)
-      selectdim(F, d, 1) .*= 2
-      selectdim(F, d, size(F, d)) .*= 2
+    for d in 1:ndims(F), i in (1, size(F, d)), I in hyperplane(F, d, i)
+      F[I] *= 2
     end
   end
   for P in Iterators.reverse(passes)
@@ -389,9 +406,8 @@ function AbstractNFFTs.oversampled_bfft!(p::RealPlan, g::AbstractArray)
   c = check_real_stage(p, nothing, g, nothing)
   r2r_transposed!(g, unpruned_passes(c, g), Val(kind(typeof(p))))
   if kind(typeof(p)) === :cos
-    for d in 1:ndims(g)
-      selectdim(g, d, 1) ./= 2
-      selectdim(g, d, size(g, d)) ./= 2
+    for d in 1:ndims(g), i in (1, size(g, d)), I in hyperplane(g, d, i)
+      g[I] /= 2
     end
   end
   g
