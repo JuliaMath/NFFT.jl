@@ -12,17 +12,18 @@ macro maybe_threads(n, args...)
     if $n == 1
       $loop
     else
-      $(GlobalRef(@__MODULE__, :threaded_foreach))($itr) do $var
+      $(GlobalRef(@__MODULE__, :threaded_foreach))($itr, $n) do $var
         $(loop.args[2])
       end
     end
   end)
 end
 
-# f(x) for all x in xs, on min(length(xs), nthreads()) tasks that take the next element when done.
-function threaded_foreach(f, xs)
+# f(x) for all x in xs, on min(length(xs), n) tasks that take the next element when done: n bounds
+# the parallelism (a plan's nthreads), the number of elements only the granularity.
+function threaded_foreach(f, xs, n)
   next = Threads.Atomic{Int}(1)
-  tasks(min(length(xs), Threads.nthreads())) do _
+  tasks(min(length(xs), n)) do _
     while (i = Threads.atomic_add!(next, 1)) <= length(xs)
       f(xs[i])
     end
@@ -74,11 +75,10 @@ function issmooth(n)
   n == 1
 end
 
-# Private tile buffers of the resampling tasks, one per task (at most 4·nthreads tasks, one for a
-# single-threaded core), allocated with the plan so that transforms do not allocate them.
+# Private tile buffers of the resampling tasks, one per task (nthreads tasks take the tiles
+# dynamically), allocated with the plan so that transforms do not allocate them.
 # Uninitialised: every user zeroes its buffer before use.
-task_buffers(::Type{C}, sz, nthreads) where {C} =
-  [Array{C}(undef, sz) for _ in 1:(nthreads == 1 ? 1 : 4nthreads)]
+task_buffers(::Type{C}, sz, nthreads) where {C} = [Array{C}(undef, sz) for _ in 1:nthreads]
 
 # Run f(1), …, f(n) as tasks; inline for n = 1, so that single-threaded cores called from a
 # parallel loop over slices spawn nothing.

@@ -54,7 +54,7 @@ function R2RPass(::Type{T}, F, d, Ñ, N, flags, nthreads; pruned=true) where {T}
       end
     end
   end
-  ntasks = D == 1 ? 1 : min(4nthreads, length(items))
+  ntasks = D == 1 ? 1 : min(nthreads, length(items))
   bufs = [zeros(T, 2Ñ, Lb) for _ in 1:ntasks]
   outs = [zeros(Complex{T}, Ñ + 1, Lb) for _ in 1:ntasks]
   plans = with_fftw_threads(() -> [FFTW.plan_rfft(b, 1; flags) for b in bufs], D == 1 ? fft_nthreads(length(bufs[1]), nthreads) : 1)

@@ -122,7 +122,7 @@ end
 function resample_adjoint_slide!(gp, K::SymKernel{W}, b::Binned{D}, vals, Ñ, L::TileLocks{D}, bufs) where {W,D}
   ntD = b.ntiles[D]; ncol = prod(Base.front(b.ntiles))
   ntasks = length(bufs); B = L.B
-  nseg = clamp(cld(2ntasks, ncol), 1, ntD); seglen = cld(ntD, nseg)
+  nseg = clamp(cld(8ntasks, ncol), 1, ntD); seglen = cld(ntD, nseg)   # 8 segments per task for balance
   segs = [(c - 1) * ntD .+ (s:min(s + seglen - 1, ntD)) for c in 1:ncol for s in 1:seglen:ntD]
   E = size(bufs[1], 1)
   next = Threads.Atomic{Int}(1)
