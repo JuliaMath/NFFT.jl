@@ -198,10 +198,10 @@ end
   end
 end
 
-@inline atomic_add!(gr, I, c::Real) = (KA.@atomic gr[1, I...] += c; nothing)
+@inline atomic_add!(gr, I, c::Real) = (KA.@atomic :monotonic gr[1, I...] += c; nothing)
 @inline function atomic_add!(gr, I, c::Complex)
-  KA.@atomic gr[1, I...] += real(c)
-  KA.@atomic gr[2, I...] += imag(c)
+  KA.@atomic :monotonic gr[1, I...] += real(c)
+  KA.@atomic :monotonic gr[2, I...] += imag(c)
   nothing
 end
 
@@ -309,7 +309,8 @@ end
 # grid (`gv`: the grids as a vector of real numbers).
 #
 # Loops run on Int32 with the workgroup size as a constant: 64-bit and dynamic index arithmetic make
-# the kernel 2.5× slower on Apple GPUs.
+# the kernel 2.5× slower on Apple GPUs. The atomics are relaxed (`:monotonic`): with the default
+# sequential consistency Metal.jl fences every one, 4× slower.
 @kernel function adjoint_sub_kernel!(gv, K, @Const(offs), @Const(ss), @Const(perm), @Const(vals),
                                      @Const(sstart), @Const(scount), @Const(sbin), nsub, nb, h, n, L1,
                                      ::Val{D}, ::Val{W}, ::Val{B}, ::Val{S}, ::Val{C}, ::Type{T}, ::Type{G},
@@ -381,8 +382,8 @@ end
       for t in Int32(0):Int32(inner_taps(Val(D), Val(W)) - 1)
         w = @inbounds wb[c * Int32(D * W) + t0 + t + Int32(1)]
         i = i0 + t0 + t
-        @inbounds KA.@atomic bre[i] += fixed(w * vr)
-        G <: Complex && (@inbounds KA.@atomic bim[i] += fixed(w * vi))
+        @inbounds KA.@atomic :monotonic bre[i] += fixed(w * vr)
+        G <: Complex && (@inbounds KA.@atomic :monotonic bim[i] += fixed(w * vi))
       end
       j += gs
     end
@@ -429,8 +430,8 @@ end
 @inline wrap_index(x, n, h) = (y = x - h; y + n * (y < Int32(0)) - n * (y >= n))
 @inline linear0(gi, n, ::Val{D}) where {D} = sum(ntuple(d -> (gi[d] - Int32(1)) * strides_of(n, Val(D))[d], Val(D)))
 @inline flush_add!(gv, cell, re, im, ::Type{<:Complex}) =
-  (@inbounds KA.@atomic gv[2cell+1] += re; @inbounds KA.@atomic gv[2cell+2] += im; nothing)
-@inline flush_add!(gv, cell, re, im, ::Type{<:Real}) = (@inbounds KA.@atomic gv[cell+1] += re; nothing)
+  (@inbounds KA.@atomic :monotonic gv[2cell+1] += re; @inbounds KA.@atomic :monotonic gv[2cell+2] += im; nothing)
+@inline flush_add!(gv, cell, re, im, ::Type{<:Real}) = (@inbounds KA.@atomic :monotonic gv[cell+1] += re; nothing)
 
 # Support points per task along dimension 1: all W from dimension 2 on, one in 1D.
 @inline inner_taps(::Val{D}, ::Val{W}) where {D,W} = D == 1 ? 1 : W
