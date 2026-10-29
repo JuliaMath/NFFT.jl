@@ -58,22 +58,6 @@ end
 # Wait for the transforms on a device to finish (GPU extension).
 synchronize(x) = nothing
 
-"""
-    NFFT.calibrate_cost(storage=Array; eltype=Float64, J=(2^16, 2^18, 2^20), W=4:2:12,
-                        σ=(1.25, 1.5, 2.0, 2.5), dims=1:3, sizes=CALIBRATION_SIZES, nrep=10, set=true)
-
-Fit the cost model by which plans choose window width and oversampling to NFFTs timed on this
-machine: transform and adjoint for random nodes and every combination of `J`, `W`, `σ` and the
-sizes in `sizes[D]` (default 2^16 and 2^20, 256² and 1024², 32³ and 96³) in the dimensions
-`dims`. With `set`, plans with this `storage` and `eltype` use the result for the rest of the
-session. Returns a `Dict` from the dimension to the coefficients, for
-[`NFFT.set_cost_model!`](@ref) in a later session.
-
-The built-in models are fitted on an Apple M1 Max (CPU with 8 threads, GPU with Metal and
-`Float32`). Other machines, thread counts and GPUs have other ratios of resampling, FFT and fixed
-costs. The default sweep takes about three minutes on the M1 Max GPU; on the CPU, smaller `J`,
-sizes and fewer `W` keep it short.
-"""
 # Relative least squares (the small times weigh as much as the large ones) with nonnegative
 # coefficients: every term is a cost; a negative coefficient would make extrapolation favour the
 # large grids. Terms with negative coefficients are dropped one at a time, the most negative first.
@@ -90,6 +74,22 @@ end
 
 const CALIBRATION_SIZES = (((2^16,), (2^20,)), ((256, 256), (1024, 1024)), ((32, 32, 32), (96, 96, 96)))
 
+"""
+    NFFT.calibrate_cost(storage=Array; eltype=Float64, J=(2^16, 2^18, 2^20), W=4:2:12,
+                        σ=(1.25, 1.5, 2.0, 2.5), dims=1:3, sizes=CALIBRATION_SIZES, nrep=10, set=true)
+
+Fit the cost model by which plans choose window width and oversampling to NFFTs timed on this
+machine: transform and adjoint for random nodes and every combination of `J`, `W`, `σ` and the
+sizes in `sizes[D]` (default 2^16 and 2^20, 256² and 1024², 32³ and 96³) in the dimensions
+`dims`. With `set`, plans with this `storage` and `eltype` use the result for the rest of the
+session. Returns a `Dict` from the dimension to the coefficients, for
+[`NFFT.set_cost_model!`](@ref) in a later session.
+
+The built-in models are fitted on an Apple M1 Max (CPU with 8 threads, GPU with Metal and
+`Float32`). Other machines, thread counts and GPUs have other ratios of resampling, FFT and fixed
+costs. The default sweep takes about three minutes on the M1 Max GPU; on the CPU, smaller `J`,
+sizes and fewer `W` keep it short.
+"""
 function calibrate_cost(S=Array; eltype::Type{T}=Float64, J=(2^16, 2^18, 2^20), W=4:2:12,
                         σ=(1.25, 1.5, 2.0, 2.5), dims=1:3, sizes=CALIBRATION_SIZES, nrep=10, set=true) where {T}
   coef = Dict{Int,Any}()
