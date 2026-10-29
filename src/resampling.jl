@@ -18,6 +18,34 @@
   s
 end
 
+# On the CPU in 2D/3D from W = 8: each row summed in two independent chains. The loop above runs all
+# W FMAs of a row into one accumulator (no reassociation for complex sums), a chain of W · 4 cycles;
+# two chains are 4–14 % faster for W = 10…14 and 1.2–1.7× for W = 16, a little slower for W = 6
+# and, in the full 1D transform, 12 % slower for W = 15.
+@inline function resample_node(g::Array{C,D}, off::NTuple{D,Int}, ws::NTuple{D,SVector{W,T}}) where {C,D,W,T}
+  (D == 1 || W < 8) && return invoke(resample_node, Tuple{AbstractArray{C,D},NTuple{D,Int},NTuple{D,SVector{W,T}}}, g, off, ws)
+  s = zero(C)
+  @inbounds for It in CartesianIndices(ntuple(_ -> Base.OneTo(W), Val(D - 1)))
+    wt = prod(ntuple(d -> ws[d+1][It[d]], Val(D - 1)); init=one(T))
+    s = muladd(wt, rowdot2(g, off[1], Base.tail(off) .+ Tuple(It), ws[1]), s)
+  end
+  s
+end
+
+# Σᵢ w[i] g[o1+i, jt...], odd and even i in separate chains.
+@generated function rowdot2(g, o1, jt, w::SVector{W}) where {W}
+  ex = [:(a1 = w[1] * g[o1+1, jt...]), :(a2 = w[2] * g[o1+2, jt...])]
+  for i in 3:W
+    a = isodd(i) ? :a1 : :a2
+    push!(ex, :($a = muladd(w[$i], g[o1+$i, jt...], $a)))
+  end
+  quote
+    Base.@_inline_meta
+    @inbounds begin $(ex...) end
+    a1 + a2
+  end
+end
+
 # w₁·v is formed once per node, so every grid point of a row takes one FMA.
 @inline function resample_adjoint_node!(g::AbstractArray{C,D}, off::NTuple{D,Int}, ws::NTuple{D,SVector{W,T}}, v) where {C,D,W,T}
   w1v = ws[1] .* convert(C, v)
