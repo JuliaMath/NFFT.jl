@@ -333,7 +333,7 @@ end
     i += gs
   end
   q0 = @inbounds sstart[s]; cnt = @inbounds scount[s]
-  o = map(*, lin2cart0(@inbounds(sbin[s]) - Int32(1), strides_of(nb, Val(D)), nb), map(Int32, B))
+  o = map(*, cart0(UInt32(@inbounds(sbin[s]) - Int32(1)), nb), map(Int32, B))
   # largest |re|, |im| of the subproblem's values, reduced in local memory
   vm = zero(T); i = li
   while i < cnt
@@ -395,7 +395,7 @@ end
   while i < Int32(S)
     re = @inbounds bre[i+1]; im = @inbounds bim[i+1]
     if re != Int32(0) || im != Int32(0)
-      gi = target_index(o, lin2cart0(i, pstr, pe), h, n, Val(WRAP))
+      gi = target_index(o, cart0(UInt32(i), pe), h, n, Val(WRAP))
       if WRAP || all(map((x, m) -> 1 <= x <= m, gi, n))
         cell = Int(linear0(gi, n, Val(D))) + (l - 1) * Int(ng)
         flush_add!(gv, cell, T(re) * isc, T(im) * isc, G)
@@ -418,7 +418,15 @@ end
 # column-major strides of an array of size n, for kernels (`col_strides` mutates a captured variable)
 @inline strides_of(n, ::Val{D}) where {D} = ntuple(d -> prod(ntuple(i -> i < d ? n[i] : one(eltype(n)), Val(D))), Val(D))
 @inline fixed(x) = unsafe_trunc(Int32, x + copysign(oftype(x, 0.5), x))
-@inline lin2cart0(i, str, n) = map((s, m) -> (i ÷ s) % m, str, n)
+# Index r (0-based) of an array of size n as 0-based Int32 indices. Unsigned: signed divisions by
+# values known only at run time are an order of magnitude slower on Apple GPUs.
+@inline cart0(r::UInt32, n::Tuple{}) = ()
+@inline cart0(r::UInt32, n::Tuple) = (m = UInt32(first(n)); (Int32(r % m), cart0(r ÷ m, Base.tail(n))...))
+# Work-item i (1-based) of a 1D range over L arrays of M elements: 0-based index in the array and
+# 1-based array index.
+@inline split_batch(i, M) = (r = UInt32(i - 1); l = r ÷ UInt32(M); (r - l * UInt32(M), Int(l) + 1))
+@inline repeat_tuple(x, ::Val{D}) where {D} = ntuple(_ -> x, Val(D))
+@inline wrap_index(x, n, h) = (y = x - h; y + n * (y < Int32(0)) - n * (y >= n))
 @inline linear0(gi, n, ::Val{D}) where {D} = sum(ntuple(d -> (gi[d] - Int32(1)) * strides_of(n, Val(D))[d], Val(D)))
 @inline flush_add!(gv, cell, re, im, ::Type{<:Complex}) =
   (@inbounds KA.@atomic gv[2cell+1] += re; @inbounds KA.@atomic gv[2cell+2] += im; nothing)
@@ -495,13 +503,13 @@ end
 
 ## periodic padding (NFFT, RNFFT)
 
-# Padded grids from the grids: every padded point reads its periodic partner (interior and halo).
-@inline periodic(I, h, Ñ) = map((i, ñ) -> mod(i - 1 - h, ñ) + 1, I, Ñ)
-
-@kernel function pad_kernel!(gp, @Const(gf), h::Int, ::Val{D}) where {D}
-  I = Tuple(@index(Global, Cartesian))
-  src = periodic(front(I, Val(D)), h, front(size(gf), Val(D)))
-  @inbounds gp[I...] = gf[src..., I[D+1]]
+# Padded grids from the grids: every padded point reads its periodic partner (interior and halo),
+# on the grids as matrices (|P|, L) and (|Ñ|, L). The grid has at least W points, so one correction
+# wraps a padded index.
+@kernel function pad_kernel!(gp, @Const(gf), h::Int32, P, Ñ, ::Val{D}) where {D}
+  r, l = split_batch(@index(Global, Linear), prod(P))
+  src = map(wrap_index, cart0(r, P), Ñ, repeat_tuple(h, Val(D)))
+  @inbounds gp[Int(r) + 1, l] = gf[linear0(map(x -> x + Int32(1), src), Ñ, Val(D)) + Int32(1), l]
 end
 
 # Grids from the padded grids: every point sums its periodic images (folds the halo without
@@ -519,7 +527,9 @@ end
 end
 @inline image(i, c, h, Ñ) = map((x, s, n) -> x + h + (s - 2) * n, i, c, Ñ)
 
-pad!(backend, gp, gf, W, ::Val{D}) where {D} = launch(backend, pad_kernel!, gp, gf, halo(W)[1], Val(D); ndrange=size(gp))
+pad!(backend, gp, gf, W, ::Val{D}) where {D} =
+  launch(backend, pad_kernel!, reshape(gp, :, size(gp, D + 1)), reshape(gf, :, size(gf, D + 1)), Int32(halo(W)[1]),
+         map(Int32, size(gp)[1:D]), map(Int32, size(gf)[1:D]), Val(D); ndrange=length(gp))
 unpad!(backend, gf, gp, W, ::Val{D}) where {D} = launch(backend, unpad_kernel!, gf, gp, halo(W)[1], Val(D); ndrange=size(gf))
 
 function check_device(backend, xs...)
@@ -597,29 +607,33 @@ function Base.copy(c::GPUCore{D}) where {D}
 end
 
 # Resampling correction between the modes f, (L1, N..., L3), and the grids gf, (Ñ..., L): one
-# work-item per mode and transform.
-@kernel function correction_kernel!(gf, f, @Const(invphi), N, L1, ::Val{D}, adjoint::Bool) where {D}
-  I = Tuple(@index(Global, Cartesian))
-  m = front(I, Val(D)); l = I[D+1]
+# work-item per mode and transform (as arrays (L1, |N|, L3) and (|Ñ|, L)).
+@kernel function correction_kernel!(gf, f, @Const(invphi), N, Ñ, L1, ::Val{D}, adjoint::Bool) where {D}
+  r, l = split_batch(@index(Global, Linear), prod(N))
+  m = cart0(r, N)
   a, b = batch(l, L1)
   c = one(real(eltype(gf)))
   for d in 1:D
-    @inbounds c *= invphi[d][m[d]]
+    @inbounds c *= invphi[d][m[d]+1]
   end
-  gi = map(NFFT.gridindex, m, N, front(size(gf), Val(D)))
+  gi = map(mode_index, m, N, Ñ)
+  i = Int(r) + 1; j = linear0(gi, Ñ, Val(D)) + Int32(1)
   if adjoint
-    @inbounds f[a, m..., b] = c * gf[gi..., l]
+    @inbounds f[a, i, b] = c * gf[j, l]
   else
-    @inbounds gf[gi..., l] = c * f[a, m..., b]
+    @inbounds gf[j, l] = c * f[a, i, b]
   end
 end
+# grid index (1-based) of mode m (0-based, of N)
+@inline mode_index(m, N, Ñ) = (y = m - N ÷ Int32(2); y + Ñ * (y < Int32(0)) + Int32(1))
 
 modes(c::GPUCore, f) = reshape(f, c.L1, c.N..., c.L3)
 
-correction!(c::GPUCore{D}, g, f) where {D} =
-  (fill!(g, 0); launch(c.backend, correction_kernel!, g, f, c.invphi, c.N, c.L1, Val(D), false; ndrange=(c.N..., nbatch(c))); g)
-correction_adjoint!(c::GPUCore{D}, f, g) where {D} =
-  (launch(c.backend, correction_kernel!, g, f, c.invphi, c.N, c.L1, Val(D), true; ndrange=(c.N..., nbatch(c))); f)
+correction!(c::GPUCore{D}, g, f) where {D} = (fill!(g, 0); launch_correction(c, g, f, false); g)
+correction_adjoint!(c::GPUCore{D}, f, g) where {D} = (launch_correction(c, g, f, true); f)
+launch_correction(c::GPUCore{D}, g, f, adjoint) where {D} =
+  launch(c.backend, correction_kernel!, reshape(g, :, size(g, D + 1)), reshape(f, size(f, 1), :, size(f, D + 2)),
+         c.invphi, map(Int32, c.N), map(Int32, c.Ñ), c.L1, Val(D), adjoint; ndrange=prod(c.N) * nbatch(c))
 resampling!(c::GPUCore{D}, vals, g) where {D} =
   (pad!(c.backend, c.gp, g, c.W, Val(D)); resample!(c.backend, c.nodes, vals, c.gp, c.L1, Val(D)); vals)
 resampling_adjoint!(c::GPUCore{D}, g, vals) where {D} =
