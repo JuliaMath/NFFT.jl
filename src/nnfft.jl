@@ -136,27 +136,31 @@ function nnfft_nodes(::Val{D}, kc, yc, y0, k0, K, outer, n, φ::F, nthreads) whe
   h = map(x -> x > 0 ? 1 / (2σ1 * x) : 1.0, K)
   # source y′/h sits at grid position y′/h + n÷2
   ys = Matrix{Float64}(undef, D, N)
-  @maybe_threads nthreads for l in 1:N
-    for d in 1:D
+  @maybe_threads nthreads for r in chunks(1:N, nthreads)
+    for l in r, d in 1:D
       x = (yc[d, l] - y0[d]) / (h[d] * n[d]) + (n[d] ÷ 2) / n[d]
       ys[d, l] = x >= 0.5 ? x - 1 : x
     end
   end
   xs = Matrix{Float64}(undef, D, J)
-  @maybe_threads nthreads for j in 1:J
-    for d in 1:D
+  @maybe_threads nthreads for r in chunks(1:J, nthreads)
+    for j in r, d in 1:D
       xs[d, j] = (kc[d, j] - k0[d]) * h[d]
     end
   end
   # the division by φ̂; |h k′| ≤ 1/(2σ₁)
   ft = WindowFT(φ, outer.W, 1 / (2σ1))
   pre = Vector{ComplexF64}(undef, N)
-  @maybe_threads nthreads for l in 1:N
-    pre[l] = cispi(-2 * sum(ntuple(d -> k0[d] * (yc[d, l] - y0[d]), Val(D))))
+  @maybe_threads nthreads for r in chunks(1:N, nthreads)
+    for l in r
+      pre[l] = cispi(-2 * sum(ntuple(d -> k0[d] * (yc[d, l] - y0[d]), Val(D))))
+    end
   end
   post = Vector{ComplexF64}(undef, J)
-  @maybe_threads nthreads for j in 1:J
-    post[j] = cispi(-2 * sum(ntuple(d -> kc[d, j] * y0[d], Val(D)))) / prod(ntuple(d -> ft(abs(xs[d, j])), Val(D)))
+  @maybe_threads nthreads for r in chunks(1:J, nthreads)
+    for j in r
+      post[j] = cispi(-2 * sum(ntuple(d -> kc[d, j] * y0[d], Val(D)))) / prod(ntuple(d -> ft(abs(xs[d, j])), Val(D)))
+    end
   end
   ys, xs, pre, post
 end
