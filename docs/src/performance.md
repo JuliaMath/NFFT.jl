@@ -19,14 +19,17 @@ The libraries interpret their tolerance parameters differently, so they are comp
 
 ![Time against accuracy, double precision](assets/benchmarks/pareto_float64.svg)
 
-- **1D**: NFFT.jl is the fastest library at every accuracy, 1.4–2× ahead of FINUFFT and ducc.
-- **2D**: NFFT.jl and ducc are within 10 % of each other (NFFT.jl ahead at low accuracy), FINUFFT
-  is 1.2–1.6× slower.
-- **3D**: NFFT.jl and ducc are on par; FINUFFT is up to 4.5× slower for the direct transform.
+- **1D**: NFFT.jl is the fastest library at every accuracy, 1.3–2× ahead of ducc, FINUFFT and
+  NonuniformFFTs.jl in the direct transform and 1.2–2.8× in the adjoint.
+- **2D**: NFFT.jl is 1.1–1.6× faster than ducc (most at low accuracy) and on par at ``10^{-13}``;
+  FINUFFT is 1.4–2.2× slower (more at some accuracies), NonuniformFFTs.jl 1.9–16×.
+- **3D**: NFFT.jl is 1.3–1.7× faster than ducc up to ``10^{-6}`` and on par from ``10^{-8}`` on;
+  FINUFFT and NonuniformFFTs.jl are 1.3–4.4× slower.
 
 ![Time against accuracy, single precision](assets/benchmarks/pareto_float32.svg)
 
-In single precision NFFT.jl is 1.2–1.8× faster than ducc in every dimension. FINUFFT cannot reach
+In single precision NFFT.jl is faster than ducc in every dimension, 1.1–1.4× in the direct
+transform and 1.2–2× in the adjoint. FINUFFT cannot reach
 small errors in single precision for these sizes (its tolerance floor grows with ``N``; in 1D it
 rejects even ``10^{-2}``).
 
@@ -37,8 +40,8 @@ ideal).
 
 ![Strong scaling](assets/benchmarks/threads.svg)
 
-With 8 threads NFFT.jl reaches a speedup of 4.4–4.7 in 1D, 5.7–6.2 in 2D and 6.3 in 3D; ducc and
-FINUFFT scale similarly in 2D and 3D and less in 1D (3.2–3.6).
+With 8 threads NFFT.jl reaches a speedup of 4.6–5.0 in 1D, 6.0–6.2 in 2D and 6.6–6.7 in 3D. ducc
+scales similarly in 2D and 3D (5.5–6.4), FINUFFT less (3.6–5.3); in 1D both reach 2.9–3.4.
 
 ## Problem size
 
@@ -46,9 +49,9 @@ Time per node for ``J = |\bm{N}|`` uniformly random nodes at a tolerance of ``10
 
 ![Problem size](assets/benchmarks/sizes.svg)
 
-For large problems the time per node is 7–10 ns in 1D and 2D and about 30 ns (direct) and 55 ns
-(adjoint) in 3D. Below about ``10^4`` nodes the fixed costs of the threaded stages dominate; there
-NFFT.jl is slower than ducc in 2D and 3D.
+For large problems the time per node is 6–9 ns in 1D, 9–12 ns in 2D and about 36 ns (direct) and
+50 ns (adjoint) in 3D. Below about ``10^4`` nodes the fixed costs of the threaded stages dominate;
+there NFFT.jl is slower than ducc in 1D and 2D, while in 3D it stays ahead.
 
 ## Node distributions
 
@@ -69,8 +72,8 @@ loops over the transforms), tolerance ``10^{-8}``.
 
 Transforms with the same nodes share the window evaluation. For many short 1D transforms (OCT:
 512 A-scans) NFFT.jl runs the transforms in parallel on single-threaded copies of the plan and
-needs 7 µs per transform, 13–15× less than FINUFFT and ducc. For multi-coil MRI it is 1.1–2× faster
-than the others, for volumes on par with ducc.
+needs 7 µs per transform, 7–20× less than FINUFFT and ducc. For multi-coil MRI it is 1.2–2.2×
+faster than the others, for volumes 5–14 % faster than ducc.
 
 ## Real data
 
@@ -79,8 +82,10 @@ size, tolerance ``10^{-8}``.
 
 ![Real data](assets/benchmarks/real.svg)
 
-The RNFFT computes on a real grid and needs about 60 % of the time of the complex NFFT. NFCT and
-NFST cost about as much as the complex NFFT in 2D and 3D; in 1D they are still slower.
+The RNFFT computes on a real grid. At ``10^{-8}`` its adjoint needs about 65 % of the time of the
+complex NFFT and its direct transform 65–75 % (in 2D as much as the complex NFFT); in 1D at
+``10^{-4}`` it is slower than the complex NFFT. NFCT and NFST cost about as much as the complex NFFT
+in 2D and 3D; in 1D they are still slower.
 
 ## Non-equidistant in both domains (NNFFT)
 
@@ -91,18 +96,18 @@ targets in ``[-1/2, 1/2)^D``, the space-frequency extent of an NFFT of size ``\b
 
 ![NNFFT, double precision](assets/benchmarks/nnfft_float64.svg)
 
-In double precision NFFT.jl is faster than FINUFFT in 1D (up to 1.5×) and in 2D, and on par in
-3D, where FINUFFT is ahead around ``10^{-10}`` in the adjoint and NFFT.jl at the other accuracies. At
-the highest accuracy the difference is large: in 2D NFFT.jl reaches ``7·10^{-14}`` in 3.6 ms,
-FINUFFT ``9·10^{-13}`` in 22 ms. Planning takes 5–12 ms in NFFT.jl and 4–7 ms in FINUFFT (more at
-its accuracy limits).
+In double precision NFFT.jl is faster than FINUFFT in 1D (up to 1.4×) and 2D (1.3–2×); in 3D the
+two are on par around ``10^{-4}`` and NFFT.jl is up to 1.4× ahead at the other accuracies. At the
+highest accuracy the difference is large: in 2D NFFT.jl reaches ``7·10^{-14}`` in 3.3 ms, FINUFFT
+``9·10^{-13}`` in 25 ms. Planning takes 4–9 ms in NFFT.jl and 4–6 ms in FINUFFT (more at its
+accuracy limits).
 
 ![NNFFT, single precision](assets/benchmarks/nnfft_float32.svg)
 
 NFFT.jl computes grid positions and phases in double precision also for single-precision data. With
 the large coordinates of the type 3 this matters: NFFT.jl reaches ``3·10^{-7}`` in 1D, 2D and 3D,
 where FINUFFT stays at ``10^{-2}`` (1D), ``5·10^{-5}`` (2D) and ``8·10^{-6}`` (3D). At equal error
-NFFT.jl is also faster, except in 3D at errors above ``10^{-4}``.
+NFFT.jl is also faster, except for the 3D adjoint around ``10^{-4}``.
 
 ## On GPUs
 
