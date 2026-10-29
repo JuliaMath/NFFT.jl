@@ -122,10 +122,26 @@ function kernel_ft(φ::F, W, N, Ñ; nq=2W + 20, nc=32, nthreads=Threads.nthreads
   kmax = max(N ÷ 2, N - N ÷ 2 - 1)
   N <= 4nc && (quad = window_quadrature(φ, W; nq); return [quad(k / Ñ) for k in ks])
   ft = WindowFT(φ, W, kmax / Ñ; nq, nc)
+  # φ̂ is even: evaluated at |k| = 0 … kmax, four modes at a time (the Clenshaw recurrence is a
+  # chain of dependent FMAs, latency bound for a single mode)
+  v = Vector{Float64}(undef, kmax + 1)
+  @maybe_threads nthreads for r in chunks(0:kmax, nthreads)
+    i = first(r)
+    while i + 3 <= last(r)
+      y = ft((i / Ñ, (i + 1) / Ñ, (i + 2) / Ñ, (i + 3) / Ñ))
+      for j in 1:4
+        v[i+j] = y[j]
+      end
+      i += 4
+    end
+    for a in i:last(r)
+      v[a+1] = ft(a / Ñ)
+    end
+  end
   out = Vector{Float64}(undef, N)
   @maybe_threads nthreads for r in chunks(eachindex(ks), nthreads)
     for i in r
-      out[i] = ft(abs(ks[i]) / Ñ)
+      out[i] = v[abs(ks[i])+1]
     end
   end
   out
@@ -159,4 +175,13 @@ function (ft::WindowFT)(ξ)
     b1, b2 = muladd(2y, b1, -b2) + c[m], b1
   end
   muladd(y, b1, -b2) + c[1]
+end
+function (ft::WindowFT)(ξ::NTuple{L,Float64}) where {L}
+  c = ft.c
+  y = map(x -> 2x / ft.ξmax - 1, ξ)
+  b1 = map(_ -> 0.0, ξ); b2 = b1
+  for m in length(c):-1:2
+    b1, b2 = map((y, b1, b2) -> muladd(2y, b1, -b2) + c[m], y, b1, b2), b1
+  end
+  map((y, b1, b2) -> muladd(y, b1, -b2) + c[1], y, b1, b2)
 end

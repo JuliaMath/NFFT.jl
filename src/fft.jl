@@ -74,9 +74,25 @@ function PassFFT(fft::AbstractFFTBackend, x::AbstractArray{C,D}, N::NTuple{D,Int
   order = pattern == :fwd ? reverse(tdims) : tdims
   boxes = [pass_boxes(x, N, d, tdims, fft_threads, nthreads) for d in order]
   plans = planning(fft, fft_threads ? nthreads : 1) do
-    [[pass_plan(fft, K, view(x, b...), d) for b in bs] for (d, bs) in zip(order, boxes)]
+    [pass_plans(fft, K, [view(x, b...) for b in bs], d) for (d, bs) in zip(order, boxes)]
   end
   PassFFT(plans, boxes)
+end
+
+# The plans of one pass, one per box. FFTW executes a plan on any array of the same size, strides
+# and alignment, also from several threads at once, so boxes of the same layout share a plan
+# (planning 20–32 boxes is most of the FFT setup in 2D and 3D). Other backends may keep state in
+# the plan (FFTA: a buffer).
+pass_plans(fft::AbstractFFTBackend, K, vs, d) = [pass_plan(fft, K, v, d) for v in vs]
+function pass_plans(fft::FFTWBackend, K, vs, d)
+  isempty(vs) && return [pass_plan(fft, K, v, d) for v in vs]
+  layout(v) = (size(v), strides(v), UInt(pointer(v)) % 16)
+  plans = [pass_plan(fft, K, vs[1], d)]
+  for i in 2:length(vs)
+    j = findfirst(j -> layout(vs[j]) == layout(vs[i]), 1:i-1)
+    push!(plans, j === nothing ? pass_plan(fft, K, vs[i], d) : plans[j])
+  end
+  plans
 end
 
 # The boxes of the pass along d: the kept index ranges along the transformed dims < d, everything

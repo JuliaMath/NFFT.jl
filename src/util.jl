@@ -34,8 +34,31 @@ end
 chunks(r, k) = isempty(r) ? typeof(r[1:0])[] :
   [r[i:min(i + cld(length(r), k) - 1, end)] for i in 1:cld(length(r), k):length(r)]
 
-# Smallest even n′ ≥ n whose prime factors are 2, 3, 5 and 7 (FFT-friendly grid sizes).
+# Smallest even n′ ≥ n whose prime factors are 2, 3, 5 and 7 (FFT-friendly grid sizes). Looked up
+# in the sorted 7-smooth numbers: the search by trial division takes thousands of steps for large n,
+# and the parameter choice calls it for every candidate kernel.
+const SMOOTH7 = let lim = 2^40, s = Int[]
+  p2 = 1
+  while p2 <= lim
+    p3 = p2
+    while p3 <= lim
+      p5 = p3
+      while p5 <= lim
+        p7 = p5
+        while p7 <= lim
+          push!(s, p7); p7 *= 7
+        end
+        p5 *= 5
+      end
+      p3 *= 3
+    end
+    p2 *= 2
+  end
+  sort!(s)
+end
 function smooth_size(n)
+  h = cld(n, 2)
+  h <= last(SMOOTH7) && return 2 * SMOOTH7[searchsortedfirst(SMOOTH7, h)]
   m = n + isodd(n)
   while !issmooth(m)
     m += 2
@@ -53,7 +76,9 @@ end
 
 # Private tile buffers of the resampling tasks, one per task (at most 4·nthreads tasks, one for a
 # single-threaded core), allocated with the plan so that transforms do not allocate them.
-task_buffers(::Type{C}, sz, nthreads) where {C} = [zeros(C, sz) for _ in 1:(nthreads == 1 ? 1 : 4nthreads)]
+# Uninitialised: every user zeroes its buffer before use.
+task_buffers(::Type{C}, sz, nthreads) where {C} =
+  [Array{C}(undef, sz) for _ in 1:(nthreads == 1 ? 1 : 4nthreads)]
 
 # Run f(1), …, f(n) as tasks; inline for n = 1, so that single-threaded cores called from a
 # parallel loop over slices spawn nothing.

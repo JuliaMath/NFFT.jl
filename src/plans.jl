@@ -147,11 +147,17 @@ batch_strategy(P, Dd, L1, L3) = :loop
 
 # Nodes must be finite and in [−1/2, 1/2] (1/2 is the same node as −1/2); anything else would be
 # binned outside the grid.
-function check_nodes(P, k)
-  for x in k
-    (isfinite(x) && -0.5 <= x <= 0.5) ||
-      throw(ArgumentError("nodes must be finite and in [-1/2, 1/2], found $x"))
+check_nodes(P, k) = check_range(k, -0.5, 0.5, "nodes must be finite and in [-1/2, 1/2]")
+
+# Throws for the first entry of k outside [lo, hi] (NaN fails both comparisons). The reduction
+# without an early exit vectorises; a branch per node costs as much as the binning.
+function check_range(k, lo, hi, msg)
+  ok = true
+  @inbounds @simd for i in eachindex(k)
+    ok &= (lo <= k[i]) & (k[i] <= hi)
   end
+  ok || throw(ArgumentError("$msg, found $(k[findfirst(x -> !(lo <= x <= hi), k)])"))
+  nothing
 end
 
 # The FFT backend and the tile size are options of the CPU code; plans on a device reject them
