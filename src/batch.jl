@@ -189,6 +189,7 @@ function resample_adjoint_b!(c::BatchCore{D,K,T,Tk,D1,CH}, vals) where {D,K,T,Tk
       o = b.origins[t]
       fill!(buf, 0)
       @inbounds for q in r
+        q + 16 <= last(r) && prefetch(vals, (b.perm[q+16] - 1) * L + 1)   # see spread_nodes!
         sw = map(@inline((x, n) -> support(c.kernel, x, n)), b.xs[q], c.Ñ)
         off = map(first, sw) .- o; ws = map(last, sw); col = b.perm[q]
         for b0 in 0:CH:L-1
