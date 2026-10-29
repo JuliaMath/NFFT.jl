@@ -110,10 +110,11 @@ function NFFT.cost_terms(::Type{<:AbstractGPUArray}, D, W, M, J, T)
 end
 
 # Fitted on an M1 Max (Metal, Float32) by `NFFT.calibrate_cost(MtlArray; eltype=Float32)`.
-const GPU_COST = Dict{Int,Any}(1 => (0.611, 0.0, 1.23e-7, 4.17e-7, 2.68e-8),
-                               2 => (0.546, 0.0, 3.69e-8, 1.87e-7, 3.56e-7),
-                               3 => (0.642, 3.20e-7, 1.01e-8, 0.0, 3.05e-7))
+const GPU_COST = Dict(1 => [0.611, 0.0, 1.23e-7, 4.17e-7, 2.68e-8],
+                      2 => [0.546, 0.0, 3.69e-8, 1.87e-7, 3.56e-7],
+                      3 => [0.642, 3.20e-7, 1.01e-8, 0.0, 3.05e-7])
 NFFT.default_cost(::Type{<:AbstractGPUArray}, T) = GPU_COST
+NFFT.device_cost(S::Type{<:AbstractGPUArray}, T, W, M, J, D) = NFFT.model_cost(S, T, W, M, J, D)
 
 # JLArrays (tests) run synchronously and have no `synchronize`
 function NFFT.synchronize(x::AbstractGPUArray)

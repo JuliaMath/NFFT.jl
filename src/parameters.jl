@@ -43,19 +43,19 @@ end
 # CPU: fitted on an M1 Max with 8 threads for J = 2^18, W ∈ 4:16, σ ∈ 1.25:0.25:2.25,
 # t ≈ a·J·W^D + a1·J·W + b·Ñ^D·log2(Ñ^D) + c. It only interpolates within that range (median
 # deviation 5 % in 2D/3D, 11 % in 1D); the coefficients have no physical meaning.
-const COST_COEF = Dict(1 => (2.32e-07, 2.32e-07, 4.38e-07, -1.15),
-                       2 => (1.84e-08, 1.33e-06, 1.19e-07, 0.639),
-                       3 => (8.17e-08, -2.83e-06, 1.62e-07, 6.17))
+const COST_COEF = Dict(1 => [2.32e-07, 2.32e-07, 4.38e-07, -1.15],
+                       2 => [1.84e-08, 1.33e-06, 1.19e-07, 0.639],
+                       3 => [8.17e-08, -2.83e-06, 1.62e-07, 6.17])
 
 cost_terms(::Type{<:Array}, D, W, M, J, T) = (J * W^D, J * W, M * log2(M), 1.0)
 default_cost(::Type{<:Array}, T) = COST_COEF
 
-const COST_MODELS = Dict{Tuple{Any,DataType},Dict{Int}}()
+const COST_MODELS = Dict{Tuple{Core.TypeName,DataType},Dict{Int,Vector{Float64}}}()
 
 # MtlArray{Float32, 2} and MtlArray share a model
-storage_key(S) = Base.typename(Base.unwrap_unionall(S)).wrapper
+storage_key(::Type{S}) where {S} = Base.typename(Base.unwrap_unionall(S))
 
-cost_model(S, ::Type{T}) where {T} = get(() -> default_cost(S, T), COST_MODELS, (storage_key(S), T))
+cost_model(::Type{S}, ::Type{T}) where {S,T} = get(() -> default_cost(S, T), COST_MODELS, (storage_key(S), T))
 
 """
     NFFT.set_cost_model!(storage, eltype, coef)
@@ -67,15 +67,28 @@ Use the coefficients `coef` (a `Dict` from the dimension 1, 2, 3 to a tuple, as 
 """
 function set_cost_model!(S, ::Type{T}, coef) where {T}
   key = (storage_key(S), T)
-  coef === nothing ? delete!(COST_MODELS, key) : (COST_MODELS[key] = Dict{Int,Any}(coef))
+  coef === nothing ? delete!(COST_MODELS, key) :
+    (COST_MODELS[key] = Dict{Int,Vector{Float64}}(d => collect(Float64, c) for (d, c) in coef))
   nothing
 end
 
-function predicted_cost(S, ::Type{T}, W, M, J, D) where {T}
+# The plan options hold the storage as an abstract `Type`: Array goes through methods that infer
+# (juliac --trim), other storage through `device_cost`, which the GPU extension defines.
+predicted_cost(S, ::Type{T}, W, M, J, D) where {T} =
+  S <: Array ? model_cost(Array, T, W, M, J, D) : device_cost(S, T, W, M, J, D)::Float64
+
+device_cost(S, T, W, M, J, D) = throw(ArgumentError("no cost model for storage = $S"))
+
+function model_cost(::Type{S}, ::Type{T}, W, M, J, D) where {S,T}
   c = cost_model(S, T)[min(D, 3)]
   t = cost_terms(S, D, W, M, J, T)
   length(c) == length(t) || throw(ArgumentError("the cost model of $S has $(length(t)) terms, got $(length(c)) coefficients"))
-  sum(c .* t)
+  # a loop: the broadcast over Int and Float64 terms does not infer for juliac --trim
+  x = 0.0
+  for i in eachindex(c)
+    x += c[i] * t[i]
+  end
+  x
 end
 
 # Measured relative error ≈ est_rms·√D·(1…1.5); 1.5·√D is about the 90 % quantile over table entries.
@@ -150,8 +163,12 @@ function choose_kernels(reltol, N::NTuple{D,Int}, J, ::Type{T}; window=:auto, W=
   err = [predicted_error(e, N, T) for e in cands]
   tol = max(reltol, minimum(err))
   ok = cands[err .<= tol]
-  # the cost once per entry: it searches the next FFT-friendly grid size
-  cost = [kernel_cost(e, Ncost, J, storage, T) for e in ok]
+  # the cost once per entry: it searches the next FFT-friendly grid size. A loop: a closure over
+  # `storage` (an abstract `Type`) does not infer, and juliac --trim rejects it.
+  cost = zeros(length(ok))
+  for (i, e) in enumerate(ok)
+    cost[i] = kernel_cost(e, Ncost, J, storage, T)
+  end
   best = ok[cheapest(cost, n)]
   if σ !== nothing
     best = [KernelEntry(e.window, e.W, Float64(σ), e.β, e.e0, e.est_rms, e.amp) for e in best]
