@@ -59,27 +59,42 @@ end
 synchronize(x) = nothing
 
 """
-    NFFT.calibrate_cost(storage=Array; eltype=Float64, J=(2^16, 2^18, 2^20), W=4:12,
-                        σ=(1.25, 1.5, 2.0, 2.5), dims=1:3, nrep=10, set=true)
+    NFFT.calibrate_cost(storage=Array; eltype=Float64, J=(2^16, 2^18, 2^20), W=4:2:12,
+                        σ=(1.25, 1.5, 2.0, 2.5), dims=1:3, sizes=CALIBRATION_SIZES, nrep=10, set=true)
 
 Fit the cost model by which plans choose window width and oversampling to NFFTs timed on this
-machine: transform and adjoint for random nodes and every combination of `J`, `W` and `σ`, for
-the sizes 2^18, 512² and 64³ in the dimensions `dims`. With `set`, plans with this `storage` and
-`eltype` use the result for the rest of the session. Returns a `Dict` from the dimension to the
-coefficients, for [`NFFT.set_cost_model!`](@ref) in a later session.
+machine: transform and adjoint for random nodes and every combination of `J`, `W`, `σ` and the
+sizes in `sizes[D]` (default 2^16 and 2^20, 256² and 1024², 32³ and 96³) in the dimensions
+`dims`. With `set`, plans with this `storage` and `eltype` use the result for the rest of the
+session. Returns a `Dict` from the dimension to the coefficients, for
+[`NFFT.set_cost_model!`](@ref) in a later session.
 
 The built-in models are fitted on an Apple M1 Max (CPU with 8 threads, GPU with Metal and
 `Float32`). Other machines, thread counts and GPUs have other ratios of resampling, FFT and fixed
-costs. The default sweep takes two minutes on the M1 Max GPU; on the CPU, smaller `J` and fewer
-`W` keep it short.
+costs. The default sweep takes about three minutes on the M1 Max GPU; on the CPU, smaller `J`,
+sizes and fewer `W` keep it short.
 """
-function calibrate_cost(S=Array; eltype::Type{T}=Float64, J=(2^16, 2^18, 2^20), W=4:12,
-                        σ=(1.25, 1.5, 2.0, 2.5), dims=1:3, nrep=10, set=true) where {T}
-  sizes = ((2^18,), (512, 512), (64, 64, 64))
+# Relative least squares (the small times weigh as much as the large ones) with nonnegative
+# coefficients: every term is a cost; a negative coefficient would make extrapolation favour the
+# large grids. Terms with negative coefficients are dropped one at a time, the most negative first.
+function nonneg_fit(A, t)
+  B = A ./ t
+  keep = trues(size(A, 2))
+  while true
+    c = zeros(size(A, 2))
+    c[keep] = B[:, keep] \ ones(length(t))
+    all(>=(0), c) && return c
+    keep[argmin(c)] = false
+  end
+end
+
+const CALIBRATION_SIZES = (((2^16,), (2^20,)), ((256, 256), (1024, 1024)), ((32, 32, 32), (96, 96, 96)))
+
+function calibrate_cost(S=Array; eltype::Type{T}=Float64, J=(2^16, 2^18, 2^20), W=4:2:12,
+                        σ=(1.25, 1.5, 2.0, 2.5), dims=1:3, sizes=CALIBRATION_SIZES, nrep=10, set=true) where {T}
   coef = Dict{Int,Any}()
   for D in dims
-    N = sizes[D]
-    rows = vec(map(Iterators.product(J, W, σ)) do (j, w, s)
+    rows = vec(map(Iterators.product(J, W, σ, sizes[D])) do (j, w, s, N)
       k = rand(D, j) .- 0.5
       p = plan_nfft(NFFTBackend(), k, N; eltype=T, storage=S, W=w, σ=s, reltol=1e-2)
       q = parameters(p)
@@ -87,8 +102,7 @@ function calibrate_cost(S=Array; eltype::Type{T}=Float64, J=(2^16, 2^18, 2^20), 
     end)
     A = reduce(vcat, permutedims(first(r)) for r in rows)
     t = [last(r) for r in rows]
-    # relative least squares: the small times weigh as much as the large ones
-    coef[D] = Tuple((A ./ t) \ ones(length(t)))
+    coef[D] = Tuple(nonneg_fit(A, t))
   end
   set && set_cost_model!(S, T, merge(Dict{Int,Any}(cost_model(S, T)), coef))
   coef

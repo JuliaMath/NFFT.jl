@@ -31,12 +31,14 @@ const TILE_CHUNK = 32
 tile_edge(D) = D == 2 ? 32 : 8
 const LOCAL_BYTES = 32 * 1024
 
-# Adjoint resampling by subproblems (`adjoint_sub_kernel!`, Float32): workgroup size, nodes per
-# subproblem and per chunk, largest bin edge.
+# Resampling by subproblems (`adjoint_sub_kernel!`, `resample_sub_kernel!`, Float32): workgroup
+# size, nodes per subproblem and per chunk, largest bin edge. The edges in 1D and 2D are below what
+# the local memory allows: with smaller tiles several workgroups share a core, measured 12–15 %
+# faster on the M1 Max than the largest tiles.
 const SUB_WORKGROUP = 256
 const SUB_MAX = 1024
 const SUB_CHUNK = 32
-sub_edge(D) = D == 1 ? 2048 : D == 2 ? 64 : 16
+sub_edge(D) = D == 1 ? 1024 : D == 2 ? 32 : 16
 
 ## nodes and resampling (shared by all transforms)
 
@@ -84,10 +86,10 @@ function tile_edges(D, W, T)
   bytes <= LOCAL_BYTES ? B : nothing
 end
 
-# Bin edges for the adjoint resampling by subproblems: the largest for which the padded tile (B + W
-# per dimension, two Int32), a chunk of nodes and the reduction buffer fit into the local memory; the larger the bins, the
-# fewer tile points overlap and are flushed twice. Float32 only: Float64 would need more than the 32
-# bits of the fixed-point accumulation.
+# Bin edges for the resampling by subproblems: the largest up to `sub_edge` for which the padded
+# tile (B + W per dimension, two 32-bit values), a chunk of nodes and the reduction buffer fit into
+# the local memory; the larger the bins, the fewer tile points overlap and are flushed twice.
+# Float32 only: Float64 would need more than the 32 bits of the fixed-point accumulation.
 function sub_edges(D, W, T)
   T === Float32 || return nothing
   chunk = SUB_CHUNK * (D * W * sizeof(T) + 4D + 2sizeof(T)) + SUB_WORKGROUP * sizeof(T)
@@ -108,9 +110,9 @@ function NFFT.cost_terms(::Type{<:AbstractGPUArray}, D, W, M, J, T)
 end
 
 # Fitted on an M1 Max (Metal, Float32) by `NFFT.calibrate_cost(MtlArray; eltype=Float32)`.
-const GPU_COST = Dict{Int,Any}(1 => (0.767, -5.86e-7, 5.26e-7, 3.01e-7, -2.53e-7),
-                               2 => (0.829, 6.49e-7, 6.87e-8, 4.70e-7, 8.35e-8),
-                               3 => (0.693, 1.72e-6, 3.08e-8, 7.29e-7, 2.38e-7))
+const GPU_COST = Dict{Int,Any}(1 => (0.611, 0.0, 1.23e-7, 4.17e-7, 2.68e-8),
+                               2 => (0.546, 0.0, 3.69e-8, 1.87e-7, 3.56e-7),
+                               3 => (0.642, 3.20e-7, 1.01e-8, 0.0, 3.05e-7))
 NFFT.default_cost(::Type{<:AbstractGPUArray}, T) = GPU_COST
 
 # JLArrays (tests) run synchronously and have no `synchronize`

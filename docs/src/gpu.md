@@ -43,7 +43,7 @@ The options `fft` and `tilesize` belong to the CPU code; GPU plans reject them. 
 A plan chooses window width and oversampling factor by a cost model (see
 [Accuracy and Parameters](@ref)). GPUs have their own: resampling, FFT and fixed costs weigh
 differently there than on the CPU. It is fitted on an Apple M1 Max. For another GPU,
-`NFFT.calibrate_cost` times NFFTs for a range of parameters (about two minutes) and makes the
+`NFFT.calibrate_cost` times NFFTs for a range of parameters (about three minutes) and makes the
 plans of the session use the fit:
 
 ```julia

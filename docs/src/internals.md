@@ -148,15 +148,19 @@ for each node, the offset of its support in the grid and its fractional position
 precision; the grid positions themselves were computed in double precision. Each stage is a
 [KernelAbstractions.jl](https://github.com/JuliaGPU/KernelAbstractions.jl) kernel:
 
-- **Resampling**: one work-item per node and transform; reads never conflict.
+- **Resampling**, single precision, NFFT and RNFFT: by subproblems (below). A workgroup loads the
+  tile of its bin from the periodic grid into local memory and resamples its nodes from there.
+  Otherwise one work-item per node and transform reads from the padded grid; reads never conflict.
 - **Adjoint resampling**, single precision: by subproblems. The nodes are binned by the start of
   their support; one workgroup takes up to 1024 nodes of one bin and adds them into the bin's tile,
   enlarged by the support width, in local memory. The work-items split the pairs of node and support
-  point, so all of them are busy even at low node density. They add with integer atomics: the tile
-  holds 32-bit fixed point numbers (scaled by ``2^{30}`` over the number of nodes times the largest
-  value), since Apple GPUs have no atomic floating point additions in local memory, and integer
-  sums do not depend on the order. The tile is then added to the grid with atomic additions, for the
-  NFFT and RNFFT directly into the periodic grid. The result agrees between calls up to rounding.
+  point in all dimensions but the first and run along the first, contiguous one, so all of them are
+  busy even at low node density. They add with integer atomics: the tile holds 32-bit fixed point
+  numbers (scaled by ``2^{30}`` over the number of nodes times the subproblem's largest value),
+  since Apple GPUs have no atomic floating point additions in local memory, and integer sums do not
+  depend on the order. The tile is then added to the grid with atomic additions, for the NFFT and
+  RNFFT directly into the periodic grid. The result agrees between calls up to rounding. Bins are
+  smaller in 1D and 2D than local memory allows, so that several workgroups share a core.
 - **Adjoint resampling**, double precision, 2D and 3D: one workgroup per tile of the grid, which
   loads the nodes of the ``2^D`` bins that can reach the tile in chunks into local memory; for each
   node the work-items split the intersection of its support with the tile, and a barrier separates
@@ -164,6 +168,9 @@ precision; the grid positions themselves were computed in double precision. Each
   every call. In 1D, and for tiles that do not fit into local memory, the work-items add with
   atomic operations.
 - **Halo**: filling and folding are gathers, again without atomics.
+- **Index arithmetic** inside the kernels is 32-bit, and decompositions by sizes known only at run
+  time are unsigned; atomics are relaxed. On Apple GPUs 64-bit and signed divisions, and atomics
+  with sequential consistency, each cost a factor of 2 to 10 in the kernels concerned.
 - **FFT**: through AbstractFFTs, so the GPU package provides it (cuFFT, rocFFT, Metal).
 
 ## Where the ideas come from
@@ -177,7 +184,7 @@ precision; the grid positions themselves were computed in double precision. Each
   SISC 41, 2019); the NNFFT goes back to Elbel and Steidl (1998).
 - The **continuous Kaiser–Bessel window** is that of Potts and Tasche (2021).
 - The **NFCT and NFST** use the definitions of NFFT3 (Keiner, Kunis, Potts, ACM TOMS 36, 2009).
-- **Adjoint resampling by subproblems in shared memory** on GPUs is the method of cuFINUFFT (Shih
-  et al., 2021); the **fixed-point accumulation** with integer atomics follows
+- **Resampling and adjoint resampling by subproblems in shared memory** on GPUs are the methods
+  of cuFINUFFT (Shih et al., 2021); the **fixed-point accumulation** with integer atomics follows
   [mlx-nufft](https://github.com/martinlachaine/mlx-nufft) (M. Lachaine, 2026). The double precision
   variant processes the nodes of a tile in turn instead of using atomic operations.

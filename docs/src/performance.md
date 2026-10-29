@@ -107,20 +107,21 @@ NFFT.jl is also faster, except in 3D at errors above ``10^{-4}``.
 ## On GPUs
 
 Apple M1 Max (Metal, single precision, ``2^{18}`` nodes, tolerance ``10^{-4}``) against the CPU
-with 8 threads, ms (direct / adjoint; including the allocation of the output):
+with 8 threads, ms (direct / adjoint; fastest of repeated runs into preallocated outputs, the GPU
+synchronised after each):
 
 | | CPU | GPU |
 |:--|--:|--:|
-| NFFT, 1D ``2^{18}`` | 1.6 / 1.1 | 1.1 / 1.9 |
-| NFFT, 2D ``512^2`` | 2.4 / 1.9 | 1.7 / 2.4 |
-| NFFT, 3D ``64^3`` | 3.5 / 4.9 | 1.8 / 4.2 |
-| RNFFT, 3D | 3.2 / 3.1 | 2.1 / 4.3 |
-| NFFT, OCT ``2048 \times 512`` | 2.5 / 2.1 | 2.0 / 3.8 |
+| NFFT, 1D ``2^{18}`` | 0.9 / 0.8 | 0.5 / 0.7 |
+| NFFT, 2D ``512^2`` | 1.3 / 1.3 | 0.7 / 0.9 |
+| NFFT, 3D ``64^3`` | 3.1 / 3.6 | 1.0 / 1.6 |
+| RNFFT, 3D | 2.9 / 2.6 | 1.0 / 1.3 |
+| NFFT, OCT ``2048 \times 512`` | 2.4 / 2.4 | 1.0 / 1.5 |
 
-The direct transforms are faster than on the CPU, the adjoint transforms about as fast in 3D and
-slower in 1D and 2D; [mlx-nufft](https://github.com/martinlachaine/mlx-nufft), with the same
-subproblem scheme (see [How NFFT.jl Works](@ref "GPUs")), takes 0.5 / 0.7 / 1.7 ms for the adjoint
-transforms of the first three rows. Measurements on Nvidia and AMD GPUs are still missing.
+[mlx-nufft](https://github.com/martinlachaine/mlx-nufft), with the same subproblem scheme (see
+[How NFFT.jl Works](@ref "GPUs")), takes 0.6 / 0.4, 0.6 / 0.7 and 0.9 / 1.7 ms for the first
+three rows, at errors 2 to 40 times larger than NFFT.jl's for the same tolerance (`run metal` of the
+benchmark suite). Measurements on Nvidia and AMD GPUs are still missing.
 
 ## NFFT.jl 1.0 against 0.14
 
