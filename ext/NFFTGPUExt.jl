@@ -406,6 +406,73 @@ end
   end
 end
 
+# Interpolation by subproblems: one workgroup per subproblem and transform loads the tile of its bin,
+# o .+ (0:B+W-1), from the grid (with WRAP the periodic grid, else the padded one) into local memory,
+# then each work-item resamples nodes from the tile. Gathers from local memory are cheaper than from
+# the grid in global memory.
+@kernel function resample_sub_kernel!(vals, @Const(gv), K, @Const(offs), @Const(ss), @Const(perm),
+                                      @Const(sstart), @Const(scount), @Const(sbin), nsub, nb, h, n, L1,
+                                      ::Val{D}, ::Val{W}, ::Val{B}, ::Val{S}, ::Type{T}, ::Type{G},
+                                      ::Val{WRAP}) where {D,W,B,S,T,G,WRAP}
+  s, l = batch(@index(Group, Linear), nsub)
+  a0, b0 = batch(l, L1)
+  li = Int32(@index(Local, Linear)) - Int32(1)
+  gs = Int32(SUB_WORKGROUP)
+  tre = @localmem T (S,)
+  tim = @localmem T (S,)
+  pe = map(b -> Int32(b + W), B)
+  pstr = strides_of(pe, Val(D))
+  o = map(*, cart0(UInt32(@inbounds(sbin[s]) - Int32(1)), nb), map(Int32, B))
+  ng = prod(n)
+  # the padded grid has n + W points (WRAP) or n; tile points beyond it are never read
+  P = padded_size(n, Val(W), Val(WRAP))
+  i = li
+  while i < Int32(S)
+    t = cart0(UInt32(i), pe)
+    gi = target_index(o, t, h, n, Val(WRAP))
+    re = zero(T); im = zero(T)
+    if all(map((x, y, m) -> x + y < m, o, t, P))
+      re, im = grid_load(gv, Int(linear0(gi, n, Val(D))) + (l - 1) * Int(ng), G)
+    end
+    @inbounds tre[i+1] = re; @inbounds tim[i+1] = im
+    i += gs
+  end
+  @synchronize
+  q0 = @inbounds sstart[s]; cnt = @inbounds scount[s]
+  a = li
+  while a < cnt
+    q = q0 + a
+    ws = node_weights(K, ss, q, Val(D))
+    off = tile_offset(offs, q, o, Val(D))
+    re, im = tile_gather(tre, tim, off, pstr, ws, Val(D), Val(W), G)
+    @inbounds vals[a0, perm[q], b0] = grid_value(eltype(vals), re, im)
+    a += gs
+  end
+end
+
+# Kernels must not define closures over their local variables (they crash Metal's compiler): helpers.
+@inline tile_offset(offs, q, o, ::Val{D}) where {D} = ntuple(d -> @inbounds(offs[d, q]) - o[d], Val(D))
+@inline padded_size(n, ::Val{W}, ::Val{WRAP}) where {W,WRAP} = WRAP ? map(m -> m + Int32(W), n) : n
+@inline grid_load(gv, cell, ::Type{<:Complex}) = (@inbounds(gv[2cell+1]), @inbounds(gv[2cell+2]))
+@inline grid_load(gv, cell, ::Type{<:Real}) = (@inbounds(gv[cell+1]), zero(eltype(gv)))
+
+# Σ weights × tile values of a node with tile offset `off` (0-based), along dimension 1 innermost.
+@inline function tile_gather(tre, tim, off, pstr, ws, ::Val{D}, ::Val{W}, ::Type{G}) where {D,W,G}
+  sr = zero(eltype(tre)); si = zero(eltype(tre))
+  for It in CartesianIndices(ntuple(_ -> Base.OneTo(W), Val(D - 1)))
+    wt = prod(ntuple(d -> @inbounds(ws[d+1][It[d]]), Val(D - 1)); init=one(eltype(tre)))
+    j = Int32(1) + off[1] + sum(ntuple(d -> (off[d+1] + Int32(It[d] - 1)) * pstr[d+1], Val(D - 1)); init=Int32(0))
+    ar = zero(eltype(tre)); ai = zero(eltype(tre))
+    for t in 1:W
+      w = @inbounds ws[1][t]
+      ar += w * @inbounds(tre[j + Int32(t - 1)])
+      G <: Complex && (ai += w * @inbounds(tim[j + Int32(t - 1)]))
+    end
+    sr += wt * ar; si += wt * ai
+  end
+  sr, si
+end
+
 # Index of tile point t (0-based) of the bin at o in the target: the padded grid, or with WRAP the
 # grid of n points, padded point p at grid point mod(p − h, n) (one correction: p ∈ 0:n+W−1, W ≤ n).
 @inline target_index(o, t, h, n, ::Val{false}) = map((x, y) -> x + y + Int32(1), o, t)
@@ -463,6 +530,25 @@ launch(backend, k, args...; ndrange) = prod(ndrange) == 0 || k(backend, WORKGROU
 resample!(backend, nd::Nodes, vals, gp, L1, ::Val{D}) where {D} =
   launch(backend, resample_kernel!, vals, gp, nd.kernel, nd.offs, nd.ss, nd.perm, L1, Val(D);
          ndrange=(length(nd.perm), size(gp, D + 1)))
+
+# values from the grids g (periodic): by subproblems directly from g, else from the padded grids gp
+function resample_periodic!(backend, nd::Nodes, vals, g, gp, W, L1, ::Val{D}) where {D}
+  sp = nd.subs
+  if sp === nothing
+    pad!(backend, gp, g, W, Val(D))
+    resample!(backend, nd, vals, gp, L1, Val(D))
+    return vals
+  end
+  nsub = length(sp.start)
+  nsub == 0 && return vals
+  T = real(eltype(g))
+  gv = eltype(g) <: Complex ? reinterpret(T, vec(g)) : vec(g)
+  resample_sub_kernel!(backend, SUB_WORKGROUP)(vals, gv, nd.kernel, nd.offs, nd.ss, nd.perm, sp.start,
+    sp.count, sp.bin, nsub, map(Int32, sp.nb), Int32(halo(W)[1]), map(Int32, size(g)[1:D]), L1, Val(D),
+    Val(nd.W), Val(sp.B), Val(prod(sp.B .+ nd.W)), T, eltype(g), Val(true);
+    ndrange=nsub * size(g, D + 1) * SUB_WORKGROUP)
+  vals
+end
 
 # padded grids gp (all points written) from the values (L1, J, L3)
 function resample_adjoint!(backend, nd::Nodes, gp, vals, L1, ::Val{D}) where {D}
@@ -636,7 +722,7 @@ launch_correction(c::GPUCore{D}, g, f, adjoint) where {D} =
   launch(c.backend, correction_kernel!, reshape(g, :, size(g, D + 1)), reshape(f, size(f, 1), :, size(f, D + 2)),
          c.invphi, map(Int32, c.N), map(Int32, c.Ñ), c.L1, Val(D), adjoint; ndrange=prod(c.N) * nbatch(c))
 resampling!(c::GPUCore{D}, vals, g) where {D} =
-  (pad!(c.backend, c.gp, g, c.W, Val(D)); resample!(c.backend, c.nodes, vals, c.gp, c.L1, Val(D)); vals)
+  resample_periodic!(c.backend, c.nodes, vals, g, c.gp, c.W, c.L1, Val(D))
 resampling_adjoint!(c::GPUCore{D}, g, vals) where {D} =
   (resample_adjoint_periodic!(c.backend, c.nodes, g, c.gp, vals, c.L1, Val(D)); g)
 
@@ -737,8 +823,7 @@ function NFFT.trafo_core!(out, c::RGPUCore{D}, h) where {D}
          ndrange=(c.Nh, Base.tail(c.N)..., nbatch(c)))
   D > 1 && c.pb * c.H
   mul!(c.gf, c.c2r, c.H)
-  pad!(c.backend, c.gp, c.gf, c.W, Val(D))
-  resample!(c.backend, c.nodes, node_values(c, out), c.gp, c.L1, Val(D))
+  resample_periodic!(c.backend, c.nodes, node_values(c, out), c.gf, c.gp, c.W, c.L1, Val(D))
   out
 end
 
