@@ -46,8 +46,12 @@ end
 make_kernel(φ, W::Integer, ::Type{T}) where {T} = make_kernel(φ, Val(W), T)
 make_kernel(φ, ::Val{W}, ::Type{T}) where {W,T} = SymKernel(PolyKernel(φ, Val(W), Val(W + 3), T))
 # φ::F: a function that is only passed on is otherwise not specialised on.
-inv_kernel_ft(φ::F, W, N, Ñ, ::Type{T}, nthreads) where {F,T} =
-  ntuple(d -> T.(1 ./ kernel_ft(φ, W, N[d], Ñ[d]; nthreads)), length(N))
+# Dimensions of the same size as the first (the common N × N × N) copy its factors.
+function inv_kernel_ft(φ::F, W, N, Ñ, ::Type{T}, nthreads) where {F,T}
+  inv1 = T.(1 ./ kernel_ft(φ, W, N[1], Ñ[1]; nthreads))
+  ntuple(d -> d == 1 ? inv1 : (N[d], Ñ[d]) == (N[1], Ñ[1]) ? copy(inv1) :
+                      T.(1 ./ kernel_ft(φ, W, N[d], Ñ[d]; nthreads)), length(N))
+end
 
 # The window is symmetric: piece W−1−i at s equals piece i at −s. With wᵢ(s) = Eᵢ(s²) + s·Oᵢ(s²)
 # one Horner chain in s² over the first ⌈W/2⌉ pieces gives all weights (the even/odd evaluation of
@@ -113,6 +117,10 @@ function gausslegendre(n)
   x, w
 end
 
+# The rules for the quadrature of the window table (nq = 2W + 20 ≤ 52), computed once.
+const GAUSS_LEGENDRE = [gausslegendre(n) for n in 1:64]
+gauss_legendre_rule(n) = n <= length(GAUSS_LEGENDRE) ? GAUSS_LEGENDRE[n] : gausslegendre(n)
+
 # φ̂(ξ) = ∫ φ(z) cos(2πξz) dz for ξ = k/Ñ, k = −N÷2 … N−N÷2−1. φ̂ is even and smooth on [0, 1/2], so
 # it is computed by Gauss–Legendre quadrature at nc Chebyshev points and interpolated (Clenshaw)
 # at the N modes; quadrature per mode costs O(N·nq) (130 ms for N = 2^18). 32 points reach the
@@ -121,6 +129,7 @@ function kernel_ft(φ::F, W, N, Ñ; nq=2W + 20, nc=32, nthreads=Threads.nthreads
   ks = -N÷2:N-N÷2-1
   kmax = max(N ÷ 2, N - N ÷ 2 - 1)
   N <= 4nc && (quad = window_quadrature(φ, W; nq); return [quad(k / Ñ) for k in ks])
+  N < 2^14 && (nthreads = 1)                # starting the tasks costs more than they save
   ft = WindowFT(φ, W, kmax / Ñ; nq, nc)
   # φ̂ is even: evaluated at |k| = 0 … kmax, four modes at a time (the Clenshaw recurrence is a
   # chain of dependent FMAs, latency bound for a single mode)
@@ -149,7 +158,7 @@ end
 
 # ξ ↦ ∫ φ(z) cos(2πξz) dz by Gauss–Legendre quadrature with nq points
 function window_quadrature(φ::F, W; nq=2W + 20) where {F}
-  x, w = gausslegendre(nq)
+  x, w = gauss_legendre_rule(nq)
   z = x .* (W / 2); wz = w .* (W / 2) .* φ.(z)
   ξ -> sum(wz[q] * cospi(2ξ * z[q]) for q in eachindex(z))
 end
