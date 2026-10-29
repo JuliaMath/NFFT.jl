@@ -6,6 +6,9 @@ using NFFT: NDFTPlan
 
 include("contract.jl")                       # relerr, allowed
 
+# Options for a CPU plan with the kernel of plan p: GPU and CPU have different cost models.
+same_kernel(p) = (; window=p.kernel.window, W=p.kernel.W, σ=p.kernel.σ)
+
 @testset "GPU $arrayType" for arrayType in arrayTypes
   @testset "$T, N = $N" for T in floatTypes, N in [(256,), (32, 32), (12, 12, 12)]
     Random.seed!(1)
@@ -15,7 +18,7 @@ include("contract.jl")                       # relerr, allowed
     reltol = T == Float32 ? 1e-5 : 1e-9
 
     p = plan_nfft(k, N; reltol, storage=arrayType)
-    pcpu = plan_nfft(k, N; reltol)
+    pcpu = plan_nfft(k, N; reltol, same_kernel(p)...)
     pndft = NDFTPlan(k, N)
 
     f = randn(Complex{T}, N)
@@ -46,8 +49,11 @@ include("contract.jl")                       # relerr, allowed
 
     # options of the CPU code are rejected, not ignored
     @test_throws ArgumentError plan_nfft(k, N; reltol, storage=arrayType, tilesize=8)
-    @test_throws ArgumentError plan_nfft(k, N; reltol, storage=arrayType, measure=true)
     @test_throws ArgumentError plan_nfft(k, N; reltol, storage=arrayType, fft=NFFT.FFTWBackend())
+
+    # measure: one of the candidates, timed on the device
+    q = plan_nfft(k, N; reltol, storage=arrayType, measure=true)
+    @test relerr(Array(q * arrayType(f)), pndft * f) < 10 * accuracy(q)
 
     # storage defaults to the array type of the nodes
     q = plan_nfft(arrayType(k), N; reltol)
@@ -62,7 +68,7 @@ include("contract.jl")                       # relerr, allowed
     k = rand(T, Dd, J) .- T(1 // 2)
     reltol = T == Float32 ? 1e-5 : 1e-9
     p = plan_nfft(k, N; dims, reltol, storage=arrayType)
-    pcpu = plan_nfft(k, N; dims, reltol)
+    pcpu = plan_nfft(k, N; dims, reltol, same_kernel(p)...)
     f = randn(Complex{T}, N)
     fHat = randn(Complex{T}, size_out(pcpu))
     @test relerr(Array(p * arrayType(f)), pcpu * f) < 100 * eps(T)
@@ -80,7 +86,7 @@ include("contract.jl")                       # relerr, allowed
     if name == "rnfft"
       k = rand(T, Dd, J) .- T(1 // 2)
       p = plan_rnfft(k, N; dims, reltol, storage=arrayType)
-      pcpu = plan_rnfft(k, N; dims, reltol)
+      pcpu = plan_rnfft(k, N; dims, reltol, same_kernel(p)...)
       x = randn(Complex{T}, size_in(pcpu))
       y = randn(T, size_out(pcpu))
       back = adjoint
@@ -88,7 +94,7 @@ include("contract.jl")                       # relerr, allowed
       k = rand(T, Dd, J) ./ 2
       plan = name == "nfct" ? plan_nfct : plan_nfst
       p = plan(k, N; dims, reltol, storage=arrayType)
-      pcpu = plan(k, N; dims, reltol)
+      pcpu = plan(k, N; dims, reltol, same_kernel(p)...)
       x = randn(T, N)
       y = randn(T, size_out(pcpu))
       back = transpose

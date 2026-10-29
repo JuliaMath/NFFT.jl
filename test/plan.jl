@@ -62,6 +62,15 @@
     @test norm(p * f - plan_nfft(k, N; reltol=1e-12) * f) / norm(p * f) < 1e-7
     q = plan_nfst(rand(rng, 2, 50) ./ 2, (12, 10); measure=true, W=8)
     @test q.kernel.W == 8
+    # cost model: fitted on this machine, or set per storage and element type
+    c = NFFT.calibrate_cost(; J=(2^10, 2^12), W=4:5, σ=(1.5, 2.0), dims=1:1, nrep=1, set=false)
+    @test length(c[1]) == 4 && all(isfinite, c[1])
+    fftonly = Dict(D => (0.0, 0.0, 1.0, 0.0) for D in 1:3)
+    NFFT.set_cost_model!(Array, Float64, fftonly)
+    e = first(NFFT.choose_kernels(1e-6, N, J, Float64))[1]
+    NFFT.set_cost_model!(Array, Float64, nothing)
+    @test e.σ <= 1.25   # the smallest grid (σ = 1.2 and 1.25 round to the same size)
+    @test NFFT.cost_model(Array, Float64) === NFFT.COST_COEF
     # a custom window with explicit width and oversampling
     gauss = CustomWindow((z, W) -> abs(z) < W / 2 ? exp(-(2z / W)^2 * 9) : 0.0)
     p = plan_nfft(k, N; window=gauss, W=8, σ=2.0)

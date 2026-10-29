@@ -97,6 +97,29 @@ function sub_edges(D, W, T)
   nothing
 end
 
+# Cost model (see NFFT.cost_terms): fixed cost, nodes, taps J·W^D, grid points and the tile points
+# flushed by the adjoint resampling by subproblems, for uniformly distributed nodes (bins of edge b,
+# nb = M/b^D of them, ≈ nb·(1 − e^(−J/nb)) occupied, at least J/SUB_MAX subproblems).
+function NFFT.cost_terms(::Type{<:AbstractGPUArray}, D, W, M, J, T)
+  B = sub_edges(D, W, T)
+  flush = B === nothing ? 0.0 :
+    (b = B[1]; nb = M / b^D; (b + W)^D * max(nb * (1 - exp(-J / nb)), J / SUB_MAX))
+  (1.0, Float64(J), Float64(J) * W^D, Float64(M), flush)
+end
+
+# Fitted on an M1 Max (Metal, Float32) by `NFFT.calibrate_cost(MtlArray; eltype=Float32)`.
+const GPU_COST = Dict{Int,Any}(1 => (0.767, -5.86e-7, 5.26e-7, 3.01e-7, -2.53e-7),
+                               2 => (0.829, 6.49e-7, 6.87e-8, 4.70e-7, 8.35e-8),
+                               3 => (0.693, 1.72e-6, 3.08e-8, 7.29e-7, 2.38e-7))
+NFFT.default_cost(::Type{<:AbstractGPUArray}, T) = GPU_COST
+
+# JLArrays (tests) run synchronously and have no `synchronize`
+function NFFT.synchronize(x::AbstractGPUArray)
+  b = KA.get_backend(x)
+  applicable(KA.synchronize, b) && KA.synchronize(b)
+  nothing
+end
+
 # Whether a backend runs the tile and subproblem kernels, whose barriers sit inside loops: GPUs do,
 # backends that execute kernels as CPU loops (JLArrays in the tests) do not.
 use_tiles(backend) = true

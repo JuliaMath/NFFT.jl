@@ -21,11 +21,11 @@ size given as third argument, and its `window`, `W` and `σ` apply to its inner 
 | `W`, `σ` | window width and oversampling factor |
 | `fft` | FFT backend: `FFTWBackend()` (default) or `FFTABackend()` (pure Julia, `using FFTA`; NFFT and NNFFT) |
 | `tilesize` | edge length of the tiles the nodes are sorted into (expert option) |
-| `measure` | `true`: time the four parameter sets of lowest predicted cost at plan time and keep the fastest (CPU) |
+| `measure` | `true`: time the four parameter sets of lowest predicted cost at plan time and keep the fastest |
 
 The first five are part of the [Abstract Interface](@ref) and mean the same for every
 implementation; the others are specific to NFFT.jl. An unknown option is an error, and so are
-`fft`, `tilesize` and `measure` for plans on a GPU. How to use
+`fft` and `tilesize` for plans on a GPU. How to use
 `window`, `W`, `σ` and `fft` is shown in [Choosing Parameters](@ref).
 
 ## Plans and transforms
@@ -44,6 +44,8 @@ NNFFTPlan
 NFFTBackend
 NFFT.parameters
 accuracy
+NFFT.calibrate_cost
+NFFT.set_cost_model!
 nodes
 nodes!
 size_in

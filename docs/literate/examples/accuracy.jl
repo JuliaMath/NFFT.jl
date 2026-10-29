@@ -12,7 +12,8 @@
 # shape parameter of the window and the error it reaches. From all entries whose predicted error
 # is below `reltol`, the plan takes the one with the lowest predicted run time. The cost model
 # weighs the resampling (``J W^D``) against the FFT (``\sigma^D |\bm{N}| \log``), so the choice
-# depends on the dimension and on the ratio of nodes to grid size.
+# depends on the dimension and on the ratio of nodes to grid size. Plans on a GPU use a cost model
+# of their own (see [Parameter choice on a GPU](@ref)).
 
 using NFFT, LinearAlgebra, Random, CairoMakie
 CairoMakie.activate!(type="png") #hide

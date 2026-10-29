@@ -38,6 +38,21 @@ to a GPU plan raise an error instead of being copied.
 The options `fft` and `tilesize` belong to the CPU code; GPU plans reject them. Timings are on the
 [Performance](@ref "On GPUs") page, the kernels are explained in [How NFFT.jl Works](@ref "GPUs").
 
+## Parameter choice on a GPU
+
+A plan chooses window width and oversampling factor by a cost model (see
+[Accuracy and Parameters](@ref)). GPUs have their own: resampling, FFT and fixed costs weigh
+differently there than on the CPU. It is fitted on an Apple M1 Max. For another GPU,
+`NFFT.calibrate_cost` times NFFTs for a range of parameters (about two minutes) and makes the
+plans of the session use the fit:
+
+```julia
+coef = NFFT.calibrate_cost(CuArray; eltype=Float32)
+NFFT.set_cost_model!(CuArray, Float32, coef)   # in a later session
+```
+
+`measure = true` times the four best candidates of the cost model when the plan is created.
+
 ## Run the GPU tests
 
 `test/gpu.jl` compares every transform on the GPU with the CPU plan. It runs with

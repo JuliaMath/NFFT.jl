@@ -36,13 +36,47 @@ const KERNEL_TABLE = let lines = readlines(joinpath(@__DIR__, "..", "data", "ker
   end
 end
 
-# Cost model (ms, direct + adjoint NFFT), fitted on an M1 Max with 8 threads for J = 2^18,
-# W ∈ 4:16, σ ∈ 1.25:0.25:2.25:  t ≈ a·J·W^D + a1·J·W + b·Ñ^D·log2(Ñ^D) + c. It only interpolates
-# within that range (median deviation 5 % in 2D/3D, 11 % in 1D); the coefficients have no
-# physical meaning.
+# Cost model (ms, direct + adjoint NFFT): t ≈ Σᵢ cᵢ·tᵢ with the terms tᵢ of `cost_terms` for the
+# storage and coefficients c per dimension (D ≤ 3), storage and element type: the defaults of
+# `default_cost`, or those set by `set_cost_model!` (`calibrate_cost`).
+#
+# CPU: fitted on an M1 Max with 8 threads for J = 2^18, W ∈ 4:16, σ ∈ 1.25:0.25:2.25,
+# t ≈ a·J·W^D + a1·J·W + b·Ñ^D·log2(Ñ^D) + c. It only interpolates within that range (median
+# deviation 5 % in 2D/3D, 11 % in 1D); the coefficients have no physical meaning.
 const COST_COEF = Dict(1 => (2.32e-07, 2.32e-07, 4.38e-07, -1.15),
                        2 => (1.84e-08, 1.33e-06, 1.19e-07, 0.639),
                        3 => (8.17e-08, -2.83e-06, 1.62e-07, 6.17))
+
+cost_terms(::Type{<:Array}, D, W, M, J, T) = (J * W^D, J * W, M * log2(M), 1.0)
+default_cost(::Type{<:Array}, T) = COST_COEF
+
+const COST_MODELS = Dict{Tuple{Any,DataType},Dict{Int}}()
+
+# MtlArray{Float32, 2} and MtlArray share a model
+storage_key(S) = Base.typename(Base.unwrap_unionall(S)).wrapper
+
+cost_model(S, ::Type{T}) where {T} = get(() -> default_cost(S, T), COST_MODELS, (storage_key(S), T))
+
+"""
+    NFFT.set_cost_model!(storage, eltype, coef)
+    NFFT.set_cost_model!(storage, eltype, nothing)
+
+Use the coefficients `coef` (a `Dict` from the dimension 1, 2, 3 to a tuple, as returned by
+[`NFFT.calibrate_cost`](@ref)) when plans with this `storage` and `eltype` choose their parameters;
+`nothing` restores the built-in model. The setting holds for the Julia session.
+"""
+function set_cost_model!(S, ::Type{T}, coef) where {T}
+  key = (storage_key(S), T)
+  coef === nothing ? delete!(COST_MODELS, key) : (COST_MODELS[key] = Dict{Int,Any}(coef))
+  nothing
+end
+
+function predicted_cost(S, ::Type{T}, W, M, J, D) where {T}
+  c = cost_model(S, T)[min(D, 3)]
+  t = cost_terms(S, D, W, M, J, T)
+  length(c) == length(t) || throw(ArgumentError("the cost model of $S has $(length(t)) terms, got $(length(c)) coefficients"))
+  sum(c .* t)
+end
 
 # Measured relative error ≈ est_rms·√D·(1…1.5); 1.5·√D is about the 90 % quantile over table entries.
 window_error(e::KernelEntry, D) = e.est_rms * sqrt(D) * 1.5
@@ -58,22 +92,19 @@ grid_size(σ, N) = map(n -> smooth_size(ceil(Int, σ * n)), N)
 # The grid of a plan has at least W points, so that the halo (W points) wraps around it once.
 grid_size(σ, N, W) = map(n -> smooth_size(max(ceil(Int, σ * n), W)), N)
 
-function kernel_cost(e::KernelEntry, N::NTuple{D,Int}, J) where {D}
-  a, a1, b, c = COST_COEF[min(D, 3)]
-  M = prod(grid_size(e.σ, N))
-  a * J * e.W^D + a1 * J * e.W + b * M * log2(M) + c
-end
+kernel_cost(e::KernelEntry, N::NTuple{D,Int}, J, S=Array, ::Type{T}=Float64) where {D,T} =
+  predicted_cost(S, T, e.W, prod(grid_size(e.σ, N)), J, D)
 
 # The kernels a plan may use, from its options `window`, `W`, `σ`, as pairs (entry, predicted
 # error): a CustomWindow as given (its error is unknown), otherwise the `n` cheapest table entries
 # that reach the tolerance (`choose_kernels`).
-function select_kernels(window, W, σ, reltol, N, J, ::Type{T}; Ncost=N, n=1) where {T}
+function select_kernels(window, W, σ, reltol, N, J, ::Type{T}; Ncost=N, n=1, storage=Array) where {T}
   check_window_options(W, σ)
   if window isa CustomWindow
     (W === nothing || σ === nothing) && throw(ArgumentError("a CustomWindow needs W and σ"))
     [(KernelEntry(window, W, σ, NaN, NaN, NaN, NaN), NaN)]
   elseif window === :auto || window isa AbstractWindow
-    choose_kernels(reltol, N, J, T; window, W, σ, Ncost, n)
+    choose_kernels(reltol, N, J, T; window, W, σ, Ncost, n, storage)
   else
     throw(ArgumentError("window must be :auto or an AbstractWindow, got $window"))
   end
@@ -103,9 +134,10 @@ end
 # The `n` table entries of lowest predicted cost that reach `reltol`, restricted by the user's
 # `window` (`:auto` or a family), `W` and `σ`, cheapest first, as pairs (entry, predicted error);
 # σ is replaced by the user's σ when given. `Ncost` is the size whose oversampled grid the cost
-# model sees (NFCT/NFST: the error is that of an NFFT of twice the size on half its grid).
+# model sees (NFCT/NFST: the error is that of an NFFT of twice the size on half its grid), `storage`
+# selects the cost model.
 function choose_kernels(reltol, N::NTuple{D,Int}, J, ::Type{T}; window=:auto, W=nothing, σ=nothing, Ncost=N,
-                        n=1) where {D,T}
+                        n=1, storage=Array) where {D,T}
   cands = filter(KERNEL_TABLE) do e
     (window === :auto || e.window == window) && (W === nothing || e.W == W)
   end
@@ -119,7 +151,7 @@ function choose_kernels(reltol, N::NTuple{D,Int}, J, ::Type{T}; window=:auto, W=
   tol = max(reltol, minimum(err))
   ok = cands[err .<= tol]
   # the cost once per entry: it searches the next FFT-friendly grid size
-  cost = [kernel_cost(e, Ncost, J) for e in ok]
+  cost = [kernel_cost(e, Ncost, J, storage, T) for e in ok]
   best = ok[cheapest(cost, n)]
   if σ !== nothing
     best = [KernelEntry(e.window, e.W, Float64(σ), e.β, e.e0, e.est_rms, e.amp) for e in best]

@@ -21,16 +21,15 @@ function fast_plan(::Type{P}, k::AbstractMatrix, N::NTuple{D,Int}, g::GenericOpt
                    window=:auto, W=nothing, σ=nothing, fft=nothing, tilesize=nothing, measure=false) where {P,D,T,R}
   fft = cpu_options(g.storage, fft, tilesize)
   check_backend(P, fft)
-  measure && !(g.storage <: Array) && throw(ArgumentError("measure is supported for plans on the CPU"))
   dims = g.dims; Nd = N[dims]; J = size(k, 2)
   kernels = select_kernels(window, W, σ, g.reltol, error_size(P, Nd), J, T; Ncost=Nd,
-                           n=measure ? MEASURE_CANDIDATES : 1)
+                           n=measure ? MEASURE_CANDIDATES : 1, storage=g.storage)
   NOut = out_size(N, dims, J)
   build((kernel, acc)) = P{T,D,R}(N, input_size(P, N, dims), NOut, dims, to_storage(g.storage, k, T),
     kernel, acc, g, fft, tilesize, make_engine(P, k, N, dims, kernel, T, fft, tilesize, g.nthreads, g.storage)...)
   p = build(kernels[1])
   length(kernels) == 1 && return p
-  # measure: the cost model cannot see how fast FFTW is for a particular grid size
+  # measure: the cost model cannot see how fast the FFT is for a particular grid size
   t = time_plan(p)
   for kernel in kernels[2:end]
     q = build(kernel)
@@ -45,14 +44,54 @@ data_eltypes(::NFFTPlan{T}) where {T} = (Complex{T}, Complex{T})
 data_eltypes(::RNFFTPlan{T}) where {T} = (Complex{T}, T)
 data_eltypes(::Union{NFCTPlan{T},NFSTPlan{T}}) where {T} = (T, T)
 
-# Time of a transform and its adjoint (or transpose) on random data, the fastest of three.
-function time_plan(p)
+# Time of a transform and its adjoint (or transpose) on random data, the fastest of `nrep`.
+function time_plan(p; nrep=3)
   Tin, Tout = data_eltypes(p)
-  f = randn(Tin, size_in(p)); fHat = randn(Tout, size_out(p))
+  S = p.options.storage
+  f = to_storage(S, randn(Tin, size_in(p))); fHat = to_storage(S, randn(Tout, size_out(p)))
   back = Tout <: Real && Tin <: Real ? transpose(p) : adjoint(p)
-  run() = (mul!(fHat, p, f); mul!(f, back, fHat))
+  run() = (mul!(fHat, p, f); mul!(f, back, fHat); synchronize(f))
   run()
-  minimum(@elapsed(run()) for _ in 1:3)
+  minimum(@elapsed(run()) for _ in 1:nrep)
+end
+
+# Wait for the transforms on a device to finish (GPU extension).
+synchronize(x) = nothing
+
+"""
+    NFFT.calibrate_cost(storage=Array; eltype=Float64, J=(2^16, 2^18, 2^20), W=4:12,
+                        σ=(1.25, 1.5, 2.0, 2.5), dims=1:3, nrep=10, set=true)
+
+Fit the cost model by which plans choose window width and oversampling to NFFTs timed on this
+machine: transform and adjoint for random nodes and every combination of `J`, `W` and `σ`, for
+the sizes 2^18, 512² and 64³ in the dimensions `dims`. With `set`, plans with this `storage` and
+`eltype` use the result for the rest of the session. Returns a `Dict` from the dimension to the
+coefficients, for [`NFFT.set_cost_model!`](@ref) in a later session.
+
+The built-in models are fitted on an Apple M1 Max (CPU with 8 threads, GPU with Metal and
+`Float32`). Other machines, thread counts and GPUs have other ratios of resampling, FFT and fixed
+costs. The default sweep takes two minutes on the M1 Max GPU; on the CPU, smaller `J` and fewer
+`W` keep it short.
+"""
+function calibrate_cost(S=Array; eltype::Type{T}=Float64, J=(2^16, 2^18, 2^20), W=4:12,
+                        σ=(1.25, 1.5, 2.0, 2.5), dims=1:3, nrep=10, set=true) where {T}
+  sizes = ((2^18,), (512, 512), (64, 64, 64))
+  coef = Dict{Int,Any}()
+  for D in dims
+    N = sizes[D]
+    rows = vec(map(Iterators.product(J, W, σ)) do (j, w, s)
+      k = rand(D, j) .- 0.5
+      p = plan_nfft(NFFTBackend(), k, N; eltype=T, storage=S, W=w, σ=s, reltol=1e-2)
+      q = parameters(p)
+      collect(cost_terms(S, D, q.W, prod(grid_size(q.σ, N)), j, T)), 1e3 * time_plan(p; nrep)
+    end)
+    A = reduce(vcat, permutedims(first(r)) for r in rows)
+    t = [last(r) for r in rows]
+    # relative least squares: the small times weigh as much as the large ones
+    coef[D] = Tuple((A ./ t) \ ones(length(t)))
+  end
+  set && set_cost_model!(S, T, merge(Dict{Int,Any}(cost_model(S, T)), coef))
+  coef
 end
 
 error_size(P, Nd) = Nd

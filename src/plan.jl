@@ -90,8 +90,8 @@ Generic options (every AbstractNFFTs implementation): `reltol` (default 1e-8), `
   [`AbstractFFTBackend`](@ref)
 * `tilesize`: expert option, tile edge of the node binning
 * `measure`: `true` times the four parameter sets of lowest predicted cost at plan
-  time (transform and adjoint) and keeps the fastest; the cost model cannot see how fast FFTW is
-  for a particular grid size
+  time (transform and adjoint) and keeps the fastest; the cost model cannot see how fast the FFT
+  is for a particular grid size
 
 `T` is the real element type, `D` the number of dimensions of the array and `R` that of the output
 (1 without batch dimensions). The compiler infers the type of the plan when `dims` is left out or
