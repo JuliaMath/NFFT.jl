@@ -13,7 +13,7 @@ end
 trafo!(p, out, x) = mul!(out, p, x)
 adjoint!(p, out, y) = mul!(out, adjoint(p), y)
 upload(x) = Metal.MtlArray(x)
-download(x) = Array(x)
+tohost(x) = Array(x)
 sync() = Metal.synchronize()
 
 function params(p)

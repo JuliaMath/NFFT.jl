@@ -24,7 +24,7 @@ include(CFG["adapter"])
 # GPU libraries: data moved to the device before the measurements, results back for the error, and
 # a synchronisation inside every timed call
 @isdefined(upload) || (upload(x) = x)
-@isdefined(download) || (download(x) = x)
+@isdefined(tohost) || (tohost(x) = x)
 @isdefined(sync) || (sync() = nothing)
 
 # Minimum and median wall time: one warm-up call, then repeated calls until `budget` seconds have
@@ -61,7 +61,7 @@ function measure(prob::Problem, task)
   t_trafo, t_trafo_med = timeit(() -> trafo!(p, outT, x), budget)
   t_adj, t_adj_med = timeit(() -> adjoint!(p, outA, y), budget)
   r = Dict{String,Any}(
-    "err_trafo" => err_trafo(prob, download(outT)), "err_adj" => err_adjoint(prob, download(outA)),
+    "err_trafo" => err_trafo(prob, tohost(outT)), "err_adj" => err_adjoint(prob, tohost(outA)),
     "t_plan" => t_plan, "t_trafo" => t_trafo, "t_adj" => t_adj,
     "t_trafo_med" => t_trafo_med, "t_adj_med" => t_adj_med,
     "alloc_trafo" => @allocated(trafo!(p, outT, x)), "alloc_adj" => @allocated(adjoint!(p, outA, y)))

@@ -24,7 +24,7 @@ Base.similar(::MLX) = MLX(nothing)
 const LAST = Ref{Any}(nothing)
 
 upload(x) = MLX(py("mlx.core").array(py("numpy").asarray(ComplexF32.(x))))
-download(x::MLX) = PythonCall.pyconvert(Array, py("numpy").array(x.a))
+tohost(x::MLX) = PythonCall.pyconvert(Array, py("numpy").array(x.a))
 sync() = LAST[] === nothing || py("mlx.core").eval(LAST[])
 
 function plan(prob, tol)
