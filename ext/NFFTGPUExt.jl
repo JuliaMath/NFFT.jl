@@ -85,12 +85,12 @@ function tile_edges(D, W, T)
 end
 
 # Bin edges for the adjoint resampling by subproblems: the largest for which the padded tile (B + W
-# per dimension, two Int32) and a chunk of nodes fit into the local memory; the larger the bins, the
+# per dimension, two Int32), a chunk of nodes and the reduction buffer fit into the local memory; the larger the bins, the
 # fewer tile points overlap and are flushed twice. Float32 only: Float64 would need more than the 32
 # bits of the fixed-point accumulation.
 function sub_edges(D, W, T)
   T === Float32 || return nothing
-  chunk = SUB_CHUNK * (D * W * sizeof(T) + 4D + 2sizeof(T))
+  chunk = SUB_CHUNK * (D * W * sizeof(T) + 4D + 2sizeof(T)) + SUB_WORKGROUP * sizeof(T)
   for b in sub_edge(D):-1:1
     8 * (b + W)^D + chunk <= LOCAL_BYTES && return ntuple(_ -> b, D)
   end
@@ -298,80 +298,110 @@ end
 
 # Adjoint resampling by subproblems (after cuFINUFFT's subproblems, Shih et al. 2021, and the
 # fixed-point accumulation of mlx-nufft): one workgroup per subproblem and transform accumulates
-# into the padded tile of its bin, o .+ (1:B+W), in local memory. The work-items split the
-# (node, support point) pairs of a chunk of nodes and add with Int32 atomics: Metal has no atomic
-# float additions in local memory, and integer additions make the tile independent of their order.
-# The scale 2^30/(count·vmax) keeps every tile value below 2^30 (weights ≤ 1, |v| ≤ vmax); each of
-# the at most `count` additions to a value rounds by half a unit, together at most 2^-21 of the
-# bound count·vmax. The tile is then added with atomic additions to the padded grid, or with WRAP
-# directly to the periodic grid (`gr`: the grid as real numbers, see `atomic_add!`).
-@kernel function adjoint_sub_kernel!(gr, K, @Const(offs), @Const(ss), @Const(perm), @Const(vals),
-                                     @Const(sstart), @Const(scount), @Const(sbin), @Const(vmax), nsub, nb,
-                                     bstr, h, L1, ::Val{D}, ::Val{W}, ::Val{B}, ::Val{S}, ::Val{C}, ::Type{T},
-                                     ::Type{G}, ::Val{WRAP}) where {D,W,B,S,C,T,G,WRAP}
+# into the padded tile of its bin, o .+ (0:B+W-1), in local memory. The work-items split the pairs of
+# a node of a chunk and its support points in dimensions 2…D and run along dimension 1, which is
+# contiguous in the tile and the grid (in 1D they split the pairs of node and support point). They
+# add with Int32 atomics: Metal has no atomic float additions in local memory, and integer additions
+# make the tile independent of their order. The scale 2^30/(count·vmax), vmax the largest |re|, |im|
+# of the subproblem's values, keeps every tile value below 2^30 (weights ≤ 1); each of the at most
+# `count` additions to a value rounds by half a unit, together at most 2^-21 of count·vmax. The
+# tile is then added with atomic additions to the padded grid, or with WRAP directly to the periodic
+# grid (`gv`: the grids as a vector of real numbers).
+#
+# Loops run on Int32 with the workgroup size as a constant: 64-bit and dynamic index arithmetic make
+# the kernel 2.5× slower on Apple GPUs.
+@kernel function adjoint_sub_kernel!(gv, K, @Const(offs), @Const(ss), @Const(perm), @Const(vals),
+                                     @Const(sstart), @Const(scount), @Const(sbin), nsub, nb, h, n, L1,
+                                     ::Val{D}, ::Val{W}, ::Val{B}, ::Val{S}, ::Val{C}, ::Type{T}, ::Type{G},
+                                     ::Val{WRAP}) where {D,W,B,S,C,T,G,WRAP}
   s, l = batch(@index(Group, Linear), nsub)
   a0, b0 = batch(l, L1)
-  li = @index(Local, Linear)
-  gs = @groupsize()[1]
+  li = Int32(@index(Local, Linear)) - Int32(1)
+  gs = Int32(SUB_WORKGROUP)
   bre = @localmem Int32 (S,)
   bim = @localmem Int32 (S,)
   wb = @localmem T (C * D * W,)
   ob = @localmem Int32 (C * D,)
   vre = @localmem T (C,)
   vim = @localmem T (C,)
-  for i in li:gs:S
-    @inbounds bre[i] = Int32(0); @inbounds bim[i] = Int32(0)
-  end
-  q0 = Int(@inbounds sstart[s]); cnt = Int(@inbounds scount[s])
-  o = map(Int32, map(*, lin2cart(Int(@inbounds sbin[s]), bstr, nb), B))
-  # B and W are compile-time constants: the divisions by tile edges become multiplications
+  red = @localmem T (SUB_WORKGROUP,)
   pe = map(b -> Int32(b + W), B)       # tile edges
   pstr = strides_of(pe, Val(D))
-  vm = @inbounds vmax[1]
-  scale = vm > 0 ? T(2^30) / (T(cnt) * vm) : zero(T)
-  for qc in 0:C:cnt-1
-    m = min(C, cnt - qc)
+  i = li
+  while i < Int32(S)
+    @inbounds bre[i+1] = Int32(0); @inbounds bim[i+1] = Int32(0)
+    i += gs
+  end
+  q0 = @inbounds sstart[s]; cnt = @inbounds scount[s]
+  o = map(*, lin2cart0(@inbounds(sbin[s]) - Int32(1), strides_of(nb, Val(D)), nb), map(Int32, B))
+  # largest |re|, |im| of the subproblem's values, reduced in local memory
+  vm = zero(T); i = li
+  while i < cnt
+    v = @inbounds vals[a0, perm[q0 + i], b0]
+    vm = max(vm, abs(real(v)), abs(imag(v)))
+    i += gs
+  end
+  @inbounds red[li+1] = vm
+  k = gs ÷ Int32(2)
+  while k > Int32(0)
     @synchronize
-    for a in li:gs:m*D
-      c = (a - 1) ÷ D; d = (a - 1) % D + 1
-      q = q0 + qc + c
-      ws = weights(K, @inbounds ss[d, q])
-      for i in 1:W
-        @inbounds wb[(c * D + d - 1) * W + i] = ws[i]
-      end
-      @inbounds ob[c * D + d] = offs[d, q]
-    end
-    for a in li:gs:m
-      v = @inbounds vals[a0, perm[q0 + qc + a - 1], b0]
-      @inbounds vre[a] = real(v) * scale; @inbounds vim[a] = imag(v) * scale
-    end
-    @synchronize
-    # a work-item takes a node and support point in dimensions 1…D−1 and runs along dimension D;
-    # Int32 index arithmetic (64-bit integer division is slow on GPUs)
-    for task in Int32(li - 1):Int32(gs):Int32(m * W^(D - 1) - 1)
-      c = task ÷ Int32(W^(D - 1))
-      tp = lead_taps(task - c * Int32(W^(D - 1)), Val(D), Val(W))
-      w0 = lead_weight(wb, c, tp, Val(D), Val(W))
-      i0 = lead_index(ob, c, o, tp, pstr, Val(D))
-      for t in Int32(0):Int32(W - 1)
-        w = w0 * @inbounds(wb[(c * D + D - 1) * W + t + 1])
-        i = i0 + t * pstr[D]
-        KA.@atomic bre[i] += fixed(w * @inbounds(vre[c+1]))
-        KA.@atomic bim[i] += fixed(w * @inbounds(vim[c+1]))
-      end
-    end
+    li < k && (@inbounds red[li+1] = max(red[li+1], red[li+k+1]))
+    k ÷= Int32(2)
   end
   @synchronize
-  n = map(Int32, front(Base.tail(size(gr)), Val(D)))
+  vm = @inbounds red[1]
+  scale = vm > 0 ? T(2^30) / (T(cnt) * vm) : zero(T)
+  TPN = Int32(W^D ÷ inner_taps(Val(D), Val(W)))     # tasks per node
+  qc = Int32(0)
+  while qc < cnt
+    m = min(Int32(C), cnt - qc)
+    a = li
+    while a < m * Int32(D)
+      c = a ÷ Int32(D); d = a - c * Int32(D)
+      q = q0 + qc + c
+      ws = weights(K, @inbounds ss[d+1, q])
+      for t in 1:W
+        @inbounds wb[(c * Int32(D) + d) * Int32(W) + t] = ws[t]
+      end
+      @inbounds ob[c * Int32(D) + d + 1] = offs[d+1, q] - o[d+1]
+      a += gs
+    end
+    a = li
+    while a < m
+      v = @inbounds vals[a0, perm[q0 + qc + a], b0]
+      @inbounds vre[a+1] = real(v) * scale; @inbounds vim[a+1] = imag(v) * scale
+      a += gs
+    end
+    @synchronize
+    j = li
+    while j < m * TPN
+      c = j ÷ TPN; r = j - c * TPN
+      w0, i0, t0 = outer_taps(wb, ob, c, r, pstr, Val(D), Val(W))
+      vr = @inbounds(vre[c+1]) * w0; vi = @inbounds(vim[c+1]) * w0
+      for t in Int32(0):Int32(inner_taps(Val(D), Val(W)) - 1)
+        w = @inbounds wb[c * Int32(D * W) + t0 + t + Int32(1)]
+        i = i0 + t0 + t
+        @inbounds KA.@atomic bre[i] += fixed(w * vr)
+        G <: Complex && (@inbounds KA.@atomic bim[i] += fixed(w * vi))
+      end
+      j += gs
+    end
+    @synchronize
+    qc += Int32(C)
+  end
   isc = vm > 0 ? inv(scale) : zero(T)
-  for i in Int32(li):Int32(gs):Int32(S)
-    r = @inbounds bre[i]; u = @inbounds bim[i]
-    if r != 0 || u != 0
-      gi = target_index(o, lin2cart(i, pstr, pe), Int32(h), n, Val(WRAP))
+  ng = prod(n)
+  i = li
+  while i < Int32(S)
+    re = @inbounds bre[i+1]; im = @inbounds bim[i+1]
+    if re != Int32(0) || im != Int32(0)
+      gi = target_index(o, lin2cart0(i, pstr, pe), h, n, Val(WRAP))
       if WRAP || all(map((x, m) -> 1 <= x <= m, gi, n))
-        atomic_add!(gr, (map(Int, gi)..., l), grid_value(G, r * isc, u * isc))
+        cell = Int(linear0(gi, n, Val(D))) + (l - 1) * Int(ng)
+        flush_add!(gv, cell, T(re) * isc, T(im) * isc, G)
       end
     end
+    i += gs
   end
 end
 
@@ -388,14 +418,24 @@ end
 # column-major strides of an array of size n, for kernels (`col_strides` mutates a captured variable)
 @inline strides_of(n, ::Val{D}) where {D} = ntuple(d -> prod(ntuple(i -> i < d ? n[i] : one(eltype(n)), Val(D))), Val(D))
 @inline fixed(x) = unsafe_trunc(Int32, x + copysign(oftype(x, 0.5), x))
-# For node c of the chunk and its support point tp (0-based) in dimensions 1…D−1: the weight
-# product and the tile index of support point 0 in dimension D.
-@inline lead_taps(r::Int32, ::Val{D}, ::Val{W}) where {D,W} = ntuple(d -> (r ÷ Int32(W^(d - 1))) % Int32(W), Val(D - 1))
-@inline lead_weight(wb, c, tp, ::Val{D}, ::Val{W}) where {D,W} =
-  prod(ntuple(d -> @inbounds(wb[(c * D + d - 1) * W + tp[d] + 1]), Val(D - 1)); init=one(eltype(wb)))
-@inline lead_index(ob, c, o, tp, pstr, ::Val{D}) where {D} =
-  Int32(1) + sum(ntuple(d -> (@inbounds(ob[c * D + d]) - o[d] + tp[d]) * pstr[d], Val(D - 1)); init=Int32(0)) +
-  (@inbounds(ob[c * D + D]) - o[D]) * pstr[D]
+@inline lin2cart0(i, str, n) = map((s, m) -> (i ÷ s) % m, str, n)
+@inline linear0(gi, n, ::Val{D}) where {D} = sum(ntuple(d -> (gi[d] - Int32(1)) * strides_of(n, Val(D))[d], Val(D)))
+@inline flush_add!(gv, cell, re, im, ::Type{<:Complex}) =
+  (@inbounds KA.@atomic gv[2cell+1] += re; @inbounds KA.@atomic gv[2cell+2] += im; nothing)
+@inline flush_add!(gv, cell, re, im, ::Type{<:Real}) = (@inbounds KA.@atomic gv[cell+1] += re; nothing)
+
+# Support points per task along dimension 1: all W from dimension 2 on, one in 1D.
+@inline inner_taps(::Val{D}, ::Val{W}) where {D,W} = D == 1 ? 1 : W
+# For node c of the chunk and task r: the weight product over dimensions 2…D, the tile index of its
+# support point 0 in dimension 1 and, in 1D, the support point of the task.
+@inline function outer_taps(wb, ob, c, r, pstr, ::Val{D}, ::Val{W}) where {D,W}
+  D == 1 && return one(eltype(wb)), Int32(1) + @inbounds(ob[c+1]), r
+  tp = ntuple(d -> (r ÷ Int32(W^(d - 1))) % Int32(W), Val(D - 1))
+  w = prod(ntuple(d -> @inbounds(wb[(c * Int32(D) + d) * Int32(W) + tp[d] + Int32(1)]), Val(D - 1)))
+  i = Int32(1) + @inbounds(ob[c * Int32(D) + 1]) +
+      sum(ntuple(d -> (@inbounds(ob[c * Int32(D) + d + 1]) + tp[d]) * pstr[d+1], Val(D - 1)))
+  w, i, Int32(0)
+end
 
 @inline lin2cart(i, str, n) = map((s, m) -> ((i - 1) ÷ s) % m, str, n)
 @inline grid_value(::Type{<:Complex}, re, im) = complex(re, im)
@@ -444,12 +484,11 @@ function adjoint_sub!(backend, nd, g, vals, L1, h, ::Val{D}, ::Val{WRAP}) where 
   fill!(g, 0)
   nsub = length(sp.start)
   nsub == 0 && return g
-  # max |v| stays on the device (no synchronisation)
-  vmax = fill!(similar(g, real(eltype(g)), ntuple(_ -> 1, ndims(vals))), 0)
-  Base.mapreducedim!(abs, max, vmax, vals)
-  adjoint_sub_kernel!(backend, SUB_WORKGROUP)(real_view(g), nd.kernel, nd.offs, nd.ss, nd.perm, vals,
-    sp.start, sp.count, sp.bin, vmax, nsub, sp.nb, sp.bstr, h, L1, Val(D), Val(nd.W), Val(sp.B),
-    Val(prod(sp.B .+ nd.W)), Val(SUB_CHUNK), real(eltype(g)), eltype(g), Val(WRAP);
+  T = real(eltype(g))
+  gv = eltype(g) <: Complex ? reinterpret(T, vec(g)) : vec(g)
+  adjoint_sub_kernel!(backend, SUB_WORKGROUP)(gv, nd.kernel, nd.offs, nd.ss, nd.perm, vals, sp.start,
+    sp.count, sp.bin, nsub, map(Int32, sp.nb), Int32(h), map(Int32, size(g)[1:D]), L1, Val(D), Val(nd.W),
+    Val(sp.B), Val(prod(sp.B .+ nd.W)), Val(SUB_CHUNK), T, eltype(g), Val(WRAP);
     ndrange=nsub * size(g, D + 1) * SUB_WORKGROUP)
   g
 end
