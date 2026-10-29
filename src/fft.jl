@@ -43,6 +43,11 @@ pass_plan(fft::FFTWBackend, ::Val{K}, v, d) where {K} =
   K == FFTW.FORWARD ? FFTW.plan_fft!(v, d; flags=fft.flags) : FFTW.plan_bfft!(v, d; flags=fft.flags)
 planning(f, ::FFTWBackend, nthreads) = with_fftw_threads(f, nthreads)
 
+# Threads for an FFTW plan threaded by FFTW itself (a single 1D pass) over n points. They pay off
+# from about 2^14 points (M1 Max, 10 threads: 8192 points twice as slow, 16384 1.2× and 32768 1.9×
+# faster) and make planning 5–10× slower (0.15–0.5 ms per plan).
+fft_nthreads(n, nthreads) = n >= 2^14 ? nthreads : 1
+
 # The thread count of FFTW's planner is global; planning restores it.
 function with_fftw_threads(f, n)
   old = FFTW.get_num_threads()
@@ -73,7 +78,7 @@ function PassFFT(fft::AbstractFFTBackend, x::AbstractArray{C,D}, N::NTuple{D,Int
   K = dir === :fwd ? Val(-1) : Val(1)
   order = pattern == :fwd ? reverse(tdims) : tdims
   boxes = [pass_boxes(x, N, d, tdims, fft_threads, nthreads) for d in order]
-  plans = planning(fft, fft_threads ? nthreads : 1) do
+  plans = planning(fft, fft_threads ? fft_nthreads(length(x), nthreads) : 1) do
     [pass_plans(fft, K, [view(x, b...) for b in bs], d) for (d, bs) in zip(order, boxes)]
   end
   PassFFT(plans, boxes)

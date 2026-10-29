@@ -53,7 +53,7 @@ function RNFFTCore(k::AbstractMatrix, N::NTuple{D,Int}, Ñ::NTuple{D,Int}, W, φ
   pfwd = PassFFT(fft, Hk, Nk, Val(:bwd); pattern=:fwd, nthreads, tdims=2:D, fft_threads=false)
   pbwd = PassFFT(fft, Hk, Nk, Val(:fwd); pattern=:bwd, nthreads, tdims=2:D, fft_threads=false)
   boxes = D == 1 ? [1:1] : chunks(1:Ñ[D], 4nthreads)
-  c2r, r2c = with_fftw_threads(D == 1 ? nthreads : 1) do
+  c2r, r2c = with_fftw_threads(D == 1 ? fft_nthreads(Ñ[1], nthreads) : 1) do
     ([FFTW.rFFTWPlan{Complex{T},FFTW.BACKWARD,false,D}(box(H, b), box(g, b), (1,), fft.flags, FFTW.NO_TIMELIMIT)
       for b in boxes],
      [FFTW.rFFTWPlan{T,FFTW.FORWARD,false,D}(box(g, b), box(H, b), (1,), fft.flags, FFTW.NO_TIMELIMIT) for b in boxes])
