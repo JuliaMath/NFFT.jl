@@ -145,28 +145,37 @@ sigma_cases(o) = [(D, N, ρ, T, tol) for D in opt(o, :dims, [1, 2, 3]) for ρ in
 # every rule in src/rules.jl, at the tolerances of DECOMP_PRECISIONS; NFFT.jl with its own choice on
 # half decades over the whole range (DECOMP_OWN_TOLS), so that its time can be interpolated at the
 # error each original delivers (unreachable tolerances end as errors). N as in the suite sigma (J/N =
-# 0.1 on the larger N, so that the cases take more than ≈ 2 ms). mlx-nufft runs in Float32 only. The
-# originals on FFTW run with both planning flags (`fft_flag`; the adapter's default is the library's).
+# 0.1 on the larger N, so that the cases take more than ≈ 2 ms). mlx-nufft runs in Float32 only. FFT
+# planning belongs to the implementation: every library, NFFT.jl with a rule included, plans with its
+# own default flag and threading (the adapter's default); suite `fftflags` compares the flags.
 const DECOMP_LIBS = ["FINUFFT", "FINUFFT 2.5", "ducc", "NonuniformFFTs"]
-const DECOMP_FFT_FLAGS = Dict("FINUFFT" => ["ESTIMATE", "MEASURE"], "FINUFFT 2.5" => ["ESTIMATE", "MEASURE"],
-                              "NonuniformFFTs" => ["MEASURE", "ESTIMATE"])
 const DECOMP_PRECISIONS = [("Float64", 1e-4), ("Float64", 1e-8), ("Float64", 1e-12), ("Float32", 1e-5)]
 const DECOMP_OWN_TOLS = Dict("Float64" => [10.0^(-e / 2) for e in 4:28], "Float32" => [10.0^(-e / 2) for e in 4:12])
 decomp_sizes(o) = [(N, ρ) for D in opt(o, :dims, [1, 2, 3]) for ρ in [0.1, 1, 10]
                    for N in [ρ < 1 ? SIGMA_SIZES_SPARSE[D] : SIGMA_SIZES[D]]]
 decomp_rules(T) = filter(r -> T == "Float32" || !startswith(r, "mlx-nufft"), Rules.RULES)
-decomp_task(o; lib, N, ρ, T, tol, rule=nothing, fft_flag=nothing) =
-  task(; lib, N, J=round(Int, ρ * prod(N)), tol, T, rule, fft_flag, plans=1, threads=opt(o, :threads, [default_threads()])[1],
+decomp_task(o; lib, N, ρ, T, tol, rule=nothing) =
+  task(; lib, N, J=round(Int, ρ * prod(N)), tol, T, rule, plans=1, threads=opt(o, :threads, [default_threads()])[1],
        budget=opt(o, :budget, 0.1), suite="decomposition")
 @suite "decomposition" "speed ratio = parameter factor × implementation factor: NFFT.jl with the rules of other libraries (M15)" o -> [
-  [decomp_task(o; lib, N, ρ, T, tol, rule, fft_flag)
+  [decomp_task(o; lib, N, ρ, T, tol, rule)
    for (N, ρ) in decomp_sizes(o) for (T, tol) in DECOMP_PRECISIONS
    if T in opt(o, :T, ["Float64", "Float32"]) && tol in opt(o, :tols, [tol])
    for (lib, rule) in [[("NFFT", r) for r in decomp_rules(T)];
-                       [(l, get(Rules.RULE_OF_LIB, l, nothing)) for l in opt(o, :libs, DECOMP_LIBS)]]
-   for fft_flag in get(DECOMP_FFT_FLAGS, lib, [nothing])];
+                       [(l, get(Rules.RULE_OF_LIB, l, nothing)) for l in opt(o, :libs, DECOMP_LIBS)]]];
   [decomp_task(o; lib="NFFT", N, ρ, T, tol)
    for (N, ρ) in decomp_sizes(o) for T in opt(o, :T, ["Float64", "Float32"]) for tol in DECOMP_OWN_TOLS[T]]]
+
+# The originals on FFTW with both planning flags, each at its own rule, on the 8 cases of the probes
+# (decomp_sizes without 1D at J/N = 10), Float64 1e-8 and Float32 1e-5.
+const FLAG_LIBS = Dict("FINUFFT" => ["ESTIMATE", "MEASURE"], "FINUFFT 2.5" => ["ESTIMATE", "MEASURE"],
+                       "NonuniformFFTs" => ["MEASURE", "ESTIMATE"])
+@suite "fftflags" "the originals on FFTW with FFTW_ESTIMATE and FFTW_MEASURE, 8 cases of the decomposition" o -> [
+  task(; lib, N, J=round(Int, ρ * prod(N)), tol, T, rule=get(Rules.RULE_OF_LIB, lib, nothing), fft_flag, plans=1,
+       threads=opt(o, :threads, [default_threads()])[1], budget=opt(o, :budget, 0.1), suite="fftflags")
+  for (N, ρ) in decomp_sizes(o) if !(length(N) == 1 && ρ == 10)
+  for (T, tol) in [("Float64", 1e-8), ("Float32", 1e-5)] if T in opt(o, :T, ["Float64", "Float32"])
+  for lib in filter(in(keys(FLAG_LIBS)), opt(o, :libs, DECOMP_LIBS)) for fft_flag in FLAG_LIBS[lib]]
 
 const HOMEPAGE = ["pareto", "threads", "sizes", "nodes", "batch", "real", "nnfft", "history"]
 @suite "all" "all suites of the documentation (" * join(HOMEPAGE, ", ") * ")" o ->
