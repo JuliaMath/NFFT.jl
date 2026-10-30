@@ -25,6 +25,7 @@ NFFTSparseArraysExt = "SparseArrays"
 [compat]
 AbstractNFFTs = "1"
 Aqua = "0.8"
+DoubleFloats = "1"
 Enzyme = "0.13"
 FFTA = "0.3"
 FFTW = "1.5"
@@ -34,6 +35,7 @@ KernelAbstractions = "0.9, 0.10"
 LinearAlgebra = "1"
 NFFTTools = "0.4"
 PrecompileTools = "1"
+Quadmath = "1"
 Random = "1"
 SparseArrays = "1"
 Reexport = "1.0"
@@ -44,17 +46,19 @@ julia = "1.10"
 
 [extras]
 Aqua = "4c88cf16-eb10-579e-8560-4a9242c79595"
+DoubleFloats = "497a8b3b-efae-58df-a0af-a86822472b78"
 Enzyme = "7da242da-08ed-463a-9acd-ee780be4f1d9"
 FFTA = "b86e33f2-c0db-4aa1-a6e0-ab43e668529e"
 JLArrays = "27aeb0d3-9eb9-45fb-866b-73c2ecf80fcb"
 NFFTTools = "7424e34d-94f7-41d6-98a0-85abaf1b6c91"
+Quadmath = "be4d8f0f-7fa4-5f49-b795-2f01399ab2dd"
 Random = "9a3f8284-a2c9-5f02-9a11-845980a1fd5c"
 SparseArrays = "2f01184e-e22b-5df5-ae63-d93ebab69eaf"
 Test = "8dfed614-e22c-5e08-85e1-65c5234f0b40"
 Zygote = "e88e6eb3-aa80-5325-afca-941959d7151f"
 
 [targets]
-test = ["Aqua", "Enzyme", "FFTA", "JLArrays", "NFFTTools", "Random", "SparseArrays", "Test", "Zygote"]
+test = ["Aqua", "DoubleFloats", "Enzyme", "FFTA", "JLArrays", "NFFTTools", "Quadmath", "Random", "SparseArrays", "Test", "Zygote"]
 
 [sources]
 AbstractNFFTs = {path = "lib/AbstractNFFTs"}

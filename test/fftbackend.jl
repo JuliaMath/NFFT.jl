@@ -41,9 +41,21 @@
     @test p * f ≈ q * f
   end
 
-  # the real transforms use FFTW's real and real-to-real transforms
-  k = rand(rng, 2, 50) ./ 2
-  @test_throws ArgumentError plan_rnfft(k .- 0.25, (16, 16); fft=FFTABackend())
-  @test_throws ArgumentError plan_nfct(k, (16, 16); fft=FFTABackend())
-  @test_throws ArgumentError plan_nfst(k, (16, 16); fft=FFTABackend())
+  # the real transforms through complex FFTs of the same length
+  @testset "RNFFT, NFCT, NFST" begin
+    k = rand(rng, 2, 50) ./ 2; y = randn(rng, 50)
+    p = plan_rnfft(k .- 0.25, (16, 12); reltol=1e-9, fft=FFTABackend()); q = plan_rnfft(k .- 0.25, (16, 12); reltol=1e-9)
+    h = randn(rng, ComplexF64, size_in(p))
+    @test p * h ≈ q * h
+    @test adjoint(p) * y ≈ adjoint(q) * y
+    g = randn(rng, oversampled_size(p)); ĝ = randn(rng, ComplexF64, spectrum_size(p))
+    @test oversampled_bfft!(p, g, similar(ĝ)) ≈ oversampled_bfft!(q, g, similar(ĝ))
+    @test oversampled_fft!(p, ĝ, similar(g)) ≈ oversampled_fft!(q, ĝ, similar(g))
+    for P in (plan_nfct, plan_nfst)
+      p = P(k, (16, 12); reltol=1e-9, fft=FFTABackend()); q = P(k, (16, 12); reltol=1e-9)
+      f = randn(rng, 16, 12)
+      @test p * f ≈ q * f
+      @test transpose(p) * y ≈ transpose(q) * y
+    end
+  end
 end

@@ -8,7 +8,7 @@
 # correction stores conj(h_n)/φ̂(n), halved for n₁ ≥ 1 (n₁ ≤ N₁÷2 < Ñ₁/2, the grid's Nyquist bin
 # stays empty). The adjoint is the r2c FFT (negative sign) and forward FFTs, conjugated at the end.
 
-struct RNFFTCore{D,K<:SymKernel,T,Tk,PF<:PassFFT,PB<:PassFFT,PC,PR}
+struct RNFFTCore{D,K<:SymKernel,T,Tk,PF<:PassFFT,PB<:PassFFT,PC,PR,FB}
   N::NTuple{D,Int}                     # logical size
   Nh::Int                              # modes n₁ = 0…Nh−1 = N₁÷2
   Ñ::NTuple{D,Int}
@@ -22,11 +22,11 @@ struct RNFFTCore{D,K<:SymKernel,T,Tk,PF<:PassFFT,PB<:PassFFT,PC,PR}
   pfwd::PF                             # direct: backward FFTs along 2…D, zero input skipped
   pbwd::PB                             # adjoint: forward FFTs along 2…D, only kept outputs
   boxes::Vector{UnitRange{Int}}        # chunks along dimension D for the c2r/r2c FFTs
-  c2r::Vector{PC}                      # FFTW plans per box
+  c2r::Vector{PC}                      # real FFT plans per box (rfft_plan, brfft_plan)
   r2c::Vector{PR}
   locks::TileLocks{D}
   bufs::Vector{Array{T,D}}
-  flags::UInt32
+  fft::FB
   nthreads::Int
 end
 
@@ -38,7 +38,7 @@ function rnfft_invphi(φ::F, W, N::NTuple{D,Int}, Ñ, ::Type{T}, nthreads) where
 end
 
 # The c2r/r2c transforms along dimension 1 are FFTW plans: the RNFFT needs the FFTW backend.
-function RNFFTCore(k::AbstractMatrix, N::NTuple{D,Int}, Ñ::NTuple{D,Int}, W, φ::F, ::Type{T}, fft::FFTWBackend, B, nthreads;
+function RNFFTCore(k::AbstractMatrix, N::NTuple{D,Int}, Ñ::NTuple{D,Int}, W, φ::F, ::Type{T}, fft, B, nthreads;
                    binned=nothing, kernel=nothing, invphi=nothing) where {D,F,T}
   K = kernel === nothing ? make_kernel(φ, W, T) : kernel
   Nh = N[1] ÷ 2 + 1
@@ -53,17 +53,15 @@ function RNFFTCore(k::AbstractMatrix, N::NTuple{D,Int}, Ñ::NTuple{D,Int}, W, φ
   pfwd = PassFFT(fft, Hk, Nk, Val(:bwd); pattern=:fwd, nthreads, tdims=2:D, fft_threads=false)
   pbwd = PassFFT(fft, Hk, Nk, Val(:fwd); pattern=:bwd, nthreads, tdims=2:D, fft_threads=false)
   boxes = D == 1 ? [1:1] : chunks(1:Ñ[D], 4nthreads)
-  c2r, r2c = with_fftw_threads(D == 1 ? fft_nthreads(Ñ[1], nthreads) : 1) do
-    ([FFTW.rFFTWPlan{Complex{T},FFTW.BACKWARD,false,D}(box(H, b), box(g, b), (1,), fft.flags, FFTW.NO_TIMELIMIT)
-      for b in boxes],
-     [FFTW.rFFTWPlan{T,FFTW.FORWARD,false,D}(box(g, b), box(H, b), (1,), fft.flags, FFTW.NO_TIMELIMIT) for b in boxes])
+  c2r, r2c = planning(fft, D == 1 ? fft_nthreads(Ñ[1], nthreads) : 1) do
+    ([brfft_plan(fft, box(H, b), box(g, b)) for b in boxes], [rfft_plan(fft, box(g, b), box(H, b)) for b in boxes])
   end
-  RNFFTCore{D,typeof(K),T,nodetype(binned),typeof(pfwd),typeof(pbwd),eltype(c2r),eltype(r2c)}(N, Nh, Ñ, W, B, K, invphi, binned, gp, H, pfwd, pbwd, boxes, c2r, r2c,
-    TileLocks(size(gp), B), task_buffers(T, ntuple(_ -> B + W + 1, D), nthreads), fft.flags, nthreads)
+  RNFFTCore{D,typeof(K),T,nodetype(binned),typeof(pfwd),typeof(pbwd),eltype(c2r),eltype(r2c),typeof(fft)}(N, Nh, Ñ, W, B, K, invphi, binned, gp, H, pfwd, pbwd, boxes, c2r, r2c,
+    TileLocks(size(gp), B), task_buffers(T, ntuple(_ -> B + W + 1, D), nthreads), fft, nthreads)
 end
 
 copy_core(c::RNFFTCore{D,K,T}, nthreads) where {D,K,T} =
-  RNFFTCore(zeros(0, 0), c.N, c.Ñ, c.W, nothing, T, FFTWBackend(flags=c.flags), c.B, nthreads;
+  RNFFTCore(zeros(0, 0), c.N, c.Ñ, c.W, nothing, T, c.fft, c.B, nthreads;
             binned=c.binned, kernel=c.kernel, invphi=c.invphi)
 
 slice_size(c::RNFFTCore) = (c.Nh, Base.tail(c.N)...)
@@ -195,11 +193,20 @@ function AbstractNFFTs.oversampled_fft!(p::RNFFTPlan{T}, ĝ::AbstractArray, g::A
   c = check_rnfft_stage(p, nothing, ĝ, g, nothing)
   X = conj.(ĝ)
   selectdim(X, 1, 2:cld(c.Ñ[1], 2)) .*= T(0.5)
-  copyto!(g, FFTW.brfft(X, c.Ñ[1]))
+  c.fft isa FFTWBackend && return copyto!(g, FFTW.brfft(X, c.Ñ[1]))
+  for d in 2:ndims(X)
+    apply_pass!(planning(() -> pass_plan(c.fft, Val(1), X, d), c.fft, 1), X)
+  end
+  mul!(g, brfft_plan(c.fft, X, g), X)
 end
 function AbstractNFFTs.oversampled_bfft!(p::RNFFTPlan, g::AbstractArray, ĝ::AbstractArray)
-  check_rnfft_stage(p, nothing, ĝ, g, nothing)
-  ĝ .= conj.(FFTW.rfft(g))
+  c = check_rnfft_stage(p, nothing, ĝ, g, nothing)
+  c.fft isa FFTWBackend && return (ĝ .= conj.(FFTW.rfft(g)))
+  mul!(ĝ, rfft_plan(c.fft, g, ĝ), g)
+  for d in 2:ndims(ĝ)
+    apply_pass!(planning(() -> pass_plan(c.fft, Val(-1), ĝ, d), c.fft, 1), ĝ)
+  end
+  ĝ .= conj.(ĝ)
 end
 AbstractNFFTs.oversampled_fft!(::RNFFTPlan, ::AbstractArray) =
   throw(ArgumentError("the FFT stages of an RNFFT plan only exist out of place: oversampled_fft!(p, ĝ, g)"))

@@ -28,7 +28,7 @@ const R2R_LINES = 16
 # lines along dimension e that a pruned pass visits
 r2r_length(pruned, N, M, e) = pruned ? N[e] : M[e]
 
-function R2RPass(::Type{T}, F, d, Ñ, N, flags, nthreads; pruned=true) where {T}
+function R2RPass(::Type{T}, F, d, Ñ, N, fft, nthreads; pruned=true) where {T}
   M = size(F); D = ndims(F)
   A = 1; for e in 1:d-1; A *= M[e]; end
   C = 1; for e in d+1:D; C *= M[e]; end
@@ -57,7 +57,9 @@ function R2RPass(::Type{T}, F, d, Ñ, N, flags, nthreads; pruned=true) where {T}
   ntasks = D == 1 ? 1 : min(nthreads, length(items))
   bufs = [zeros(T, 2Ñ, Lb) for _ in 1:ntasks]
   outs = [zeros(Complex{T}, Ñ + 1, Lb) for _ in 1:ntasks]
-  plans = with_fftw_threads(() -> [FFTW.plan_rfft(b, 1; flags) for b in bufs], D == 1 ? fft_nthreads(length(bufs[1]), nthreads) : 1)
+  plans = planning(fft, D == 1 ? fft_nthreads(length(bufs[1]), nthreads) : 1) do
+    [rfft_plan(fft, b, o) for (b, o) in zip(bufs, outs)]
+  end
   R2RPass(d, Ñ, A, C, items, bufs, outs, plans)
 end
 
@@ -113,10 +115,10 @@ end
 
 # Passes of the direct transform (dimensions in decreasing order, lines with zeros skipped); the
 # transposed transform runs the same passes in increasing order (only the lines needed later).
-r2r_passes(::Type{T}, F, Ñ, N, flags, nthreads; pruned=true) where {T} =
-  [R2RPass(T, F, d, Ñ[d], N, flags, nthreads; pruned) for d in ndims(F):-1:1]
+r2r_passes(::Type{T}, F, Ñ, N, fft, nthreads; pruned=true) where {T} =
+  [R2RPass(T, F, d, Ñ[d], N, fft, nthreads; pruned) for d in ndims(F):-1:1]
 
-struct RealCore{S,D,K<:SymKernel,T,Tk,P<:R2RPass}   # S = :cos or :sin
+struct RealCore{S,D,K<:SymKernel,T,Tk,P<:R2RPass,FB}   # S = :cos or :sin
   N::NTuple{D,Int}
   Ñ::NTuple{D,Int}                       # stored points l = 0…Ñ; virtual periodic grid 2Ñ
   W::Int
@@ -130,14 +132,14 @@ struct RealCore{S,D,K<:SymKernel,T,Tk,P<:R2RPass}   # S = :cos or :sin
   passes::Vector{P}                      # direct: in this order, transposed: reversed
   locks::TileLocks{D}
   bufs::Vector{Array{T,D}}
-  flags::UInt32
+  fft::FB
   nthreads::Int
 end
 
 # Modes of the virtual NFFT: n = 0…N−1 (cosine) or 1…N (sine) need an NFFT of size 2N or 2N + 2.
 virtual_size(S, N) = S === :cos ? 2 .* N : 2 .* (N .+ 1)
 
-function RealCore{S}(k::AbstractMatrix, N::NTuple{D,Int}, Ñv::NTuple{D,Int}, W, φ::Fφ, ::Type{T}, fft::FFTWBackend, B,
+function RealCore{S}(k::AbstractMatrix, N::NTuple{D,Int}, Ñv::NTuple{D,Int}, W, φ::Fφ, ::Type{T}, fft, B,
                      nthreads; kernel=make_kernel(φ, W, T)) where {S,D,Fφ,T}
   K = kernel
   Ñ = Ñv .÷ 2
@@ -146,9 +148,9 @@ function RealCore{S}(k::AbstractMatrix, N::NTuple{D,Int}, Ñv::NTuple{D,Int}, W,
   h = halo(W)
   gp = zeros(T, (Ñ .+ 1) .+ W)
   F = zeros(T, size(stored(gp, h, Ñ, Val(S))))
-  passes = r2r_passes(T, F, Ñ, N, fft.flags, nthreads)
-  RealCore{S,D,typeof(K),T,eltype(k),eltype(passes)}(N, Ñ, W, B, K, cfwd, cadj, Binned(k, Ñv, B, nthreads), gp, F,
-    passes, TileLocks(size(gp), B), task_buffers(T, ntuple(_ -> B + W + 1, D), nthreads), fft.flags, nthreads)
+  passes = r2r_passes(T, F, Ñ, N, fft, nthreads)
+  RealCore{S,D,typeof(K),T,eltype(k),eltype(passes),typeof(fft)}(N, Ñ, W, B, K, cfwd, cadj, Binned(k, Ñv, B, nthreads), gp, F,
+    passes, TileLocks(size(gp), B), task_buffers(T, ntuple(_ -> B + W + 1, D), nthreads), fft, nthreads)
 end
 
 # Correction factors of the direct and the transposed transform per mode: 1/φ̂ of the virtual grid
@@ -294,11 +296,11 @@ function r2r_transposed!(F, passes, ::Val{S}) where {S}
   F
 end
 
-function copy_core(c::RealCore{S,D,K,T,Tk,P}, nthreads) where {S,D,K,T,Tk,P}
+function copy_core(c::RealCore{S,D,K,T,Tk,P,FB}, nthreads) where {S,D,K,T,Tk,P,FB}
   F = zero(c.F)
-  RealCore{S,D,K,T,Tk,P}(c.N, c.Ñ, c.W, c.B, c.kernel, c.cfwd, c.cadj, c.binned, zero(c.gp), F,
-                       r2r_passes(T, F, c.Ñ, c.N, c.flags, nthreads),
-                       TileLocks(size(c.gp), c.B), task_buffers(T, size(c.bufs[1]), nthreads), c.flags, nthreads)
+  RealCore{S,D,K,T,Tk,P,FB}(c.N, c.Ñ, c.W, c.B, c.kernel, c.cfwd, c.cadj, c.binned, zero(c.gp), F,
+                          r2r_passes(T, F, c.Ñ, c.N, c.fft, nthreads),
+                          TileLocks(size(c.gp), c.B), task_buffers(T, size(c.bufs[1]), nthreads), c.fft, nthreads)
 end
 
 slice_size(c::RealCore) = c.N
@@ -378,7 +380,7 @@ function check_real_stage(p, f, g, fHat)
   c
 end
 
-unpruned_passes(c::RealCore{S,D,K,T}, F) where {S,D,K,T} = r2r_passes(T, F, c.Ñ, c.N, c.flags, c.nthreads; pruned=false)
+unpruned_passes(c::RealCore{S,D,K,T}, F) where {S,D,K,T} = r2r_passes(T, F, c.Ñ, c.N, c.fft, c.nthreads; pruned=false)
 
 AbstractNFFTs.oversampled_size(p::RealPlan) = size(real_stage_core(p).F)
 

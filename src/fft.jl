@@ -137,3 +137,36 @@ function apply!(P::PassFFT, x)
   end
   x
 end
+
+# Real FFTs along dimension 1 of a real array x of length n there: r2c to the half spectrum
+# (n÷2 + 1 points) and its inverse c2r (unnormalised). FFTW has them as plans; other backends get
+# them from a complex FFT of the same length (twice the work), the c2r with the spectrum completed by
+# Hermitian symmetry. Applied with mul!(out, plan, in).
+rfft_plan(fft::FFTWBackend, x, X) = FFTW.rFFTWPlan{eltype(x),FFTW.FORWARD,false,ndims(x)}(x, X, (1,), fft.flags, FFTW.NO_TIMELIMIT)
+brfft_plan(fft::FFTWBackend, X, x) =
+  FFTW.rFFTWPlan{eltype(X),FFTW.BACKWARD,false,ndims(x)}(X, x, (1,), fft.flags, FFTW.NO_TIMELIMIT)
+
+struct ComplexRealFFT{K,P,C}
+  plan::P
+  buf::C          # complex copy of the full lines
+end
+function complex_real_fft(fft, ::Val{K}, x) where {K}
+  buf = Array{complex(eltype(x))}(undef, size(x))
+  ComplexRealFFT{K,typeof(pass_plan(fft, Val(K), buf, 1)),typeof(buf)}(pass_plan(fft, Val(K), buf, 1), buf)
+end
+rfft_plan(fft::AbstractFFTBackend, x, X) = complex_real_fft(fft, Val(-1), x)
+brfft_plan(fft::AbstractFFTBackend, X, x) = complex_real_fft(fft, Val(1), x)
+
+function LinearAlgebra.mul!(X::AbstractArray, p::ComplexRealFFT{-1}, x::AbstractArray)
+  copyto!(p.buf, x)
+  apply_pass!(p.plan, p.buf)
+  copyto!(X, view(p.buf, axes(X, 1), ntuple(_ -> Colon(), ndims(X) - 1)...))
+end
+function LinearAlgebra.mul!(x::AbstractArray, p::ComplexRealFFT{1}, X::AbstractArray)
+  n = size(p.buf, 1); h = size(X, 1)
+  rest = ntuple(_ -> Colon(), ndims(X) - 1)
+  copyto!(view(p.buf, 1:h, rest...), X)
+  view(p.buf, h+1:n, rest...) .= conj.(view(X, n-h+1:-1:2, rest...))
+  apply_pass!(p.plan, p.buf)
+  x .= real.(p.buf)
+end
