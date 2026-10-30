@@ -73,6 +73,15 @@ const SWEEP_SIZES = Dict(1 => [[2^e] for e in 10:2:22], 2 => [[n, n] for n in (3
   for D in opt(o, :dims, [2, 3]) for nodes in ["uniform", "radial", "clustered"]
   for tol in opt(o, :tols, [1e-4, 1e-8]) for lib in opt(o, :libs, COMPETITORS)]
 
+# Accuracy contract (paper M1): delivered error against the requested tolerance for every CPU library,
+# uniform random nodes and nodes on a Cartesian lattice, the tolerance sweep of `pareto`, J = |N|.
+@suite "contract" "delivered error against tolerance: all CPU libraries, uniform and Cartesian nodes, D = 1…3" o -> [
+  task(; lib, N=SIZES[D], nodes, tol, T, threads=opt(o, :threads, [default_threads()])[1], budget=opt(o, :budget, 0.05),
+       plans=1, suite="contract")
+  for D in opt(o, :dims, [1, 2, 3]) for nodes in ["uniform", "cartesian"] for T in opt(o, :T, ["Float64", "Float32"])
+  for tol in opt(o, :tols, tolsweep(T))
+  for lib in opt(o, :libs, ["NFFT", "FINUFFT", "FINUFFT 2.5", "ducc", "NonuniformFFTs", "NFFT 0.14"])]
+
 # OCT: 1D A-scans; MRI: multi-coil 2D; 3D volumes
 const BATCH_CASES = [("oct", [2048], 2048, [1, 8, 64, 512]), ("mri", [256, 256], 65536, [1, 4, 16, 32]),
                      ("volume", [64, 64, 64], 2^18, [1, 4, 8])]

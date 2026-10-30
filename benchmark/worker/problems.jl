@@ -42,6 +42,10 @@ function nodes(dist, D, J, rng)
     clamp.(k, -0.5, prevfloat(0.5))
   elseif dist == "clustered"                 # dense centre, sparse edge
     clamp.(0.15 .* randn(rng, D, J), -0.5, prevfloat(0.5))
+  elseif dist == "cartesian"                 # a regular lattice of n^D ≥ J points, the first J (Cartesian MRI)
+    n = round(Int, J^(1 / D)); n^D < J && (n += 1)
+    r = range(-0.5, 0.5; length=n + 1)[1:n]
+    reduce(hcat, [collect(Float64, Tuple(I)) for I in Iterators.take(Iterators.product(ntuple(_ -> r, D)...), J)])
   else
     error("unknown node distribution $dist")
   end
