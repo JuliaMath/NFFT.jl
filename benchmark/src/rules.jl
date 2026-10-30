@@ -16,10 +16,11 @@ module Rules
 using LinearAlgebra: SymTridiagonal, eigen
 
 const RULES = ["FINUFFT 2.5", "FINUFFT 2.6-dev", "cuFINUFFT 2.5", "ducc 0.42", "NonuniformFFTs 0.9", "NFFT3",
-               "mlx-nufft 0.3"]
+               "mlx-nufft 0.3", "NFFT.jl 0.14"]
 # the library of the benchmark whose own choice a rule describes
 const RULE_OF_LIB = Dict("FINUFFT 2.5" => "FINUFFT 2.5", "FINUFFT" => "FINUFFT 2.6-dev", "ducc" => "ducc 0.42",
-                         "NonuniformFFTs" => "NonuniformFFTs 0.9", "mlx-nufft" => "mlx-nufft 0.3")
+                         "NonuniformFFTs" => "NonuniformFFTs 0.9", "mlx-nufft" => "mlx-nufft 0.3",
+                         "NFFT 0.14" => "NFFT.jl 0.14")
 
 choice(window, β, e0, W, σ, grid, tol) = (; window, β=Float64(β), e0=Float64(e0), W=Int(W), sigma=Float64(σ), tol=Float64(tol),
                                      grid=collect(Int, grid))
@@ -303,6 +304,20 @@ function nfft3(::Type{T}, N, J, tol, type, threads) where {T}
   choice("kb-sinh", π * (2 - 1 / σ) * (m + 1), 0, 2m + 2, σ, grid, tol)
 end
 
+# ── NFFT.jl 0.14.3 (AbstractNFFTs 0.9.1) ──────────────────────────────────────────────────────────
+# m and σ: AbstractNFFTs reltolToParams, m = (⌈log(10, 1/tol)⌉ + 1) ÷ 2 (in that rounding) and σ = 2, independent of N, J,
+# the type and the threads. W = 2m: precomputeOneNode (src/precomputation.jl) takes the 2m grid
+# points from ⌊kÑ⌋ − m + 1. Grid initParams: Ñ = 2⌊⌈σN⌉/2⌋. Window window_kaiser_bessel
+# (src/windowFunctions.jl), sinh(b√(m² − z²))/(π√(m² − z²)) with b = π(2 − 1/σ), σ = Ñ/N: the
+# truncated sinh form with β = bm. NFFT.jl 0.14 evaluates it through a polynomial of degree 2m per
+# grid point (precompute = POLYNOMIAL) and corrects with the analytic φ̂.
+function nfft014(::Type{T}, N, J, tol, type, threads) where {T}
+  m = (ceil(Int, log(10, 1 / tol)) + 1) ÷ 2
+  grid = [(ceil(Int, 2.0 * n) ÷ 2) * 2 for n in N]
+  σ = grid[1] / N[1]
+  choice("kb-sinh", π * (2 - 1 / σ) * m, 0, 2m, σ, grid, tol)
+end
+
 # ── mlx-nufft 0.3.3 (github.com/martinlachaine/mlx-nufft, edce21c) ───────────────────────────────
 # tol raised to 1e-6 (mlx_nufft/api.py _EPS_FLOOR). σ: mlx_nufft/nd.py _resolve_upsampfac (2 below
 # 3D or 2^15 modes; 1.25 by type, tol and density ρ = J/(2^D N)). W and β: mlx_nufft/sizing.py
@@ -338,7 +353,7 @@ end
 const RULE_FUNCTIONS = Dict("FINUFFT 2.5" => finufft251, "FINUFFT 2.6-dev" => finufft26,
                             "cuFINUFFT 2.5" => cufinufft251, "ducc 0.42" => ducc042,
                             "NonuniformFFTs 0.9" => nonuniformffts098, "NFFT3" => nfft3,
-                            "mlx-nufft 0.3" => mlxnufft033)
+                            "mlx-nufft 0.3" => mlxnufft033, "NFFT.jl 0.14" => nfft014)
 
 # ── windows ───────────────────────────────────────────────────────────────────────────────────────
 
