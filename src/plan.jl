@@ -124,7 +124,7 @@ function make_core(::Type{<:NFFTPlan}, k, Nd, kernel::KernelEntry, ::Type{T}, ff
   φ = window_function(kernel)
   storage <: Array || return device_core(storage, k, Nd, Ñ, kernel.W, φ, T, nthreads, L1, L3)
   c = NFFTCore(k, Nd, Ñ, kernel.W, φ, T, fft, tilesize, nthreads)
-  ABLATION[] === ABLATION_DEFAULT ? c : ablated_core(c)
+  ABLATION[] === ABLATION_DEFAULT ? c : ablated_core(c, k)
 end
 
 slice_size(c::NFFTCore) = c.N

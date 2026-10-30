@@ -2,7 +2,8 @@
 # technique of the default by the alternative another library uses, at the same window, W, σ and
 # grid. `ablate!(; kwargs...)` sets them for plans created afterwards (single NFFT plans without
 # batch dimensions, `FFTWBackend`); `ablate!()` restores the default. A plan created with a switch
-# set holds an `AblatedCore`, so the default core and its transforms are untouched.
+# set holds an `AblatedCore`, which runs its own copies of the resampling loops (below), so the
+# default core and its transforms are untouched.
 #
 # * `fft`: `:passes` (default: pruned per-dimension passes, threaded by NFFT.jl), `:full` (one
 #   multidimensional FFTW plan of the whole grid with FFTW's threads), `:unpruned` (per-dimension
@@ -12,9 +13,24 @@
 #   padded grid directly)
 # * `halo`: `true` (default: halo filled before and folded after the resampling), `false` (no halo
 #   fill or fold; the periodic wrap is resolved in the tile copy and in the flush)
-# * `flush`: `:tilelocks` (default: one lock per overlapped lock tile), `:globallock` (one lock for
-#   all flushes), `:atomic` (no lock, atomic adds)
-const ABLATION_DEFAULT = (fft=:passes, interp=:buffer, halo=true, flush=:tilelocks)
+# * `flush`: `:tilelocks` (default: one lock per overlapped lock tile), `:globallock` (one SpinLock
+#   for all flushes), `:reentrant` (one ReentrantLock for all flushes, taken once per buffer),
+#   `:atomic` (no lock, atomic adds)
+# * `window`: `:evenodd` (default: one Horner chain in s² for the even and the odd part of the
+#   first ⌈W/2⌉ pieces), `:fullhorner` (a Horner chain in s for each of the W pieces, same
+#   coefficients)
+# * `coords`: `:sorted` (default: node coordinates copied in tile order at plan time),
+#   `:permutation` (read from the node matrix through the permutation)
+# * `rowdot2`: `true` (default: two FMA chains per row in 2D/3D from W = 8), `false` (one chain)
+# * `prefetch`: `true` (default: the value 16 nodes ahead prefetched in the adjoint), `false`
+# * `slide`: `true` (default: sliding buffer of the 3D adjoint), `false` (one flush per tile)
+# * `schedule`: `:dynamic` (default: each task takes the next tile from a shared counter),
+#   `:chunks` (the tiles with dimension 1 fastest, split into one contiguous chunk per task)
+# * `bufs`: `:pertask` (default: one private buffer per task), `:pertile` (one buffer per tile,
+#   allocated with the plan)
+const ABLATION_DEFAULT = (fft=:passes, interp=:buffer, halo=true, flush=:tilelocks, window=:evenodd,
+                          coords=:sorted, rowdot2=true, prefetch=true, slide=true, schedule=:dynamic,
+                          bufs=:pertask)
 const ABLATION = Ref(ABLATION_DEFAULT)
 
 function ablate!(; kwargs...)
@@ -22,19 +38,30 @@ function ablate!(; kwargs...)
   keys(a) == keys(ABLATION_DEFAULT) || throw(ArgumentError("unknown ablation switch in $(keys(kwargs))"))
   a.fft in (:passes, :full, :unpruned, :pruned_fftw) || throw(ArgumentError("fft = $(a.fft)"))
   a.interp in (:buffer, :global) || throw(ArgumentError("interp = $(a.interp)"))
-  a.flush in (:tilelocks, :globallock, :atomic) || throw(ArgumentError("flush = $(a.flush)"))
+  a.flush in (:tilelocks, :globallock, :reentrant, :atomic) || throw(ArgumentError("flush = $(a.flush)"))
+  a.window in (:evenodd, :fullhorner) || throw(ArgumentError("window = $(a.window)"))
+  a.coords in (:sorted, :permutation) || throw(ArgumentError("coords = $(a.coords)"))
+  a.schedule in (:dynamic, :chunks) || throw(ArgumentError("schedule = $(a.schedule)"))
+  a.bufs in (:pertask, :pertile) || throw(ArgumentError("bufs = $(a.bufs)"))
+  all(s -> s isa Bool, (a.halo, a.rowdot2, a.prefetch, a.slide)) ||
+    throw(ArgumentError("halo, rowdot2, prefetch and slide are Bool"))
   a.interp === :global && !a.halo && throw(ArgumentError("interp = :global needs the halo"))
   ABLATION[] = a
 end
 
-struct AblatedCore{C<:NFFTCore}
+# The core with what the switches replace: the kernel (SymKernel or FullKernel), the node
+# coordinates in tile order (`binned.xs` or a PermutedNodes), the buffers of the tiles (`nothing`
+# for one per task) and the lock of flush = :reentrant.
+struct AblatedCore{C<:NFFTCore,S<:NamedTuple,K,X,B}
   core::C
-  interp::Symbol
-  halo::Bool
-  flush::Symbol
+  switches::S
+  kernel::K
+  xs::X
+  tilebufs::B
+  lock::ReentrantLock
 end
 
-function ablated_core(c::NFFTCore, a=ABLATION[])
+function ablated_core(c::NFFTCore{D,KS,T}, k, a=ABLATION[]) where {D,KS,T}
   c.fft isa FFTWBackend || throw(ArgumentError("the ablation switches need FFTWBackend"))
   if a.fft !== :passes
     g = interior(c.gp, halo(c.W))
@@ -42,7 +69,11 @@ function ablated_core(c::NFFTCore, a=ABLATION[])
                  ablated_fft(a.fft, c.fft, g, c.N, Val(:fwd), c.nthreads),
                  ablated_fft(a.fft, c.fft, g, c.N, Val(:bwd), c.nthreads), c.locks, c.bufs, c.fft, c.nthreads)
   end
-  AblatedCore(c, a.interp, a.halo, a.flush)
+  K = a.window === :fullhorner ? FullKernel(c.kernel) : c.kernel
+  xs = a.coords === :permutation ? PermutedNodes{D}(k, c.binned.perm) : c.binned.xs
+  # zeroed once: every trafo overwrites the same part of a tile's buffer
+  tb = a.bufs === :pertile ? [zeros(Complex{T}, size(c.bufs[1])) for _ in 1:length(c.binned.tileptr)-1] : nothing
+  AblatedCore(c, a, K, xs, tb, ReentrantLock())
 end
 
 slice_size(a::AblatedCore) = a.core.N
@@ -79,42 +110,119 @@ function ablated_fft(mode, fft, x::AbstractArray{C,D}, N, ::Val{dir}, nthreads) 
   PassFFT(plans, [[b] for (_, b) in bs])
 end
 
+# The window with each of its W pieces evaluated by its own Horner chain in s (NFFT.jl 0.14's
+# evalpoly per piece, FINUFFT, NonuniformFFTs.jl), with the coefficients of the SymKernel: piece
+# W−1−i (0-based) at s is piece i at −s.
+struct FullKernel{W,P1,T}
+  coeffs::NTuple{P1,SVector{W,T}}   # coeffs[k][i]: coefficient of s^(k-1) for support point i
+end
+function FullKernel(K::SymKernel{W,H,NE,NO,T}) where {W,H,NE,NO,T}
+  half(k) = isodd(k) ? K.even[(k+1)÷2] : K.odd[k÷2]
+  FullKernel{W,NE + NO,T}(ntuple(k -> SVector{W,T}(ntuple(i -> i <= H ? half(k)[i] : (-1)^(k - 1) * half(k)[W+1-i], Val(W))),
+                                 Val(NE + NO)))
+end
+@generated function weights(K::FullKernel{W,P1,T}, s::T) where {W,P1,T}
+  steps = [:(w = muladd.(w, s, c[$k])) for k in P1-1:-1:1]
+  quote
+    Base.@_inline_meta
+    c = K.coeffs
+    w = c[$P1]
+    $(steps...)
+    w
+  end
+end
+@inline function support(K::FullKernel{W,P1,T}, x, Ñ::Int) where {W,P1,T}
+  off, s = support_offset(x, Ñ, W, T)
+  off, weights(K, s)
+end
+
+# The node coordinates in tile order, read from the node matrix k through the permutation.
+struct PermutedNodes{D,T,M<:AbstractMatrix{T}} <: AbstractVector{NTuple{D,T}}
+  k::M
+  perm::Vector{Int}
+end
+PermutedNodes{D}(k::AbstractMatrix{T}, perm) where {D,T} = PermutedNodes{D,T,typeof(k)}(k, perm)
+Base.size(x::PermutedNodes) = size(x.perm)
+@inline function Base.getindex(x::PermutedNodes{D}, q::Int) where {D}
+  @boundscheck checkbounds(x, q)
+  @inbounds j = x.perm[q]
+  ntuple(d -> @inbounds(x.k[d, j]), Val(D))
+end
+
+# One row chain instead of rowdot2 (the generic method of resample_node).
+@inline resample_node1(g::AbstractArray{C,D}, off::NTuple{D,Int}, ws::NTuple{D,SVector{W,T}}) where {C,D,W,T} =
+  invoke(resample_node, Tuple{AbstractArray{C,D},NTuple{D,Int},NTuple{D,SVector{W,T}}}, g, off, ws)
+
+# f(it, order[i]) for i = 1 … length(order) on ntasks tasks, after init(it) on each task.
+# :dynamic: the next index from a shared counter; :chunks: one contiguous chunk per task (NFFT.jl
+# 0.14: OhMyThreads' DynamicScheduler with nthreads chunks).
+function foreach_tile(f, init, order, ntasks, ::Val{sched}) where {sched}
+  n = length(order)
+  if sched === :chunks
+    cs = chunks(1:n, ntasks)
+    tasks(length(cs)) do it
+      init(it)
+      for i in cs[it]
+        f(it, order[i])
+      end
+    end
+  else
+    next = Threads.Atomic{Int}(1)
+    tasks(min(ntasks, n)) do it
+      init(it)
+      while (i = Threads.atomic_add!(next, 1)) <= n
+        f(it, order[i])
+      end
+    end
+  end
+  nothing
+end
+
+# The buffer of task it for tile t.
+@inline tilebuf(bufs, ::Nothing, it, t) = bufs[it]
+@inline tilebuf(bufs, tb, it, t) = tb[t]
+
 function trafo_core!(out, a::AblatedCore, f)
-  c = a.core
+  c = a.core; s = a.switches
   h = halo(c.W); g = interior(c.gp, h)
   @stage :zero threaded_fill!(c.gp, 0, c.nthreads)
   @stage :correction resampling_correction_core!(g, f, c.invphi, c.N, c.Ñ, c.nthreads)
   @stage :fft apply!(c.fwd, g)
-  if a.halo
+  if s.halo
     @stage :halo fill_halo!(c.gp, h, c.nthreads)
   else
     STAGE_TIMES[findfirst(==(:halo), STAGES)] = 0
   end
   @stage :resampling begin
-    if a.interp === :global
-      resample_global!(out, c.gp, c.kernel, c.binned, c.Ñ, length(c.bufs))
-    elseif a.halo
-      resample!(out, c.gp, c.kernel, c.binned, c.Ñ, c.bufs)
+    sched = Val(s.schedule)
+    node = s.rowdot2 ? resample_node : resample_node1
+    if s.interp === :global
+      ab_resample_global!(out, c.gp, a.kernel, a.xs, c.binned, c.Ñ, length(c.bufs), node, sched)
     else
-      resample!(out, c.gp, c.kernel, c.binned, c.Ñ, c.bufs, WrapCopy(h[1], c.Ñ))
+      cp = s.halo ? tile_copy! : WrapCopy(h[1], c.Ñ)
+      ab_resample!(out, c.gp, a.kernel, a.xs, c.binned, c.Ñ, c.bufs, a.tilebufs, cp, node, sched)
     end
   end
   out
 end
 
 function adjoint_core!(f, a::AblatedCore, vals)
-  c = a.core
+  c = a.core; s = a.switches
   h = halo(c.W); g = interior(c.gp, h)
   @stage :zero threaded_fill!(c.gp, 0, c.nthreads)
   @stage :resampling begin
-    fl = a.flush === :globallock ? flush_global! : a.flush === :atomic ? flush_atomic! : flush!
-    if a.halo
-      resample_adjoint!(c.gp, c.kernel, c.binned, vals, c.Ñ, c.locks, c.bufs, fl)
+    fl = s.flush === :globallock ? flush_global! : s.flush === :atomic ? flush_atomic! :
+         s.flush === :reentrant ? flush_nolock! : flush!
+    s.halo || (fl = WrapFlush(fl, h[1], c.Ñ))
+    s.flush === :reentrant && (fl = LockedFlush(a.lock, fl))
+    sched = Val(s.schedule); pf = Val(s.prefetch)
+    if length(c.N) >= 3 && s.slide
+      ab_resample_adjoint_slide!(c.gp, a.kernel, a.xs, c.binned, vals, c.Ñ, c.locks, c.bufs, a.tilebufs, fl, pf, sched)
     else
-      resample_adjoint!(c.gp, c.kernel, c.binned, vals, c.Ñ, c.locks, c.bufs, WrapFlush(fl, h[1], c.Ñ))
+      ab_resample_adjoint_tiles!(c.gp, a.kernel, a.xs, c.binned, vals, c.Ñ, c.locks, c.bufs, a.tilebufs, fl, pf, sched)
     end
   end
-  if a.halo
+  if s.halo
     @stage :halo fold_halo!(c.gp, h, c.nthreads)
   else
     STAGE_TIMES[findfirst(==(:halo), STAGES)] = 0
@@ -124,21 +232,90 @@ function adjoint_core!(f, a::AblatedCore, vals)
   f
 end
 
-# Interpolation from the padded grid itself, tiles taken as in `resample!` (FINUFFT and NFFT3 read
-# the global grid; here without index wrapping, thanks to the halo).
-function resample_global!(out, gp, K::SymKernel{W}, b::Binned{D}, Ñ, ntasks) where {W,D}
-  ntile = length(b.tileptr) - 1
-  next = Threads.Atomic{Int}(1)
-  tasks(min(ntasks, ntile)) do _
-    while (i = Threads.atomic_add!(next, 1)) <= ntile
-      t = b.order1[i]
-      @inbounds for q in b.tileptr[t]:b.tileptr[t+1]-1
-        sw = map(@inline((x, n) -> support(K, x, n)), b.xs[q], Ñ)
-        out[b.perm[q]] = resample_node(gp, map(first, sw), map(last, sw))
-      end
+# resample! of resampling.jl with the kernel K, the coordinates xs, the copy cp, the node function
+# and the schedule as arguments.
+function ab_resample!(out, gp, K, xs, b::Binned{D}, Ñ, bufs, tb, cp, node::F, sched) where {D,F}
+  foreach_tile(it -> tb === nothing && fill!(bufs[it], 0), b.order1, length(bufs), sched) do it, t
+    r = b.tileptr[t]:b.tileptr[t+1]-1
+    isempty(r) && return
+    buf = tilebuf(bufs, tb, it, t)
+    o = b.origins[t]
+    cp(buf, gp, o)
+    @inbounds for q in r
+      sw = map(@inline((x, n) -> support(K, x, n)), xs[q], Ñ)
+      out[b.perm[q]] = node(buf, map(first, sw) .- o, map(last, sw))
     end
   end
   out
+end
+
+# Interpolation from the padded grid itself, tiles taken as in `ab_resample!` (FINUFFT and NFFT3
+# read the global grid; here without index wrapping, thanks to the halo).
+function ab_resample_global!(out, gp, K, xs, b::Binned{D}, Ñ, ntasks, node::F, sched) where {D,F}
+  foreach_tile(_ -> nothing, b.order1, ntasks, sched) do it, t
+    @inbounds for q in b.tileptr[t]:b.tileptr[t+1]-1
+      sw = map(@inline((x, n) -> support(K, x, n)), xs[q], Ñ)
+      out[b.perm[q]] = node(gp, map(first, sw), map(last, sw))
+    end
+  end
+  out
+end
+
+# spread_nodes! of resampling.jl with the kernel K, the coordinates xs and the prefetch switchable.
+@inline function ab_spread_nodes!(buf, K, xs, b::Binned{D}, vals, Ñ, o, r, ::Val{pf}) where {D,pf}
+  @inbounds for q in r
+    pf && q + 16 <= last(r) && prefetch(vals, b.perm[q+16])
+    sw = map(@inline((x, m) -> support(K, x, m)), xs[q], Ñ)
+    resample_adjoint_node!(buf, map(first, sw) .- o, map(last, sw), vals[b.perm[q]])
+  end
+  buf
+end
+
+# resample_adjoint_tiles! of resampling.jl; with :chunks the tiles in the order of the resampling
+# (dimension 1 fastest, as NFFT.jl 0.14), otherwise in tile order as the default.
+function ab_resample_adjoint_tiles!(gp, K, xs, b::Binned{D}, vals, Ñ, L, bufs, tb, fl::F, pf, sched) where {D,F}
+  order = sched === Val(:chunks) ? b.order1 : (1:length(b.tileptr)-1)
+  foreach_tile(_ -> nothing, order, length(bufs), sched) do it, t
+    r = b.tileptr[t]:b.tileptr[t+1]-1
+    isempty(r) && return
+    buf = tilebuf(bufs, tb, it, t)
+    o = b.origins[t]
+    fill!(buf, 0)
+    ab_spread_nodes!(buf, K, xs, b, vals, Ñ, o, r, pf)
+    fl(gp, buf, o, L)
+  end
+  gp
+end
+
+# resample_adjoint_slide! of resampling.jl (per-tile buffers: that of the first tile of a segment).
+function ab_resample_adjoint_slide!(gp, K, xs, b::Binned{D}, vals, Ñ, L, bufs, tb, fl::F, pf, sched) where {D,F}
+  ntD = b.ntiles[D]; ncol = prod(Base.front(b.ntiles))
+  ntasks = length(bufs); B = L.B
+  nseg = clamp(cld(8ntasks, ncol), 1, ntD); seglen = cld(ntD, nseg)
+  segs = [(c - 1) * ntD .+ (s:min(s + seglen - 1, ntD)) for c in 1:ncol for s in 1:seglen:ntD]
+  E = size(bufs[1], 1)
+  S = E^(D - 1)
+  foreach_tile(_ -> nothing, segs, ntasks, sched) do it, tiles
+    b.tileptr[last(tiles)+1] > b.tileptr[first(tiles)] || return
+    buf = tilebuf(bufs, tb, it, first(tiles))
+    fill!(buf, 0)
+    for t in tiles
+      o = b.origins[t]
+      ab_spread_nodes!(buf, K, xs, b, vals, Ñ, o, b.tileptr[t]:b.tileptr[t+1]-1, pf)
+      if t == last(tiles)
+        fl(gp, buf, o, L)
+      else
+        fl(gp, lastdim_view(buf, 1:B), o, L)
+        @inbounds for i in 1:(E-B)*S
+          buf[i] = buf[i+B*S]
+        end
+        @inbounds for i in (E-B)*S+1:E*S
+          buf[i] = zero(eltype(buf))
+        end
+      end
+    end
+  end
+  gp
 end
 
 # Without a halo: padded index p of a tile buffer stands for interior index mod(p − h1 − 1, Ñ) + 1.
@@ -186,21 +363,34 @@ function (w::WrapFlush)(gp, buf, o, L)
   end
 end
 
-# One lock for all flushes (NFFT.jl 0.14 and NonuniformFFTs.jl, there a ReentrantLock; FINUFFT 2.5.1
-# an OpenMP critical section): the same SpinLock as the default, taken once per flush.
-function flush_global!(gp, buf, o::NTuple{D,Int}, L::TileLocks{D}) where {D}
+# The flush without a lock, for the global locks below.
+function flush_nolock!(gp, buf, o::NTuple{D,Int}, L) where {D}
   lo = o .+ 1
   hi = min.(lo .+ size(buf) .- 1, size(gp))
-  l = L.locks[1]
-  lock(l)
   @inbounds for Jt in CartesianIndices(ntuple(d -> lo[d+1]:hi[d+1], Val(D - 1)))
     jt = Tuple(Jt); bt = jt .- Base.tail(o)
     @simd for j1 in lo[1]:hi[1]
       gp[j1, jt...] += buf[j1 - o[1], bt...]
     end
   end
+end
+
+# One lock for all flushes (NFFT.jl 0.14 and NonuniformFFTs.jl, there a ReentrantLock; FINUFFT 2.5.1
+# an OpenMP critical section): the same SpinLock as the default, taken once per flush (per piece
+# without the halo).
+function flush_global!(gp, buf, o::NTuple{D,Int}, L::TileLocks{D}) where {D}
+  l = L.locks[1]
+  lock(l)
+  flush_nolock!(gp, buf, o, L)
   unlock(l)
 end
+
+# A flush under one ReentrantLock, taken once per buffer as in NFFT.jl 0.14's addBlock!.
+struct LockedFlush{F}
+  lock::ReentrantLock
+  fl::F
+end
+(l::LockedFlush)(gp, buf, o, L) = lock(() -> l.fl(gp, buf, o, L), l.lock)
 
 # No lock, an atomic add per real and imaginary part (FINUFFT 2.6-dev above 10 threads).
 function flush_atomic!(gp::Array{Complex{T},D}, buf, o::NTuple{D,Int}, L) where {T,D}
