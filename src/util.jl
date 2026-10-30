@@ -35,6 +35,10 @@ end
 chunks(r, k) = isempty(r) ? typeof(r[1:0])[] :
   [r[i:min(i + cld(length(r), k) - 1, end)] for i in 1:cld(length(r), k):length(r)]
 
+# Working precision of the precomputation (window fit, φ̂, grid positions, NDFT phases): Float64, or
+# T where T is wider (Double64, Float128, BigFloat).
+wide(::Type{T}) where {T} = promote_type(T, Float64)
+
 # Smallest even n′ ≥ n whose prime factors are 2, 3, 5 and 7 (FFT-friendly grid sizes). Looked up
 # in the sorted 7-smooth numbers: the search by trial division takes thousands of steps for large n,
 # and the parameter choice calls it for every candidate kernel.

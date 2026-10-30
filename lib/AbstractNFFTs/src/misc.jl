@@ -12,9 +12,18 @@ end
 """
     DEFAULT_RELTOL
 
-Relative error requested from a plan when `reltol` is not given.
+Relative error requested from a plan when `reltol` is not given, if the element type can reach it
+(see [`default_reltol`](@ref)).
 """
 const DEFAULT_RELTOL = 1e-8
+
+"""
+    default_reltol(T)
+
+Relative error requested from a plan with real element type `T` when `reltol` is not given:
+`DEFAULT_RELTOL`, or `10 * eps(T)` where that is larger (`Float32`: 1.2e-6, `Float16`: 9.8e-3).
+"""
+default_reltol(::Type{T}) where {T} = max(DEFAULT_RELTOL, 10 * Float64(eps(T)))
 
 """
     GenericOptions
@@ -43,7 +52,7 @@ end
 Resolve the generic keyword arguments of a plan constructor for nodes `k` and array size `N`,
 and return the remaining (implementation-specific) keyword arguments untouched.
 """
-function generic_options(k::AbstractMatrix, N::Dims{D}; reltol::Real=DEFAULT_RELTOL,
+function generic_options(k::AbstractMatrix, N::Dims{D}; reltol::Union{Nothing,Real}=nothing,
                          dims::Union{Colon,Integer,AbstractUnitRange}=Colon(),
                          eltype::Union{Nothing,Type{<:Real}}=nothing, storage::Union{Nothing,Type}=nothing,
                          nthreads::Integer=Threads.nthreads(), kwargs...) where {D}
@@ -52,9 +61,10 @@ function generic_options(k::AbstractMatrix, N::Dims{D}; reltol::Real=DEFAULT_REL
     throw(ArgumentError("dims = $dims is not a contiguous range within 1:$D"))
   size(k, 1) == length(d) ||
     throw(ArgumentError("nodes have $(size(k, 1)) dimensions, the transform has $(length(d))"))
-  reltol > 0 || throw(ArgumentError("reltol must be positive"))
   nthreads >= 1 || throw(ArgumentError("nthreads must be at least 1"))
   T = eltype === nothing ? float(Base.eltype(k)) : eltype
+  reltol = reltol === nothing ? default_reltol(T) : reltol
+  reltol > 0 || throw(ArgumentError("reltol must be positive"))
   S = storage === nothing ? storage_type(k) : storage
   GenericOptions{T}(Float64(reltol), d, T, S, Int(nthreads)), kwargs
 end

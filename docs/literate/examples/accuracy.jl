@@ -54,7 +54,18 @@ fig
 [(reltol=t, W=NFFT.parameters(q).W, σ=NFFT.parameters(q).σ) for (t, q) in zip(tols, plans)]
 
 # Below about ``10^{-14}`` rounding errors dominate in double precision; in single precision the
-# floor is about ``10^{-6}``. A `reltol` below the floor gives the most accurate plan available.
+# floor is about ``10^{-6}``. A `reltol` somewhat below the floor gives the most accurate plan
+# available; one that no parameters reach (the predicted error more than 10 times larger) throws an
+# `ArgumentError`, unless `W` and `σ` are both given. Without `reltol` a plan uses
+# [`default_reltol`](@ref) of its element type: ``10^{-8}``, in single precision ``1.2 \cdot 10^{-6}``.
+#
+# Element types wider than `Float64` (`Double64` from DoubleFloats.jl, `Float128` from Quadmath.jl)
+# compute the window fit, the correction factors and the grid positions in their own precision and,
+# with an FFT for them (`fft = FFTABackend()`), reach correspondingly smaller errors: `reltol = 1e-25`
+# with `Double64` gives about ``10^{-26}``, `1e-28` with `Float128` about ``10^{-29}``. Beyond the table
+# (``W > 16``) the plan uses the Kaiser–Bessel window with ``\beta = \pi W (1 - 1/(2\sigma))``, up to
+# ``W = 48``. The resampling kernels are unrolled in ``W``: with `Double64` and ``W \approx 30`` the
+# first transform compiles for minutes; `BigFloat` beyond the table is impractical.
 
 # ## Window families
 #

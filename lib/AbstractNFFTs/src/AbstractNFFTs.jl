@@ -25,7 +25,7 @@ export oversampled_size, spectrum_size, resampling_correction!, oversampled_fft!
 export nfft, nfft_adjoint, nfct, nfct_transpose, nfst, nfst_transpose
 
 # options shared by all implementations
-export DEFAULT_RELTOL, GenericOptions, generic_options, check_options
+export DEFAULT_RELTOL, default_reltol, GenericOptions, generic_options, check_options
 
 include("misc.jl")
 include("interface.jl")

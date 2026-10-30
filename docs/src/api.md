@@ -126,6 +126,7 @@ AbstractNFSTPlan
 AbstractRNFFTPlan
 AbstractNFFTs.set_active_backend!
 DEFAULT_RELTOL
+default_reltol
 GenericOptions
 generic_options
 check_options

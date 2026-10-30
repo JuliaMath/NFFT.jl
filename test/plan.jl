@@ -52,7 +52,20 @@
     for tol in (1e-4, 1e-8, 1e-12)
       @test accuracy(plan_nfft(k, N; reltol=tol)) <= tol
     end
-    @test accuracy(plan_nfft(k, N; reltol=1e-16)) < 1e-13         # below the floor: the most accurate kernel
+    # slightly below what any kernel reaches: the most accurate one; far below: an error
+    best = accuracy(plan_nfft(k, N; reltol=1e-14))
+    @test best < 1e-13
+    @test accuracy(plan_nfft(k, N; reltol=best / 2)) == best
+    @test_throws ArgumentError plan_nfft(k, N; reltol=best / 20)
+    @test_throws ArgumentError plan_nfft(Float32.(k), N; reltol=1e-9)
+    @test_throws ArgumentError plan_nfft(k, N; reltol=1e-14, W=6)
+    @test plan_nfft(k, N; reltol=1e-14, W=6, σ=2.0).kernel.W == 6      # W and σ fixed: as given
+    @test_throws ArgumentError plan_nnfft(k, 4 .* k; reltol=1e-17)
+    @test plan_nfft(Float32.(k), N).options.reltol == default_reltol(Float32)
+    # beyond the table: Kaiser–Bessel with an analytic β (explicit W, or automatic for wider types)
+    p = plan_nfft(k, N; W=20, σ=2.0)
+    @test p.kernel.window == KaiserBessel() && p.kernel.β ≈ π * 20 * 0.75
+    @test norm(p * f - NDFTPlan(k, N) * f) / norm(NDFTPlan(k, N) * f) < 1e-13
     @test eltype(plan_nfft(k, N; eltype=Float32)) == ComplexF32
     # measure: one of the cheapest candidates of the cost model, same transform
     p = plan_nfft(k, N; reltol=1e-8, measure=true)

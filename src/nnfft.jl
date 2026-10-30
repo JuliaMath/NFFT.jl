@@ -92,7 +92,7 @@ NNFFTPlan(k::AbstractVecOrMat, y::AbstractVecOrMat, N::Dims...; kwargs...) = pla
 function NNFFTPlan(k::AbstractMatrix, y::AbstractMatrix, g::GenericOptions{T}; N=(size(y, 2),), window=:auto,
                    W=nothing, σ=nothing, fft=nothing) where {T}
   cpu_options(g.storage, fft, nothing)
-  kc = Array{Float64}(k); yc = Array{Float64}(y)
+  kc = Array{wide(T)}(k); yc = Array{wide(T)}(y)
   all(isfinite, kc) && all(isfinite, yc) || throw(ArgumentError("nodes must be finite"))
   nnfft_plan(Val(size(kc, 1)), k, y, kc, yc, g, N; window, W, σ, fft)
 end
@@ -108,7 +108,7 @@ function nnfft_plan(::Val{D}, k, y, kc, yc, g::GenericOptions{T}, Nin::NTuple{M,
     NFFTCore(ys, n, n, outer.W, φ, T, nothing, nothing, g.nthreads) :
     device_core(g.storage, ys, n, n, outer.W, φ, T, g.nthreads, 1, 1; fft=false)
   # the kernel is fixed by the choice above; below the reachable error the tolerance only must stay positive
-  inner = plan_nfft(NFFTBackend(), xs, n; reltol=max((g.reltol - acc.outer) / outer.amp, eps(Float64)), eltype=T, storage=g.storage,
+  inner = plan_nfft(NFFTBackend(), xs, n; reltol=max((g.reltol - acc.outer) / outer.amp, Float64(eps(wide(T)))), eltype=T, storage=g.storage,
                     nthreads=g.nthreads, window=e2.window, W=e2.W, σ=e2.σ, fft)
   S = g.storage
   store(v) = to_storage(S, Complex{T}.(v))
@@ -123,40 +123,42 @@ end
 # centre of the nodes x (D × M) and their largest distance from it, per dimension
 function centre(::Val{D}, x) where {D}
   M = size(x, 2)
-  x0 = ntuple(d -> M == 0 ? 0.0 : (minimum(view(x, d, :)) + maximum(view(x, d, :))) / 2, Val(D))
-  x0, ntuple(d -> M == 0 ? 0.0 : maximum(t -> abs(t - x0[d]), view(x, d, :)), Val(D))
+  z = zero(eltype(x))
+  x0 = ntuple(d -> M == 0 ? z : (minimum(view(x, d, :)) + maximum(view(x, d, :))) / 2, Val(D))
+  x0, ntuple(d -> M == 0 ? z : maximum(t -> abs(t - x0[d]), view(x, d, :)), Val(D))
 end
 
 # The nodes of the spreading on the grid n (ys, grid positions scaled to [−1/2, 1/2)) and of the inner
-# NFFT (xs), and the phases pre and post, for the outer window φ with table entry `outer`. In
-# Float64: the grid positions of the inner NFFT are computed from xs.
+# NFFT (xs), and the phases pre and post, for the outer window φ with table entry `outer`. In the
+# precision R of kc and yc (wide(T)): the grid positions of the inner NFFT are computed from xs.
 function nnfft_nodes(::Val{D}, kc, yc, y0, k0, K, outer, n, φ::F, nthreads) where {D,F}
   J = size(kc, 2); N = size(yc, 2)
   σ1 = outer.σ
-  h = map(x -> x > 0 ? 1 / (2σ1 * x) : 1.0, K)
+  R = eltype(kc)
+  h = map(x -> x > 0 ? 1 / (2σ1 * x) : one(R), K)
   # source y′/h sits at grid position y′/h + n÷2
-  ys = Matrix{Float64}(undef, D, N)
+  ys = Matrix{R}(undef, D, N)
   @maybe_threads nthreads for r in chunks(1:N, nthreads)
     for l in r, d in 1:D
       x = (yc[d, l] - y0[d]) / (h[d] * n[d]) + (n[d] ÷ 2) / n[d]
       ys[d, l] = x >= 0.5 ? x - 1 : x
     end
   end
-  xs = Matrix{Float64}(undef, D, J)
+  xs = Matrix{R}(undef, D, J)
   @maybe_threads nthreads for r in chunks(1:J, nthreads)
     for j in r, d in 1:D
       xs[d, j] = (kc[d, j] - k0[d]) * h[d]
     end
   end
   # the division by φ̂; |h k′| ≤ 1/(2σ₁)
-  ft = WindowFT(φ, outer.W, 1 / (2σ1))
-  pre = Vector{ComplexF64}(undef, N)
+  ft = WindowFT(φ, outer.W, 1 / (2σ1), R)
+  pre = Vector{Complex{R}}(undef, N)
   @maybe_threads nthreads for r in chunks(1:N, nthreads)
     for l in r
       pre[l] = cispi(-2 * sum(ntuple(d -> k0[d] * (yc[d, l] - y0[d]), Val(D))))
     end
   end
-  post = Vector{ComplexF64}(undef, J)
+  post = Vector{Complex{R}}(undef, J)
   @maybe_threads nthreads for r in chunks(1:J, nthreads)
     for j in r
       post[j] = cispi(-2 * sum(ntuple(d -> kc[d, j] * y0[d], Val(D)))) / prod(ntuple(d -> ft(abs(xs[d, j])), Val(D)))
@@ -192,9 +194,12 @@ function choose_nnfft(reltol, Y::NTuple{D}, K::NTuple{D}, N, J, ::Type{T}; windo
   ε2 = [ε(e) for e in inner]
   c2 = [a * J * e.W^D + a1 * J * e.W for e in inner]
   σ2 = [e.σ^D for e in inner]
-  # target: reltol, or 1.5 times the smallest predicted error if reltol is below it
+  # target: reltol, or 1.5 times the smallest predicted error if reltol is below it; out of reach
+  # (above 10·reltol, as for the NFFT) it throws
   fl(e1) = error_floor(grid(e1), T)
   emin = minimum(e1 -> ε(e1) + fl(e1) + e1.amp * (minimum(ε2) + fl(e1)), outer)
+  (W === nothing || σ === nothing) && emin > 10 * reltol &&
+    throw(ArgumentError("reltol = $reltol is out of reach for eltype $T: the most accurate parameters give ≈ $(round(emin; sigdigits=2))"))
   tol = max(reltol, 1.5emin)
   best = nothing; bestcost = Inf
   for e1 in outer

@@ -5,13 +5,15 @@ struct PolyKernel{W,P1,T}
   coeffs::NTuple{P1,SVector{W,T}}   # coeffs[k][i]: coefficient of s^(k-1) for support point i
 end
 
-# Least-squares fit at Chebyshev points; the monomial basis is well conditioned on [−1, 1].
+# Least-squares fit at Chebyshev points; the monomial basis is well conditioned on [−1, 1]. Fitted
+# in wide(T), so that the kernel is accurate to the precision of T also beyond Float64.
 PolyKernel(φ, W::Integer, P::Integer; T=Float64) = PolyKernel(φ, Val(W), Val(P), T)
 function PolyKernel(φ, ::Val{W}, ::Val{P}, ::Type{T}) where {W,P,T}
+  R = wide(T)
   ns = 4P
-  s = [cospi((2k - 1) / (2ns)) for k in 1:ns]
+  s = [cospi(R(2k - 1) / (2ns)) for k in 1:ns]
   V = [sk^k for sk in s, k in 0:P]
-  B = [φ(1 + i - W / 2 - (sk + 1) / 2) for sk in s, i in 0:W-1]
+  B = [φ(1 + i - R(W) / 2 - (sk + 1) / 2) for sk in s, i in 0:W-1]
   C = least_squares!(V, B)
   PolyKernel{W,P + 1,T}(ntuple(k -> SVector{W,T}(view(C, k, :)), Val(P + 1)))
 end
@@ -19,7 +21,7 @@ end
 # The least-squares solution X (n × m) of A X ≈ B for A (r × n, r ≥ n, full rank) by Householder QR;
 # A and B are overwritten. In Julia rather than LAPACK, so that planning needs no BLAS library
 # (the C library of NFFT.jl is shipped without one).
-function least_squares!(A::Matrix{Float64}, B::Matrix{Float64})
+function least_squares!(A::Matrix{R}, B::Matrix{R}) where {R<:AbstractFloat}
   r, n = size(A)
   for j in 1:n
     α = sqrt(sum(abs2, view(A, j:r, j)))
@@ -35,7 +37,7 @@ function least_squares!(A::Matrix{Float64}, B::Matrix{Float64})
   end
   X = B[1:n, :]
   for c in axes(X, 2), j in n:-1:1          # back substitution with R = triu(A[1:n, :])
-    X[j, c] = (X[j, c] - sum(A[j, l] * X[l, c] for l in j+1:n; init=0.0)) / A[j, j]
+    X[j, c] = (X[j, c] - sum(A[j, l] * X[l, c] for l in j+1:n; init=zero(R))) / A[j, j]
   end
   X
 end
@@ -48,9 +50,9 @@ make_kernel(φ, ::Val{W}, ::Type{T}) where {W,T} = SymKernel(PolyKernel(φ, Val(
 # φ::F: a function that is only passed on is otherwise not specialised on.
 # Dimensions of the same size as the first (the common N × N × N) copy its factors.
 function inv_kernel_ft(φ::F, W, N, Ñ, ::Type{T}, nthreads) where {F,T}
-  inv1 = T.(1 ./ kernel_ft(φ, W, N[1], Ñ[1]; nthreads))
+  inv1 = T.(1 ./ kernel_ft(φ, W, N[1], Ñ[1], wide(T); nthreads))
   ntuple(d -> d == 1 ? inv1 : (N[d], Ñ[d]) == (N[1], Ñ[1]) ? copy(inv1) :
-                      T.(1 ./ kernel_ft(φ, W, N[d], Ñ[d]; nthreads)), length(N))
+                      T.(1 ./ kernel_ft(φ, W, N[d], Ñ[d], wide(T); nthreads)), length(N))
 end
 
 # The window is symmetric: piece W−1−i at s equals piece i at −s. With wᵢ(s) = Eᵢ(s²) + s·Oᵢ(s²)
@@ -88,25 +90,25 @@ end
   end
 end
 
-# Nodes (increasing) and weights of the n-point Gauss–Legendre rule, by Newton's method on the
-# Legendre polynomial P_n (no eigenvalue solver: planning needs no LAPACK).
-function gausslegendre(n)
-  x = zeros(n); w = zeros(n)
+# Nodes (increasing) and weights of the n-point Gauss–Legendre rule in precision R, by Newton's
+# method on the Legendre polynomial P_n (no eigenvalue solver: planning needs no LAPACK).
+function gausslegendre(n, ::Type{R}=Float64) where {R}
+  x = zeros(R, n); w = zeros(R, n)
   for i in 1:cld(n, 2)
-    z = cospi((i - 0.25) / (n + 0.5))
-    dp = 0.0
+    z = cospi((i - R(0.25)) / (n + R(0.5)))
+    dp = zero(R)
     for _ in 1:100
-      p0, p1 = 1.0, z                         # P_{k-1}, P_k
+      p0, p1 = one(R), z                      # P_{k-1}, P_k
       for k in 2:n
         p0, p1 = p1, ((2k - 1) * z * p1 - (k - 1) * p0) / k
       end
-      n == 1 && (p0, p1 = 1.0, z)
+      n == 1 && (p0, p1 = one(R), z)
       dp = n * (z * p1 - p0) / (z^2 - 1)
       dz = p1 / dp
       z -= dz
-      abs(dz) <= 4eps() && break
+      abs(dz) <= 4eps(R) && break
     end
-    p0, p1 = 1.0, z
+    p0, p1 = one(R), z
     for k in 2:n
       p0, p1 = p1, ((2k - 1) * z * p1 - (k - 1) * p0) / k
     end
@@ -117,37 +119,45 @@ function gausslegendre(n)
   x, w
 end
 
-# The rules for the quadrature of the window table (nq = 2W + 20 ≤ 52), computed once.
+# The Float64 rules for the quadrature of the window table (nq = 2W + 20 ≤ 52), computed once.
 const GAUSS_LEGENDRE = [gausslegendre(n) for n in 1:64]
-gauss_legendre_rule(n) = n <= length(GAUSS_LEGENDRE) ? GAUSS_LEGENDRE[n] : gausslegendre(n)
+gauss_legendre_rule(n, ::Type{R}=Float64) where {R} =
+  R === Float64 && n <= length(GAUSS_LEGENDRE) ? GAUSS_LEGENDRE[n] : gausslegendre(n, R)
 
-# φ̂(ξ) = ∫ φ(z) cos(2πξz) dz for ξ = k/Ñ, k = −N÷2 … N−N÷2−1. φ̂ is even and smooth on [0, 1/2], so
-# it is computed by Gauss–Legendre quadrature at nc Chebyshev points and interpolated (Clenshaw)
-# at the N modes; quadrature per mode costs O(N·nq) (130 ms for N = 2^18). 32 points reach the
-# rounding floor of the quadrature itself (≈ 1e-13 relative).
-function kernel_ft(φ::F, W, N, Ñ; nq=2W + 20, nc=32, nthreads=Threads.nthreads()) where {F}
+# Quadrature nodes and Chebyshev points for φ̂ in precision R: 2W + 20 and 32 reach the rounding
+# floor of Float64; a wider R needs more of both, in proportion to its digits.
+digits_ratio(::Type{R}) where {R} = log(eps(R)) / log(eps(Float64))
+default_nq(W, ::Type{R}) where {R} = R === Float64 ? 2W + 20 : ceil(Int, (2W + 20) * digits_ratio(R))
+default_nc(::Type{R}) where {R} = R === Float64 ? 32 : 32 * nextpow(2, ceil(Int, digits_ratio(R)))
+
+# φ̂(ξ) = ∫ φ(z) cos(2πξz) dz for ξ = k/Ñ, k = −N÷2 … N−N÷2−1, in precision R. φ̂ is even and smooth
+# on [0, 1/2], so it is computed by Gauss–Legendre quadrature at nc Chebyshev points and
+# interpolated (Clenshaw) at the N modes; quadrature per mode costs O(N·nq) (130 ms for N = 2^18).
+# In Float64, 32 points reach the rounding floor of the quadrature itself (≈ 1e-13 relative).
+function kernel_ft(φ::F, W, N, Ñ, ::Type{R}=Float64; nq=default_nq(W, R), nc=default_nc(R),
+                   nthreads=Threads.nthreads()) where {F,R}
   ks = -N÷2:N-N÷2-1
   kmax = max(N ÷ 2, N - N ÷ 2 - 1)
-  N <= 4nc && (quad = window_quadrature(φ, W; nq); return [quad(k / Ñ) for k in ks])
+  N <= 4nc && (quad = window_quadrature(φ, W, R; nq); return [quad(R(k) / Ñ) for k in ks])
   N < 2^14 && (nthreads = 1)                # starting the tasks costs more than they save
-  ft = WindowFT(φ, W, kmax / Ñ; nq, nc)
+  ft = WindowFT(φ, W, R(kmax) / Ñ, R; nq, nc)
   # φ̂ is even: evaluated at |k| = 0 … kmax, four modes at a time (the Clenshaw recurrence is a
   # chain of dependent FMAs, latency bound for a single mode)
-  v = Vector{Float64}(undef, kmax + 1)
+  v = Vector{R}(undef, kmax + 1)
   @maybe_threads nthreads for r in chunks(0:kmax, nthreads)
     i = first(r)
     while i + 3 <= last(r)
-      y = ft((i / Ñ, (i + 1) / Ñ, (i + 2) / Ñ, (i + 3) / Ñ))
+      y = ft((R(i) / Ñ, R(i + 1) / Ñ, R(i + 2) / Ñ, R(i + 3) / Ñ))
       for j in 1:4
         v[i+j] = y[j]
       end
       i += 4
     end
     for a in i:last(r)
-      v[a+1] = ft(a / Ñ)
+      v[a+1] = ft(R(a) / Ñ)
     end
   end
-  out = Vector{Float64}(undef, N)
+  out = Vector{R}(undef, N)
   @maybe_threads nthreads for r in chunks(eachindex(ks), nthreads)
     for i in r
       out[i] = v[abs(ks[i])+1]
@@ -156,39 +166,39 @@ function kernel_ft(φ::F, W, N, Ñ; nq=2W + 20, nc=32, nthreads=Threads.nthreads
   out
 end
 
-# ξ ↦ ∫ φ(z) cos(2πξz) dz by Gauss–Legendre quadrature with nq points
-function window_quadrature(φ::F, W; nq=2W + 20) where {F}
-  x, w = gauss_legendre_rule(nq)
-  z = x .* (W / 2); wz = w .* (W / 2) .* φ.(z)
+# ξ ↦ ∫ φ(z) cos(2πξz) dz by Gauss–Legendre quadrature with nq points in precision R
+function window_quadrature(φ::F, W, ::Type{R}=Float64; nq=default_nq(W, R)) where {F,R}
+  x, w = gauss_legendre_rule(nq, R)
+  z = x .* (R(W) / 2); wz = w .* (R(W) / 2) .* φ.(z)
   ξ -> sum(wz[q] * cospi(2ξ * z[q]) for q in eachindex(z))
 end
 
 # φ̂ on [0, ξmax] as a Chebyshev interpolant of degree nc − 1 of the quadrature
-struct WindowFT
-  c::Vector{Float64}
-  ξmax::Float64
+struct WindowFT{R}
+  c::Vector{R}
+  ξmax::R
 end
-function WindowFT(φ::F, W, ξmax; nq=2W + 20, nc=32) where {F}
-  quad = window_quadrature(φ, W; nq)
-  θ = [π * (j - 0.5) / nc for j in 1:nc]
-  fv = [quad(ξmax * (cos(t) + 1) / 2) for t in θ]
-  c = [2 / nc * sum(fv[j] * cos(m * θ[j]) for j in 1:nc) for m in 0:nc-1]
+function WindowFT(φ::F, W, ξmax, ::Type{R}=Float64; nq=default_nq(W, R), nc=default_nc(R)) where {F,R}
+  quad = window_quadrature(φ, W, R; nq)
+  θ = [R(π) * (j - R(0.5)) / nc for j in 1:nc]
+  fv = [quad(R(ξmax) * (cos(t) + 1) / 2) for t in θ]
+  c = [R(2) / nc * sum(fv[j] * cos(m * θ[j]) for j in 1:nc) for m in 0:nc-1]
   c[1] /= 2
-  WindowFT(c, ξmax)
+  WindowFT{R}(c, R(ξmax))
 end
-function (ft::WindowFT)(ξ)
+function (ft::WindowFT{R})(ξ) where {R}
   c = ft.c
   y = 2ξ / ft.ξmax - 1
-  b1 = 0.0; b2 = 0.0
+  b1 = zero(R); b2 = zero(R)
   for m in length(c):-1:2
     b1, b2 = muladd(2y, b1, -b2) + c[m], b1
   end
   muladd(y, b1, -b2) + c[1]
 end
-function (ft::WindowFT)(ξ::NTuple{L,Float64}) where {L}
+function (ft::WindowFT{R})(ξ::NTuple{L,R}) where {L,R}
   c = ft.c
   y = map(x -> 2x / ft.ξmax - 1, ξ)
-  b1 = map(_ -> 0.0, ξ); b2 = b1
+  b1 = map(_ -> zero(R), ξ); b2 = b1
   for m in length(c):-1:2
     b1, b2 = map((y, b1, b2) -> muladd(2y, b1, -b2) + c[m], y, b1, b2), b1
   end

@@ -67,10 +67,10 @@ AbstractNFFTs.accuracy(p::Union{DirectPlan,NNDFTPlan}) = 0.0
 
 # Matrix entry for node j and input index I (a CartesianIndex, or a source index for the NNDFT).
 entry(p::NDFTPlan{T,D}, j, I) where {T,D} =
-  cispi(-2 * sum(ntuple(d -> Float64(p.k[d, j]) * (I[d] - 1 - p.N[d] ÷ 2), Val(D))))
-entry(p::NDCTPlan{T,D}, j, I) where {T,D} = prod(ntuple(d -> cospi(2 * Float64(p.k[d, j]) * (I[d] - 1)), Val(D)))
-entry(p::NDSTPlan{T,D}, j, I) where {T,D} = prod(ntuple(d -> sinpi(2 * Float64(p.k[d, j]) * I[d]), Val(D)))
-entry(p::NNDFTPlan, j, l) = cispi(-2 * sum(d -> Float64(p.k[d, j]) * p.y[d, l], axes(p.k, 1)))
+  cispi(-2 * sum(ntuple(d -> wide(T)(p.k[d, j]) * (I[d] - 1 - p.N[d] ÷ 2), Val(D))))
+entry(p::NDCTPlan{T,D}, j, I) where {T,D} = prod(ntuple(d -> cospi(2 * wide(T)(p.k[d, j]) * (I[d] - 1)), Val(D)))
+entry(p::NDSTPlan{T,D}, j, I) where {T,D} = prod(ntuple(d -> sinpi(2 * wide(T)(p.k[d, j]) * I[d]), Val(D)))
+entry(p::NNDFTPlan{T}, j, l) where {T} = cispi(-2 * sum(d -> wide(T)(p.k[d, j]) * p.y[d, l], axes(p.k, 1)))
 
 indices(p::DirectPlan) = CartesianIndices(p.N)
 indices(p::NNDFTPlan) = 1:p.N

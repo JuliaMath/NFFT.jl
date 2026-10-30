@@ -91,12 +91,27 @@ function model_cost(::Type{S}, ::Type{T}, W, M, J, D) where {S,T}
   x
 end
 
+# Beyond the table, W = 17…48, for element types wider than Float64 or an explicit W: the continuous
+# Kaiser–Bessel window with the analytic shape parameter β = πW(1 − 1/(2σ)) (Potts & Tasche 2021; at
+# W = 12, σ = 2 its aliasing estimate is 4 % above that of the optimised β). The estimate, computed as
+# for the table but in BigFloat (256 bits) for W = 12…48 and σ = 1.5, 2, 2.5, is
+# exp(r − πW√(1 − 1/σ)) with r between 0.7 and 2.03; est_rms takes r = log 8, at most 4× too large.
+const EXTENDED_W = 17:48
+const EXTENDED_σ = 1.5:0.25:2.5
+function extended_entry(W, σ)
+  β = π * W * (1 - 1 / (2σ))
+  KernelEntry(KaiserBessel(), W, Float64(σ), β, NaN, 8 * exp(-π * W * sqrt(1 - 1 / σ)),
+              amplification(KaiserBessel(), W, σ, β, NaN))
+end
+const EXTENDED_KERNELS = [extended_entry(W, σ) for σ in EXTENDED_σ for W in EXTENDED_W]
+
 # Measured relative error ≈ est_rms·√D·(1…1.5); 1.5·√D is about the 90 % quantile over table entries.
 window_error(e::KernelEntry, D) = e.est_rms * sqrt(D) * 1.5
 
-# Rounding floor: node coordinates in Float64 limit the phase to ≈ eps(Float64)·max(N), the
-# working precision T adds ≈ 5·eps(T) (FFT, summation).
-error_floor(N, ::Type{T}) where {T} = 0.5 * eps(Float64) * maximum(N) + 5 * eps(T)
+# Rounding floor: grid positions in wide(T) limit the phase to ≈ eps(wide(T))·max(N) (position_floor),
+# the working precision T adds ≈ 5·eps(T) (FFT, summation).
+position_floor(N, ::Type{T}) where {T} = 0.5 * Float64(eps(wide(T))) * maximum(N)
+error_floor(N, ::Type{T}) where {T} = position_floor(N, T) + 5 * Float64(eps(T))
 
 predicted_error(e::KernelEntry, N::NTuple{D,Int}, ::Type{T}) where {D,T} =
   window_error(e, D) + error_floor(N, T) + 10 * eps(T) * e.amp
@@ -151,17 +166,11 @@ end
 # selects the cost model.
 function choose_kernels(reltol, N::NTuple{D,Int}, J, ::Type{T}; window=:auto, W=nothing, σ=nothing, Ncost=N,
                         n=1, storage=Array) where {D,T}
-  cands = filter(KERNEL_TABLE) do e
-    (window === :auto || e.window == window) && (W === nothing || e.W == W)
-  end
-  if σ !== nothing
-    isempty(cands) || (σtab = argmin(s -> abs(s - σ), unique(e.σ for e in cands));
-                       cands = filter(e -> e.σ == σtab, cands))
-  end
-  isempty(cands) && throw(ArgumentError("no table entry for window = $window, W = $W, σ = $σ"))
-  # below what any candidate reaches: take the most accurate
+  cands = kernel_candidates(window, W, σ, T)
   err = [predicted_error(e, N, T) for e in cands]
-  tol = max(reltol, minimum(err))
+  emin = minimum(err)
+  (W === nothing || σ === nothing) && check_reach(emin - position_floor(N, T), reltol, N, T, window, W, σ)
+  tol = max(reltol, emin)
   ok = cands[err .<= tol]
   # the cost once per entry: it searches the next FFT-friendly grid size. A loop: a closure over
   # `storage` (an abstract `Type`) does not infer, and juliac --trim rejects it.
@@ -170,8 +179,38 @@ function choose_kernels(reltol, N::NTuple{D,Int}, J, ::Type{T}; window=:auto, W=
     cost[i] = kernel_cost(e, Ncost, J, storage, T)
   end
   best = ok[cheapest(cost, n)]
-  if σ !== nothing
-    best = [KernelEntry(e.window, e.W, Float64(σ), e.β, e.e0, e.est_rms, e.amp) for e in best]
+  σ === nothing ? [(e, predicted_error(e, N, T)) for e in best] :
+                  [(with_σ(e, σ), predicted_error(e, N, T)) for e in best]
+end
+
+# Table entries for the user's window, W and σ (the nearest tabulated σ); the extension beyond the
+# table for an explicit W > 16 or an element type wider than Float64.
+function kernel_candidates(window, W, σ, ::Type{T}) where {T}
+  extend = (W !== nothing && W in EXTENDED_W) || eps(T) < eps(Float64)
+  cands = filter(extend ? vcat(KERNEL_TABLE, EXTENDED_KERNELS) : KERNEL_TABLE) do e
+    (window === :auto || e.window == window) && (W === nothing || e.W == W)
   end
-  [(e, predicted_error(e, N, T)) for e in best]
+  if σ !== nothing && !isempty(cands)
+    σtab = argmin(s -> abs(s - σ), unique(e.σ for e in cands))
+    cands = filter(e -> e.σ == σtab, cands)
+  end
+  isempty(cands) && throw(ArgumentError("no kernel for window = $window, W = $W, σ = $σ"))
+  cands
+end
+
+# Entry e with the user's σ: the extension takes the analytic β for it, a table entry keeps the
+# shape parameters of the nearest tabulated σ.
+with_σ(e::KernelEntry, σ) = e.W in EXTENDED_W ? extended_entry(e.W, σ) :
+  KernelEntry(e.window, e.W, Float64(σ), e.β, e.e0, e.est_rms, e.amp)
+
+# A reltol out of reach throws (only checked unless the user fixed both W and σ). The predicted
+# error is conservative (measured errors 3–10× below), so only a predicted error above 10·reltol
+# counts as out of reach; up to that, the most accurate candidate is taken. `reach` leaves out the
+# rounding floor of the node positions: it depends on N, not on the parameters, and the interface
+# contract allows it (≈ eps·max(N)).
+function check_reach(reach, reltol, N, ::Type{T}, window, W, σ) where {T}
+  reach > 10 * reltol || return nothing
+  restricted = window === :auto && W === nothing && σ === nothing ? "" : ", window = $(repr(window)), W = $W, σ = $σ"
+  throw(ArgumentError("reltol = $reltol is out of reach for eltype $T, N = $N$restricted: the most accurate " *
+                      "parameters give ≈ $(round(reach; sigdigits=2))"))
 end

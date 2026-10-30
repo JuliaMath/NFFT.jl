@@ -6,7 +6,7 @@ using PrecompileTools: @setup_workload, @compile_workload
 @setup_workload begin
   sizes = ((256,), (24, 24), (10, 10, 10))
   @compile_workload begin
-    for T in (Float32, Float64), N in sizes, reltol in (1e-8, 1e-4)
+    for T in (Float32, Float64), N in sizes, reltol in (T == Float32 ? 1e-6 : 1e-8, 1e-4)
       D = length(N)
       k = rand(T, D, 200) .- T(1 // 2)
       p = plan_nfft(NFFTBackend(), k, N; reltol)    # __init__ (activation) has not run yet

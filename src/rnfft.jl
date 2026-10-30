@@ -33,8 +33,8 @@ end
 # Correction factors: dimension 1 for the modes n₁ = 0 … N₁÷2, the others as in the NFFT.
 function rnfft_invphi(φ::F, W, N::NTuple{D,Int}, Ñ, ::Type{T}, nthreads) where {F,D,T}
   Nh = N[1] ÷ 2 + 1
-  phi1 = kernel_ft(φ, W, 2Nh, Ñ[1]; nthreads)[Nh+1:2Nh]          # modes −Nh…Nh−1, keep 0…Nh−1
-  ntuple(d -> d == 1 ? T.(1 ./ phi1) : T.(1 ./ kernel_ft(φ, W, N[d], Ñ[d]; nthreads)), D)
+  phi1 = kernel_ft(φ, W, 2Nh, Ñ[1], wide(T); nthreads)[Nh+1:2Nh]  # modes −Nh…Nh−1, keep 0…Nh−1
+  ntuple(d -> d == 1 ? T.(1 ./ phi1) : T.(1 ./ kernel_ft(φ, W, N[d], Ñ[d], wide(T); nthreads)), D)
 end
 
 # The c2r/r2c transforms along dimension 1 are FFTW plans: the RNFFT needs the FFTW backend.

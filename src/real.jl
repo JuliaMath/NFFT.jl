@@ -157,9 +157,9 @@ end
 function real_factors(::Val{S}, φ::Fφ, W, N::NTuple{D,Int}, Ñv, ::Type{T}, nthreads) where {S,D,Fφ,T}
   phihat = ntuple(D) do d
     if S === :cos
-      kernel_ft(φ, W, 2N[d], Ñv[d]; nthreads)[N[d]+1:2N[d]]
+      kernel_ft(φ, W, 2N[d], Ñv[d], wide(T); nthreads)[N[d]+1:2N[d]]
     else
-      kernel_ft(φ, W, 2N[d] + 2, Ñv[d]; nthreads)[N[d]+3:2N[d]+2]
+      kernel_ft(φ, W, 2N[d] + 2, Ñv[d], wide(T); nthreads)[N[d]+3:2N[d]+2]
     end
   end
   cadj = map(p -> T.(1 ./ (2 .* p)), phihat)
