@@ -316,7 +316,7 @@ end
 
 # the adjoint of the inner NFFT and the resampling at the sources (on the CPU in place, as `spread!`)
 function interpolate!(c::NFFTCore, f, g, inner, fj)
-  adjoint_core!(interior(c.gp, halo(c.W)), inner, fj)
+  adjoint_core!(interior(c.gp, halo(c.W), c.Ñ), inner, fj)
   resample_interior!(c, f)
 end
 interpolate!(c, f, g, inner, fj) = (adjoint_core!(g, inner, fj); resampling_stage!(c, f, g); f)

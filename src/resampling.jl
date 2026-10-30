@@ -206,16 +206,17 @@ resample_adjoint!(gp, K, b::Binned{D}, vals, Ñ, L, bufs, fl=flush!) where {D} =
 # Halo of the padded grid, h = halo(W): fill it periodically from the interior before resampling,
 # fold it back onto the interior after the adjoint resampling. One dimension after the other (this
 # covers edges and corners), threaded over another dimension. `dims` are the dimensions with a halo
-# (2:ndims for the batch-first grid of the batch kernels).
+# (2:ndims for the batch-first grid of the batch kernels), Ñ[d] the grid size along dimension d of
+# gp (points behind the upper halo, see padded_size, are left alone).
 function halo_chunks(gp, d, nthreads, dims)
   nd = ndims(gp)
   nd == 1 && return d, [1:size(gp, 1)]
   e = d != nd ? nd : first(dims) != d ? first(dims) : 1
   e, chunks(1:size(gp, e), nthreads)
 end
-function fill_halo!(gp, h::Tuple, nthreads, dims=1:ndims(gp))
+function fill_halo!(gp, h::Tuple, nthreads, dims=1:ndims(gp); Ñs=size(gp) .- (h[1] + h[2]))
   for d in dims
-    Ñ = size(gp, d) - h[1] - h[2]
+    Ñ = Ñs[d]
     e, cs = halo_chunks(gp, d, nthreads, dims)
     @maybe_threads length(cs) for c in cs
       for I in halo_slab(gp, d, e, c, 1:h[1])
@@ -228,9 +229,9 @@ function fill_halo!(gp, h::Tuple, nthreads, dims=1:ndims(gp))
   end
   gp
 end
-function fold_halo!(gp, h::Tuple, nthreads, dims=1:ndims(gp))
+function fold_halo!(gp, h::Tuple, nthreads, dims=1:ndims(gp); Ñs=size(gp) .- (h[1] + h[2]))
   for d in reverse(dims)
-    Ñ = size(gp, d) - h[1] - h[2]
+    Ñ = Ñs[d]
     e, cs = halo_chunks(gp, d, nthreads, dims)
     @maybe_threads length(cs) for c in cs
       for I in halo_slab(gp, d, e, c, 1:h[1])
@@ -248,5 +249,6 @@ halo_slab(gp::AbstractArray{T,N}, d, e, c, r) where {T,N} =
   CartesianIndices(ntuple(i -> i == d ? r : i == e ? c : (1:size(gp, i)), Val(N)))
 @inline shift(I::CartesianIndex{N}, d, s) where {N} = I + CartesianIndex(ntuple(i -> i == d ? s : 0, Val(N)))
 interior(gp, h::Tuple) = view(gp, map(n -> h[1]+1:n-h[2], size(gp))...)
+interior(gp, h::Tuple, Ñ) = view(gp, map(n -> h[1]+1:h[1]+n, Ñ)...)
 # the batch-first grid: all of dimension 1
 interior_b(gp, h::Tuple) = view(gp, :, map(n -> h[1]+1:n-h[2], Base.tail(size(gp)))...)

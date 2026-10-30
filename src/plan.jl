@@ -10,7 +10,7 @@ struct NFFTCore{D,K<:SymKernel,T,Tk,PF<:PassFFT,PB<:PassFFT,FB<:Union{Nothing,Ab
   kernel::K
   invphi::NTuple{D,Vector{T}}
   binned::Binned{D,Tk}
-  gp::Array{Complex{T},D}           # padded grid, Ñ .+ W
+  gp::Array{Complex{T},D}           # padded grid, padded_size(Ñ, W)
   fwd::PF                           # FFT passes of the backend
   bwd::PB
   locks::TileLocks{D}
@@ -28,8 +28,8 @@ function NFFTCore(k::AbstractMatrix, N::NTuple{D,Int}, Ñ::NTuple{D,Int}, W, φ:
   invphi = fft === nothing ? ntuple(_ -> T[], D) : inv_kernel_ft(φ, W, N, Ñ, T, nthreads)
   B = B === nothing ? default_tile(D, W) : B
   h = halo(W)
-  gp = Array{Complex{T}}(undef, Ñ .+ W)         # zeroed by every transform
-  g = interior(gp, h)
+  gp = Array{Complex{T}}(undef, padded_size(Ñ, W))   # zeroed by every transform
+  g = interior(gp, h, Ñ)
   binned = @stage :sort Binned(k, Ñ, B, nthreads)
   NFFTCore(N, Ñ, W, B, K, invphi, binned, gp,
            PassFFT(fft, g, N, Val(:fwd); nthreads), PassFFT(fft, g, N, Val(:bwd); nthreads),
@@ -38,20 +38,20 @@ function NFFTCore(k::AbstractMatrix, N::NTuple{D,Int}, Ñ::NTuple{D,Int}, W, φ:
 end
 
 function trafo_core!(out, c::NFFTCore, f)
-  h = halo(c.W); g = interior(c.gp, h)
+  h = halo(c.W); g = interior(c.gp, h, c.Ñ)
   @stage :zero threaded_fill!(c.gp, 0, c.nthreads)
   @stage :correction resampling_correction_core!(g, f, c.invphi, c.N, c.Ñ, c.nthreads)
   @stage :fft apply!(c.fwd, g)
-  @stage :halo fill_halo!(c.gp, h, c.nthreads)
+  @stage :halo fill_halo!(c.gp, h, c.nthreads; Ñs=c.Ñ)
   @stage :resampling resample!(out, c.gp, c.kernel, c.binned, c.Ñ, c.bufs)
   out
 end
 
 function adjoint_core!(f, c::NFFTCore, vals)
-  h = halo(c.W); g = interior(c.gp, h)
+  h = halo(c.W); g = interior(c.gp, h, c.Ñ)
   @stage :zero threaded_fill!(c.gp, 0, c.nthreads)
   @stage :resampling resample_adjoint!(c.gp, c.kernel, c.binned, vals, c.Ñ, c.locks, c.bufs)
-  @stage :halo fold_halo!(c.gp, h, c.nthreads)
+  @stage :halo fold_halo!(c.gp, h, c.nthreads; Ñs=c.Ñ)
   @stage :fft apply!(c.bwd, g)
   @stage :correction resampling_correction_adjoint_core!(f, g, c.invphi, c.N, c.Ñ, c.nthreads)
   f
@@ -153,7 +153,7 @@ Base.copy(t::TrailCore) = TrailCore(copy(t.core), similar(t.fbuf), similar(t.gbu
 # grid, FFT plans, locks and buffers, so that copies can run concurrently.
 function copy_core(c::NFFTCore{D,K,T}, nthreads) where {D,K,T}
   gp = similar(c.gp)
-  g = interior(gp, halo(c.W))
+  g = interior(gp, halo(c.W), c.Ñ)
   NFFTCore(c.N, c.Ñ, c.W, c.B, c.kernel, c.invphi, c.binned, gp,
            PassFFT(c.fft, g, c.N, Val(:fwd); nthreads), PassFFT(c.fft, g, c.N, Val(:bwd); nthreads),
            TileLocks(size(gp), c.B), task_buffers(Complex{T}, size(c.bufs[1]), nthreads), c.fft, nthreads)
@@ -207,7 +207,7 @@ function correction_stage!(c::NFFTCore, g, f)
 end
 
 function resampling_stage!(c, fHat, g)
-  threaded_copy!(interior(c.gp, halo(c.W)), g, c.nthreads)
+  threaded_copy!(interior(c.gp, halo(c.W), c.Ñ), g, c.nthreads)
   resample_interior!(c, fHat)
 end
 
@@ -217,7 +217,7 @@ resampling_adjoint_stage!(c, g, fHat) = threaded_copy!(g, resample_adjoint_inter
 # interior of the padded grid, and adjoint resampling into it (returns the interior as a view). The
 # NNFFT uses them to pass the grid to its inner NFFT without a copy.
 function resample_interior!(c, fHat)
-  fill_halo!(c.gp, halo(c.W), c.nthreads)
+  fill_halo!(c.gp, halo(c.W), c.nthreads; Ñs=c.Ñ)
   resample!(fHat, c.gp, c.kernel, c.binned, c.Ñ, c.bufs)
 end
 
@@ -225,8 +225,8 @@ function resample_adjoint_interior!(c, fHat)
   h = halo(c.W)
   threaded_fill!(c.gp, 0, c.nthreads)
   resample_adjoint!(c.gp, c.kernel, c.binned, fHat, c.Ñ, c.locks, c.bufs)
-  fold_halo!(c.gp, h, c.nthreads)
-  interior(c.gp, h)
+  fold_halo!(c.gp, h, c.nthreads; Ñs=c.Ñ)
+  interior(c.gp, h, c.Ñ)
 end
 
 correction_adjoint_stage!(c::NFFTCore, f, g) =

@@ -64,7 +64,7 @@ end
 function ablated_core(c::NFFTCore{D,KS,T}, k, a=ABLATION[]) where {D,KS,T}
   c.fft isa FFTWBackend || throw(ArgumentError("the ablation switches need FFTWBackend"))
   if a.fft !== :passes
-    g = interior(c.gp, halo(c.W))
+    g = interior(c.gp, halo(c.W), c.Ñ)
     c = NFFTCore(c.N, c.Ñ, c.W, c.B, c.kernel, c.invphi, c.binned, c.gp,
                  ablated_fft(a.fft, c.fft, g, c.N, Val(:fwd), c.nthreads),
                  ablated_fft(a.fft, c.fft, g, c.N, Val(:bwd), c.nthreads), c.locks, c.bufs, c.fft, c.nthreads)
@@ -184,12 +184,12 @@ end
 
 function trafo_core!(out, a::AblatedCore, f)
   c = a.core; s = a.switches
-  h = halo(c.W); g = interior(c.gp, h)
+  h = halo(c.W); g = interior(c.gp, h, c.Ñ)
   @stage :zero threaded_fill!(c.gp, 0, c.nthreads)
   @stage :correction resampling_correction_core!(g, f, c.invphi, c.N, c.Ñ, c.nthreads)
   @stage :fft apply!(c.fwd, g)
   if s.halo
-    @stage :halo fill_halo!(c.gp, h, c.nthreads)
+    @stage :halo fill_halo!(c.gp, h, c.nthreads; Ñs=c.Ñ)
   else
     STAGE_TIMES[findfirst(==(:halo), STAGES)] = 0
   end
@@ -208,7 +208,7 @@ end
 
 function adjoint_core!(f, a::AblatedCore, vals)
   c = a.core; s = a.switches
-  h = halo(c.W); g = interior(c.gp, h)
+  h = halo(c.W); g = interior(c.gp, h, c.Ñ)
   @stage :zero threaded_fill!(c.gp, 0, c.nthreads)
   @stage :resampling begin
     fl = s.flush === :globallock ? flush_global! : s.flush === :atomic ? flush_atomic! :
@@ -223,7 +223,7 @@ function adjoint_core!(f, a::AblatedCore, vals)
     end
   end
   if s.halo
-    @stage :halo fold_halo!(c.gp, h, c.nthreads)
+    @stage :halo fold_halo!(c.gp, h, c.nthreads; Ñs=c.Ñ)
   else
     STAGE_TIMES[findfirst(==(:halo), STAGES)] = 0
   end

@@ -98,6 +98,17 @@
       @test norm(p * f - ref * f) / norm(ref * f) < 1e-7
       @test norm(adjoint(p) * fHat - adjoint(ref) * fHat) / norm(adjoint(ref) * fHat) < 1e-7
     end
+    # Ñ + W a multiple of 8: the padded grid gets 4 extra points (padded_size)
+    p = plan_nfft(k, N; window=KaiserBessel(), W=10, σ=1.6, gridsize=(54, 46), nthreads=3)
+    @test size(p.core.gp) == (68, 56)
+    @test norm(p * f - ref * f) / norm(ref * f) < 1e-7
+    @test norm(adjoint(p) * fHat - adjoint(ref) * fHat) / norm(adjoint(ref) * fHat) < 1e-7
+    k3 = rand(rng, 3, 400) .- 0.5; f3 = randn(rng, ComplexF64, 12, 10, 14); v3 = randn(rng, ComplexF64, 400)
+    ref3 = NDFTPlan(k3, (12, 10, 14))
+    p = plan_nfft(k3, (12, 10, 14); window=KaiserBessel(), W=10, σ=2.0, gridsize=(30, 22, 30), nthreads=3)
+    @test size(p.core.gp) == (44, 36, 40)
+    @test norm(p * f3 - ref3 * f3) / norm(ref3 * f3) < 1e-7
+    @test norm(adjoint(p) * v3 - adjoint(ref3) * v3) / norm(adjoint(ref3) * v3) < 1e-7
     p = plan_nfft(k, N; reltol=1e-6, gridsize=77)
     @test p.core.Ñ == (77, 77)
     @test norm(p * f - ref * f) / norm(ref * f) < 1e-6

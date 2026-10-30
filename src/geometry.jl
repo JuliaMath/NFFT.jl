@@ -1,8 +1,16 @@
 # Grid geometry. The oversampled grid of size Ñ carries a halo of (below, above) = halo(W) points
-# per dimension, so the resampling never wraps indices: the padded grid has Ñ + W points, node l
-# (0-based, periodic) sits at padded index l + fld(W, 2) + 1.
+# per dimension, so the resampling never wraps indices: the padded grid has at least Ñ + W points,
+# node l (0-based, periodic) sits at padded index l + fld(W, 2) + 1.
 
 halo(W) = (fld(W, 2), cld(W, 2))
+
+# Size of the padded grid of an NFFT core: Ñ + W per dimension, plus 4 unused points at the end of
+# each dimension but the last whose length Ñ + W is a multiple of 8. The FFT passes along the
+# other dimensions run over lines whose stride is a product of these lengths; with many factors of
+# two in it, FFTW's ESTIMATE plans lose up to 2.9× through cache set conflicts (4 extra points
+# leave 2² in the stride, so complex Float32 lines stay 32-byte aligned). The extra points lie
+# behind the upper halo, are zeroed with the grid and never read.
+padded_size(Ñ::NTuple{D,Int}, W) where {D} = ntuple(d -> (n = Ñ[d] + W; d < D && n % 8 == 0 ? n + 4 : n), Val(D))
 
 # ⌊x⌋ as Int for x ≥ 0 or integral (there truncation is the floor), without the range check of
 # floor(Int, ·) for IEEE floats; other types take floor (DoubleFloats 1.12 truncates −3.0 to −2).
