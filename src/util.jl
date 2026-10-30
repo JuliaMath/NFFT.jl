@@ -36,7 +36,7 @@ chunks(r, k) = isempty(r) ? typeof(r[1:0])[] :
   [r[i:min(i + cld(length(r), k) - 1, end)] for i in 1:cld(length(r), k):length(r)]
 
 # Working precision of the precomputation (window fit, φ̂, grid positions, NDFT phases): Float64, or
-# T where T is wider (Double64, Float128, BigFloat).
+# T where T is wider (Double64, Float128).
 wide(::Type{T}) where {T} = promote_type(T, Float64)
 
 # Smallest even n′ ≥ n whose prime factors are 2, 3, 5 and 7 (FFT-friendly grid sizes). Looked up

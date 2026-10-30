@@ -1,4 +1,4 @@
-# Element types wider than Float64 with the FFT of FFTA.jl: every transform against the direct sum in
+# Double64 and Float128 with the FFT of FFTA.jl: every transform against the direct sum in
 # the same type at a tolerance far below Float64, and an unreachable tolerance throws. Kernels of
 # width W ≈ 20 compile slowly for Double64, so the sizes stay small and mostly 1D.
 using DoubleFloats, Quadmath
@@ -11,39 +11,37 @@ using DoubleFloats, Quadmath
                        for I in CartesianIndices((N[1] ÷ 2 + 1, Base.tail(N)...))]
   fft = FFTABackend()
 
-  setprecision(BigFloat, 256) do
-    @testset "$T" for (T, tol, unreachable) in ((Double64, 1e-20, 1e-35), (Float128, 1e-20, 1e-38), (BigFloat, 1e-30, 1e-60))
-      rng = Xoshiro(5)
-      N = (16,); J = 20
-      k = T.(rand(rng, 1, J) .- 0.5); kr = abs.(k)
-      f = randn(rng, Complex{T}, N); y = randn(rng, Complex{T}, J); yr = real.(y)
+  @testset "$T" for (T, tol, unreachable) in ((Double64, 1e-20, 1e-35), (Float128, 1e-20, 1e-38))
+    rng = Xoshiro(5)
+    N = (16,); J = 20
+    k = T.(rand(rng, 1, J) .- 0.5); kr = abs.(k)
+    f = randn(rng, Complex{T}, N); y = randn(rng, Complex{T}, J); yr = real.(y)
 
-      p = plan_nfft(k, N; reltol=tol, fft); q = NDFTPlan(k, N)
-      @test p * f isa Vector{Complex{T}}
-      @test relerr(p * f, q * f) <= tol
-      @test relerr(adjoint(p) * y, adjoint(q) * y) <= tol
+    p = plan_nfft(k, N; reltol=tol, fft); q = NDFTPlan(k, N)
+    @test p * f isa Vector{Complex{T}}
+    @test relerr(p * f, q * f) <= tol
+    @test relerr(adjoint(p) * y, adjoint(q) * y) <= tol
 
-      p = plan_rnfft(k, N; reltol=tol, fft); h = randn(rng, Complex{T}, size_in(p))
-      @test relerr(p * h, rdirect(k, N, h)) <= tol
-      @test relerr(adjoint(p) * yr, radjoint(k, N, yr)) <= tol
+    p = plan_rnfft(k, N; reltol=tol, fft); h = randn(rng, Complex{T}, size_in(p))
+    @test relerr(p * h, rdirect(k, N, h)) <= tol
+    @test relerr(adjoint(p) * yr, radjoint(k, N, yr)) <= tol
 
-      for (P, Q) in ((plan_nfct, NDCTPlan), (plan_nfst, NDSTPlan))
-        p = P(kr, N; reltol=tol, fft); q = Q(kr, N); g = randn(rng, T, N)
-        @test relerr(p * g, q * g) <= tol
-        @test relerr(transpose(p) * yr, transpose(q) * yr) <= tol
-      end
-
-      src = T.((rand(rng, 1, J) .- 0.5) .* 8)
-      p = plan_nnfft(k, src; reltol=tol, fft); q = NNDFTPlan(k, src)
-      @test relerr(p * y, q * y) <= tol
-      @test relerr(adjoint(p) * y, adjoint(q) * y) <= tol
-
-      @test_throws ArgumentError plan_nfft(k, N; reltol=unreachable, fft)
-      @test_throws ArgumentError plan_rnfft(k, N; reltol=unreachable, fft)
-      @test_throws ArgumentError plan_nfct(kr, N; reltol=unreachable, fft)
-      @test_throws ArgumentError plan_nfst(kr, N; reltol=unreachable, fft)
-      @test_throws ArgumentError plan_nnfft(k, src; reltol=unreachable, fft)
+    for (P, Q) in ((plan_nfct, NDCTPlan), (plan_nfst, NDSTPlan))
+      p = P(kr, N; reltol=tol, fft); q = Q(kr, N); g = randn(rng, T, N)
+      @test relerr(p * g, q * g) <= tol
+      @test relerr(transpose(p) * yr, transpose(q) * yr) <= tol
     end
+
+    src = T.((rand(rng, 1, J) .- 0.5) .* 8)
+    p = plan_nnfft(k, src; reltol=tol, fft); q = NNDFTPlan(k, src)
+    @test relerr(p * y, q * y) <= tol
+    @test relerr(adjoint(p) * y, adjoint(q) * y) <= tol
+
+    @test_throws ArgumentError plan_nfft(k, N; reltol=unreachable, fft)
+    @test_throws ArgumentError plan_rnfft(k, N; reltol=unreachable, fft)
+    @test_throws ArgumentError plan_nfct(kr, N; reltol=unreachable, fft)
+    @test_throws ArgumentError plan_nfst(kr, N; reltol=unreachable, fft)
+    @test_throws ArgumentError plan_nnfft(k, src; reltol=unreachable, fft)
   end
 
   @testset "Float128 in 2D" begin

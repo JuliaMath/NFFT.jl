@@ -65,9 +65,8 @@ fig
 # with an FFT for them (`fft = FFTABackend()`), reach correspondingly smaller errors: `reltol = 1e-25`
 # with `Double64` gives about ``10^{-26}``, `1e-28` with `Float128` about ``10^{-29}``. Beyond the table
 # (``W > 16``) the plan uses the Kaiser–Bessel window with ``\beta = \pi W (1 - 1/(2\sigma))``, up to
-# ``W = 48``; `BigFloat` (256 bits) reaches ``10^{-40}`` with ``W = 39``. The resampling kernels are
-# unrolled in ``W``: with `Double64` and ``W \approx 30`` in 2D the first transform compiles for
-# minutes. The FFT of FFTA.jl loses accuracy with the length (up to ``0.3 \, n \varepsilon``); the
+# ``W = 40``. The resampling kernels are unrolled in ``W``: with `Double64` and ``W \approx 30`` in 2D
+# the first transform compiles for minutes. The FFT of FFTA.jl loses accuracy with the length (up to ``0.3 \, n \varepsilon``); the
 # predicted error accounts for it.
 
 # ## Window families

@@ -93,12 +93,12 @@ function model_cost(::Type{S}, ::Type{T}, W, M, J, D) where {S,T}
   x
 end
 
-# Beyond the table, W = 17…48, for element types wider than Float64 or an explicit W: the continuous
+# Beyond the table, W = 17…40, for element types wider than Float64 or an explicit W: the continuous
 # Kaiser–Bessel window with the analytic shape parameter β = πW(1 − 1/(2σ)) (Potts & Tasche 2021; at
 # W = 12, σ = 2 its aliasing estimate is 4 % above that of the optimised β). The bound est_wc, computed
 # as for the table but in BigFloat (256 bits) for W = 12…48 and σ = 1.5, 2, 2.5, is
 # exp(r − πW√(1 − 1/σ)) with r between 2.98 and 4.31; `est` takes r = log 80.
-const EXTENDED_W = 17:48
+const EXTENDED_W = 17:40    # Float128 reaches its rounding floor (≈ 1e-33) at W ≈ 33
 const EXTENDED_σ = 1.5:0.25:2.5
 function extended_entry(W, σ)
   β = π * W * (1 - 1 / (2σ))
