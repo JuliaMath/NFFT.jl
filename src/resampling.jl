@@ -59,10 +59,17 @@ end
   g
 end
 
-# Resampling from a private copy of each tile with its halo: read directly from the global grid,
-# the time depends on the grid strides through cache set conflicts (3D, W = 10: 8.3–13.7 ms for
-# Ñ = 96…128); from the compact buffer it does not.
-function resample!(out, gp, K::SymKernel{W}, b::Binned{D}, Ñ, bufs, cp=tile_copy!) where {W,D}
+# Resampling from a private copy of each tile with its halo, or directly from the padded grid for
+# tiles with few nodes. Read directly, the time depends on the grid strides through cache set
+# conflicts (3D, W = 10: 8.3–13.7 ms for Ñ = 96…128); from the compact buffer it does not, but the
+# copy of E^D points (E = B + W + 1) is paid per tile. A tile with n nodes reads n·W^D grid points;
+# below 4 E^D of them reading directly was never slower than the copy over 1D–3D, W = 8 and 16,
+# σ = 1.25 and 2, Float64 and Float32, 1 and 8 threads (0.2–1.0× the resampling time; above it up to
+# 1.6× slower where the strides conflict). With uniform nodes this is the low density end (2D, W = 8,
+# σ = 2: ρ < 0.3; 3D, W = 16, σ = 1.25: ρ < 0.04).
+direct_below(::SymKernel{W}, bufs::Vector{<:AbstractArray{<:Any,D}}) where {W,D} = 4 * length(bufs[1]) ÷ W^D
+
+function resample!(out, gp, K::SymKernel{W}, b::Binned{D}, Ñ, bufs, cp=tile_copy!; direct=direct_below(K, bufs)) where {W,D}
   ntile = length(b.tileptr) - 1
   next = Threads.Atomic{Int}(1)
   tasks(min(length(bufs), ntile)) do it
@@ -72,11 +79,15 @@ function resample!(out, gp, K::SymKernel{W}, b::Binned{D}, Ñ, bufs, cp=tile_cop
       t = b.order1[i]
       r = b.tileptr[t]:b.tileptr[t+1]-1
       isempty(r) && continue
-      o = b.origins[t]
-      cp(buf, gp, o)
+      if length(r) < direct
+        g, o = gp, ntuple(_ -> 0, Val(D))
+      else
+        g, o = buf, b.origins[t]
+        cp(buf, gp, o)
+      end
       @inbounds for q in r
         sw = map(@inline((x, n) -> support(K, x, n)), b.xs[q], Ñ)
-        out[b.perm[q]] = resample_node(buf, map(first, sw) .- o, map(last, sw))
+        out[b.perm[q]] = resample_node(g, map(first, sw) .- o, map(last, sw))
       end
     end
   end

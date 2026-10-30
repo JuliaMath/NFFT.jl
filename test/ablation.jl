@@ -3,7 +3,7 @@
 
 @testset "Ablation switches" begin
   rng = Xoshiro(5)
-  switches = [(fft=:full,), (fft=:unpruned,), (fft=:pruned_fftw,), (interp=:global,), (halo=false,),
+  switches = [(fft=:full,), (fft=:unpruned,), (fft=:pruned_fftw,), (interp=:global,), (interp=:buffer,), (halo=false,),
               (flush=:globallock,), (flush=:atomic,), (halo=false, flush=:atomic), (flush=:reentrant,),
               (halo=false, flush=:reentrant), (window=:fullhorner,), (coords=:permutation,), (rowdot2=false,),
               (prefetch=false,), (slide=false,), (schedule=:chunks,), (bufs=:pertile,),

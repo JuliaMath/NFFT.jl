@@ -9,8 +9,9 @@
 #   multidimensional FFTW plan of the whole grid with FFTW's threads), `:unpruned` (per-dimension
 #   passes over the whole grid, threaded by NFFT.jl), `:pruned_fftw` (the pruned boxes one after the
 #   other, each an FFTW plan with FFTW's threads)
-# * `interp`: `:buffer` (default: each tile copied into a private buffer), `:global` (read the
-#   padded grid directly)
+# * `interp`: `:auto` (default: tiles with few nodes read the padded grid directly, the others
+#   are copied into a private buffer, see resample!; every tile with `halo = false`), `:buffer`
+#   (every tile copied), `:global` (read the padded grid directly)
 # * `halo`: `true` (default: halo filled before and folded after the resampling), `false` (no halo
 #   fill or fold; the periodic wrap is resolved in the tile copy and in the flush)
 # * `flush`: `:tilelocks` (default: one lock per overlapped lock tile), `:globallock` (one SpinLock
@@ -28,7 +29,7 @@
 #   `:chunks` (the tiles with dimension 1 fastest, split into one contiguous chunk per task)
 # * `bufs`: `:pertask` (default: one private buffer per task), `:pertile` (one buffer per tile,
 #   allocated with the plan)
-const ABLATION_DEFAULT = (fft=:passes, interp=:buffer, halo=true, flush=:tilelocks, window=:evenodd,
+const ABLATION_DEFAULT = (fft=:passes, interp=:auto, halo=true, flush=:tilelocks, window=:evenodd,
                           coords=:sorted, rowdot2=true, prefetch=true, slide=true, schedule=:dynamic,
                           bufs=:pertask)
 const ABLATION = Ref(ABLATION_DEFAULT)
@@ -37,7 +38,7 @@ function ablate!(; kwargs...)
   a = merge(ABLATION_DEFAULT, values(kwargs))
   keys(a) == keys(ABLATION_DEFAULT) || throw(ArgumentError("unknown ablation switch in $(keys(kwargs))"))
   a.fft in (:passes, :full, :unpruned, :pruned_fftw) || throw(ArgumentError("fft = $(a.fft)"))
-  a.interp in (:buffer, :global) || throw(ArgumentError("interp = $(a.interp)"))
+  a.interp in (:auto, :buffer, :global) || throw(ArgumentError("interp = $(a.interp)"))
   a.flush in (:tilelocks, :globallock, :reentrant, :atomic) || throw(ArgumentError("flush = $(a.flush)"))
   a.window in (:evenodd, :fullhorner) || throw(ArgumentError("window = $(a.window)"))
   a.coords in (:sorted, :permutation) || throw(ArgumentError("coords = $(a.coords)"))
@@ -200,7 +201,8 @@ function trafo_core!(out, a::AblatedCore, f)
       ab_resample_global!(out, c.gp, a.kernel, a.xs, c.binned, c.Ñ, length(c.bufs), node, sched)
     else
       cp = s.halo ? tile_copy! : WrapCopy(h[1], c.Ñ)
-      ab_resample!(out, c.gp, a.kernel, a.xs, c.binned, c.Ñ, c.bufs, a.tilebufs, cp, node, sched)
+      direct = s.interp === :auto && s.halo ? direct_below(c.kernel, c.bufs) : 0
+      ab_resample!(out, c.gp, a.kernel, a.xs, c.binned, c.Ñ, c.bufs, a.tilebufs, cp, node, sched, direct)
     end
   end
   out
@@ -234,16 +236,20 @@ end
 
 # resample! of resampling.jl with the kernel K, the coordinates xs, the copy cp, the node function
 # and the schedule as arguments.
-function ab_resample!(out, gp, K, xs, b::Binned{D}, Ñ, bufs, tb, cp, node::F, sched) where {D,F}
+function ab_resample!(out, gp, K, xs, b::Binned{D}, Ñ, bufs, tb, cp, node::F, sched, direct) where {D,F}
   foreach_tile(it -> tb === nothing && fill!(bufs[it], 0), b.order1, length(bufs), sched) do it, t
     r = b.tileptr[t]:b.tileptr[t+1]-1
     isempty(r) && return
-    buf = tilebuf(bufs, tb, it, t)
-    o = b.origins[t]
-    cp(buf, gp, o)
+    if length(r) < direct
+      g, o = gp, ntuple(_ -> 0, Val(D))
+    else
+      g = tilebuf(bufs, tb, it, t)
+      o = b.origins[t]
+      cp(g, gp, o)
+    end
     @inbounds for q in r
       sw = map(@inline((x, n) -> support(K, x, n)), xs[q], Ñ)
-      out[b.perm[q]] = node(buf, map(first, sw) .- o, map(last, sw))
+      out[b.perm[q]] = node(g, map(first, sw) .- o, map(last, sw))
     end
   end
   out
