@@ -5,11 +5,13 @@
   rng = Xoshiro(5)
   switches = [(fft=:full,), (fft=:unpruned,), (fft=:pruned_fftw,), (interp=:global,), (interp=:buffer,), (halo=false,),
               (flush=:globallock,), (flush=:atomic,), (halo=false, flush=:atomic), (flush=:reentrant,),
-              (halo=false, flush=:reentrant), (window=:fullhorner,), (coords=:permutation,), (rowdot2=false,),
+              (halo=false, flush=:reentrant), (halo=false, wrap=:index), (halo=false, wrap=:index, flush=:reentrant),
+              (window=:fullhorner,), (coords=:permutation,), (rowdot2=false,),
               (prefetch=false,), (slide=false,), (schedule=:chunks,), (bufs=:pertile,),
               (schedule=:chunks, bufs=:pertile), (interp=:global, window=:fullhorner, coords=:permutation),
               (fft=:full, flush=:reentrant, halo=false, window=:fullhorner, coords=:permutation, rowdot2=false,
-               prefetch=false, slide=false, schedule=:chunks, bufs=:pertile)]
+               prefetch=false, slide=false, schedule=:chunks, bufs=:pertile),
+              (fft=:full, halo=false, wrap=:index, flush=:reentrant, coords=:permutation, slide=false, schedule=:chunks)]
   for N in ((3000,), (60, 50), (24, 20, 28))
     D = length(N); J = 3000
     k = rand(rng, D, J) .- 0.5
@@ -45,6 +47,8 @@
   @test_throws ArgumentError NFFT.ablate!(fft=:other)
   @test_throws ArgumentError NFFT.ablate!(interp=:global, halo=false)
   @test_throws ArgumentError NFFT.ablate!(schedule=:static)
+  @test_throws ArgumentError NFFT.ablate!(wrap=:index)
+  @test_throws ArgumentError NFFT.ablate!(halo=false, wrap=:other)
   @test_throws ArgumentError NFFT.ablate!(prefetch=:no)
   NFFT.ablate!()
 end

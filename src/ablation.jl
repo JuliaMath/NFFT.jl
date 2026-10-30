@@ -14,6 +14,9 @@
 #   (every tile copied), `:global` (read the padded grid directly)
 # * `halo`: `true` (default: halo filled before and folded after the resampling), `false` (no halo
 #   fill or fold; the periodic wrap is resolved in the tile copy and in the flush)
+# * `wrap` (only with `halo = false`): `:copy` (default: the wrap resolved in the tile copy and in
+#   the flush), `:index` (the trafo reads the padded grid directly with the wrap resolved per index,
+#   no tile copy; the adjoint as `:copy`, private buffers flushed with the wrap)
 # * `flush`: `:tilelocks` (default: one lock per overlapped lock tile), `:globallock` (one SpinLock
 #   for all flushes), `:reentrant` (one ReentrantLock for all flushes, taken once per buffer),
 #   `:atomic` (no lock, atomic adds)
@@ -29,7 +32,7 @@
 #   `:chunks` (the tiles with dimension 1 fastest, split into one contiguous chunk per task)
 # * `bufs`: `:pertask` (default: one private buffer per task), `:pertile` (one buffer per tile,
 #   allocated with the plan)
-const ABLATION_DEFAULT = (fft=:passes, interp=:auto, halo=true, flush=:tilelocks, window=:evenodd,
+const ABLATION_DEFAULT = (fft=:passes, interp=:auto, halo=true, wrap=:copy, flush=:tilelocks, window=:evenodd,
                           coords=:sorted, rowdot2=true, prefetch=true, slide=true, schedule=:dynamic,
                           bufs=:pertask)
 const ABLATION = Ref(ABLATION_DEFAULT)
@@ -47,6 +50,8 @@ function ablate!(; kwargs...)
   all(s -> s isa Bool, (a.halo, a.rowdot2, a.prefetch, a.slide)) ||
     throw(ArgumentError("halo, rowdot2, prefetch and slide are Bool"))
   a.interp === :global && !a.halo && throw(ArgumentError("interp = :global needs the halo"))
+  a.wrap in (:copy, :index) || throw(ArgumentError("wrap = $(a.wrap)"))
+  a.wrap === :index && a.halo && throw(ArgumentError("wrap = :index needs halo = false"))
   ABLATION[] = a
 end
 
@@ -197,7 +202,9 @@ function trafo_core!(out, a::AblatedCore, f)
   @stage :resampling begin
     sched = Val(s.schedule)
     node = s.rowdot2 ? resample_node : resample_node1
-    if s.interp === :global
+    if s.wrap === :index
+      ab_resample_wrap!(out, c.gp, a.kernel, a.xs, c.binned, c.Ñ, h[1], length(c.bufs), node, sched)
+    elseif s.interp === :global
       ab_resample_global!(out, c.gp, a.kernel, a.xs, c.binned, c.Ñ, length(c.bufs), node, sched)
     else
       cp = s.halo ? tile_copy! : WrapCopy(h[1], c.Ñ)
@@ -265,6 +272,41 @@ function ab_resample_global!(out, gp, K, xs, b::Binned{D}, Ñ, ntasks, node::F, 
     end
   end
   out
+end
+
+# Interpolation from the padded grid without its halo (FINUFFT, NFFT3): a node whose support lies
+# inside the interior reads it directly, the others through per-dimension lists of wrapped indices
+# (FINUFFT's interp_*_wrap). Tiles taken as in `ab_resample!`.
+function ab_resample_wrap!(out, gp, K, xs, b::Binned{D}, Ñ, h1, ntasks, node::F, sched) where {D,F}
+  foreach_tile(_ -> nothing, b.order1, ntasks, sched) do it, t
+    @inbounds for q in b.tileptr[t]:b.tileptr[t+1]-1
+      sw = map(@inline((x, n) -> support(K, x, n)), xs[q], Ñ)
+      off = map(first, sw); ws = map(last, sw)
+      out[b.perm[q]] = all(map((o, n, w) -> o >= h1 && o + length(w) <= h1 + n, off, Ñ, ws)) ?
+                       node(gp, off, ws) : resample_node_wrapped(gp, map((o, n, w) -> wrapped(o, n, h1, w), off, Ñ, ws), ws)
+    end
+  end
+  out
+end
+
+# Padded indices of the support o+1 … o+W with the interior index taken modulo Ñ (W < Ñ).
+@inline wrapped(o, Ñ, h1, ::SVector{W}) where {W} =
+  SVector{W,Int}(ntuple(i -> (j = o + i - h1; (j < 1 ? j + Ñ : j > Ñ ? j - Ñ : j) + h1), Val(W)))
+
+# resample_node with the grid indices of each dimension from a list.
+@inline function resample_node_wrapped(g::AbstractArray{C,D}, idx::NTuple{D,SVector{W,Int}},
+                                       ws::NTuple{D,SVector{W,T}}) where {C,D,W,T}
+  s = zero(C)
+  @inbounds for It in CartesianIndices(ntuple(_ -> Base.OneTo(W), Val(D - 1)))
+    wt = prod(ntuple(d -> ws[d+1][It[d]], Val(D - 1)); init=one(T))
+    jt = ntuple(d -> idx[d+1][It[d]], Val(D - 1))
+    acc = zero(C)
+    for i in 1:W
+      acc += ws[1][i] * g[idx[1][i], jt...]
+    end
+    s += wt * acc
+  end
+  s
 end
 
 # spread_nodes! of resampling.jl with the kernel K, the coordinates xs and the prefetch switchable.
