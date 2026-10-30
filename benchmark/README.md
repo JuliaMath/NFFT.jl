@@ -84,3 +84,31 @@ libducc_julia_path = "/path/to/libducc_julia.dylib"
 ```
 
 The library that was loaded is recorded in each row (`lib_library`).
+
+"FINUFFT 2.5" (`envs/finufft25`) is a second FINUFFT for the suite `decomposition`: a build of
+v2.5.1 next to the current one, with its path in `envs/finufft25/LocalPreferences.toml`. Its
+CMake links the shared library with the OpenMP flags as one argument, which clang rejects; link
+the objects by hand:
+
+```
+cmake -S finufft-2.5.1 -B build -DCMAKE_BUILD_TYPE=Release -DFINUFFT_ARCH_FLAGS=-mcpu=native -DFINUFFT_STATIC_LINKING=OFF
+cmake --build build                    # fails at the last link step
+cd build/src && c++ -dynamiclib -o libfinufft.dylib -install_name @rpath/libfinufft.dylib \
+  CMakeFiles/finufft.dir/*.o common/CMakeFiles/finufft_common.dir/*.o \
+  -L/opt/homebrew/opt/fftw/lib -lfftw3 -lfftw3f -lfftw3_omp -lfftw3f_omp -L/opt/homebrew/opt/libomp/lib -lomp
+```
+
+## Suite `decomposition`
+
+Splits a speed ratio NFFT.jl : X into a parameter factor T_jl(rule X)/T_jl(own) and an
+implementation factor T_X/T_jl(rule X). `src/rules.jl` gives, for FINUFFT 2.5.1 and 2.6-dev,
+cuFINUFFT 2.5.1, ducc 0.29, NonuniformFFTs.jl 0.9.8, NFFT3 and mlx-nufft 0.3.3, the window, W and
+grid the library would choose (each rule cites its source); NFFT.jl runs with them through a
+`CustomWindow`. A task with `rule` records the rule's parameters (`rule_*`), what the library
+reports (`rep_*`: the debug output of FINUFFT, ducc's verbose report, the parameters of
+NonuniformFFTs.jl, or the grid NFFT.jl built) and their differences (`rule_dev`). A grid with
+factors 7 or 11 (ducc) rounds up to the next one from {2, 3, 5} in NFFT.jl; `rule_dev` shows it.
+
+```
+julia benchmark/bench.jl run decomposition --rounds 5     # 405 tasks per round
+```

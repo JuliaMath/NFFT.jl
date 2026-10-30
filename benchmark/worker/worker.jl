@@ -14,6 +14,23 @@ struct Unsupported <: Exception
   reason::String
 end
 
+# What a C library prints to stdout while f runs (the debug output of FINUFFT, ducc's verbose report).
+function capture_c(f)
+  path, io = mktemp()
+  r = try
+    redirect_stdout(io) do
+      x = f(); Libc.flush_cstdio(); x
+    end
+  finally
+    close(io)
+  end
+  out = read(path, String); rm(path)
+  r, out
+end
+
+include(joinpath(@__DIR__, "..", "src", "rules.jl"))
+using .Rules
+
 const CFG = TOML.parsefile(ARGS[1])
 include(CFG["adapter"])
 
@@ -70,7 +87,32 @@ function measure(prob::Problem, task)
   merge!(r, params(p))
   get(task, "stages", false) && merge!(r, stages(p, prob))
   release!(p)
+  haskey(task, "rule") && merge!(r, rule_check(prob, task, tol, r))
   r
+end
+
+# Suite `decomposition`: the parameters of the rule (src/rules.jl) next to those the library reports
+# (rep_*: NFFT.jl with the rule's parameters, or the original library's own choice), and the fields
+# where they differ. σ and β of FINUFFT are printed with three digits, hence the relative 1 %.
+function rule_check(prob, task, tol, r)
+  c = Rules.choose(task["rule"], prob.T, prob.N, size(prob.k, 2), tol; threads=Threads.nthreads())
+  out = Dict{String,Any}()
+  for (suffix, ci) in (("", c.trafo), ("_adj", c.adjoint))
+    out["rule_W"*suffix] = ci.W; out["rule_sigma"*suffix] = ci.sigma
+    out["rule_beta"*suffix] = ci.β; out["rule_grid"*suffix] = ci.grid
+  end
+  out["rule_window"] = c.trafo.window
+  rep = haskey(r, "rep_W") ? r : @isdefined(reported) ? reported(prob, tol) : Dict{String,Any}()
+  merge!(out, filter(kv -> startswith(kv[1], "rep_"), rep))
+  dev = String[]
+  for f in ("W", "W_adj", "grid", "grid_adj", "sigma", "sigma_adj", "beta", "beta_adj")
+    haskey(out, "rep_" * f) || continue
+    a, b = out["rep_"*f], out["rule_"*f]
+    same = f in ("sigma", "sigma_adj", "beta", "beta_adj") ? isapprox(a, b; rtol=1e-2) : a == b
+    same || push!(dev, "$f $(a isa Vector ? join(a, "x") : a) ≠ $(b isa Vector ? join(b, "x") : b)")
+  end
+  out["rule_dev"] = join(dev, "; ")
+  out
 end
 
 function main()
@@ -101,8 +143,9 @@ function main()
 end
 
 function progress(r)
+  lib = haskey(r, "rule") && r["lib"] == "NFFT" ? "NFFT[" * r["rule"] * "]" : r["lib"]
   head = @sprintf("  %-14s %-5s D=%d N=%-8d J=%-7d L=%-4d %-9s %-7s t=%-2d tol=%.0e",
-                  r["lib"], r["transform"], length(r["N"]), r["N"][1], r["J"], get(r, "L", 1),
+                  lib, r["transform"], length(r["N"]), r["N"][1], r["J"], get(r, "L", 1),
                   r["nodes"], r["T"], r["threads"], r["tol"])
   if haskey(r, "skipped")
     println(head, "  skipped: ", r["skipped"])

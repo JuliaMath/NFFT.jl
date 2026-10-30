@@ -19,3 +19,8 @@ adjoint!(p, out, y) = NonuniformFFTs.exec_type1!(out, p, y)
 params(p) = Dict{String,Any}("W" => 2NonuniformFFTs.Kernels.half_support(first(p.kernels)), "sigma" => Float64(p.σ))
 
 libinfo() = Dict{String,Any}("version" => string(pkgversion(NonuniformFFTs)), "library" => dirname(dirname(pathof(NonuniformFFTs))))
+
+function reported(prob, tol)
+  q = params(plan(prob, tol))
+  Dict{String,Any}("rep_W" => q["W"], "rep_W_adj" => q["W"], "rep_sigma" => q["sigma"], "rep_sigma_adj" => q["sigma"])
+end

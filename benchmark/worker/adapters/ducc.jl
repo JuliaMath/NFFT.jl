@@ -32,4 +32,18 @@ function adjoint!(p, out, y)
   out
 end
 
+# ducc's own choice (one plan for both directions) from its verbose output: W = supp and the
+# oversampled grid.
+function reported(prob, tol)
+  p = plan(prob, tol)
+  T = prob.T
+  _, out = capture_c(() -> Ducc0.Nufft.u2nu_planned!(p, zeros(Complex{T}, prob.N...), zeros(Complex{T}, size(prob.k, 2));
+                                                     forward=true, verbose=true))
+  m = match(r"oversampled grid=\(([0-9x]+)\), supp=(\d+)", out)
+  m === nothing && return Dict{String,Any}()
+  grid = parse.(Int, split(m[1], "x"))
+  W = parse(Int, m[2])
+  Dict{String,Any}("rep_W" => W, "rep_W_adj" => W, "rep_grid" => grid, "rep_grid_adj" => grid)
+end
+
 libinfo() = Dict{String,Any}("version" => string(pkgversion(Ducc0)), "library" => ducc0_jll.libducc_julia_path)
