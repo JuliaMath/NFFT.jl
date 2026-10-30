@@ -115,15 +115,24 @@ debug output of FINUFFT, ducc's verbose report, the parameters of NonuniformFFTs
 NFFT.jl built) and their differences (`rule_dev`). A revision of NFFT.jl without `gridsize` rounds
 such a grid up to the next one from {2, 3, 5} (`grid_rounded`). `tol_used` is the tolerance a library
 got after its adapter raised or clamped it. NFFT.jl with its own choice runs on half decades of
-tolerance, so that its time can be interpolated at the error each original delivers. The originals
-on FFTW (FINUFFT, NonuniformFFTs.jl) run with both planning flags, ESTIMATE and MEASURE
-(`fft_flag`); every plan starts without FFTW wisdom, so that a measured plan does not speed up later
-ones in the same worker.
+tolerance, so that its time can be interpolated at the error each original delivers. FFT planning
+counts as implementation: every library plans with its own default flag and threading (FINUFFT
+ESTIMATE, NonuniformFFTs.jl MEASURE, NFFT.jl ESTIMATE with its own threaded passes, also under a
+rule). Suite `fftflags` runs the originals on FFTW with both flags on 8 of the cases (`fft_flag`);
+every plan starts without FFTW wisdom, so that a measured plan does not speed up later ones in the
+same worker.
 
 Every row of every suite has `grid` and `grid_adj`, the oversampled grid Ñ per dimension of the trafo
 and the adjoint: from the plan (NFFT.jl, NonuniformFFTs.jl) or from what the library reports (FINUFFT,
 ducc; one more plan outside the timing).
 
 ```
-julia benchmark/bench.jl run decomposition --rounds 5     # 783 tasks per round
+julia benchmark/bench.jl run decomposition --rounds 5     # 711 tasks per round
+julia benchmark/bench.jl run fftflags                      # 96 tasks
 ```
+
+## Suite `contract`
+
+Delivered error against the requested tolerance (`err_trafo`, `err_adj` against `tol`) for every CPU
+library: uniform random nodes and nodes on a regular lattice (`cartesian`, the first J points of an
+n^D lattice from −1/2 with spacing 1/n), the tolerance sweep of `pareto`, Float64 and Float32.
