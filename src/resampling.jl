@@ -219,10 +219,10 @@ function fill_halo!(gp, h::Tuple, nthreads, dims=1:ndims(gp); Ñs=size(gp) .- (h
     Ñ = Ñs[d]
     e, cs = halo_chunks(gp, d, nthreads, dims)
     @maybe_threads length(cs) for c in cs
-      for I in halo_slab(gp, d, e, c, 1:h[1])
+      @inbounds for I in halo_slab(gp, d, e, c, 1:h[1])
         gp[I] = gp[shift(I, d, Ñ)]
       end
-      for I in halo_slab(gp, d, e, c, Ñ+h[1]+1:Ñ+h[1]+h[2])
+      @inbounds for I in halo_slab(gp, d, e, c, Ñ+h[1]+1:Ñ+h[1]+h[2])
         gp[I] = gp[shift(I, d, -Ñ)]
       end
     end
@@ -234,10 +234,10 @@ function fold_halo!(gp, h::Tuple, nthreads, dims=1:ndims(gp); Ñs=size(gp) .- (h
     Ñ = Ñs[d]
     e, cs = halo_chunks(gp, d, nthreads, dims)
     @maybe_threads length(cs) for c in cs
-      for I in halo_slab(gp, d, e, c, 1:h[1])
+      @inbounds for I in halo_slab(gp, d, e, c, 1:h[1])
         gp[shift(I, d, Ñ)] += gp[I]
       end
-      for I in halo_slab(gp, d, e, c, Ñ+h[1]+1:Ñ+h[1]+h[2])
+      @inbounds for I in halo_slab(gp, d, e, c, Ñ+h[1]+1:Ñ+h[1]+h[2])
         gp[shift(I, d, -Ñ)] += gp[I]
       end
     end

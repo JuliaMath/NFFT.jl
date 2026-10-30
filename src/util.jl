@@ -131,9 +131,19 @@ end
 
 function threaded_fill!(a, v, nthreads)
   @maybe_threads nthreads for s in chunks(eachindex(a), 4nthreads)
-    @inbounds for i in s
-      a[i] = v
-    end
+    fill_range!(a, v, s)
+  end
+  a
+end
+# Zero through memset (see zero_boxes!: it does not read the cache lines it zeroes).
+function fill_range!(a::Array{C}, v, s::AbstractUnitRange{Int}) where {C<:Union{Base.IEEEFloat,Complex{<:Base.IEEEFloat}}}
+  iszero(v) || return @invoke fill_range!(a::AbstractArray, v, s)
+  isempty(s) || GC.@preserve a Libc.memset(pointer(a, first(s)), 0, sizeof(C) * length(s))
+  a
+end
+function fill_range!(a, v, s)
+  @inbounds for i in s
+    a[i] = v
   end
   a
 end

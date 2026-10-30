@@ -65,7 +65,7 @@ function ablated_core(c::NFFTCore{D,KS,T}, k, a=ABLATION[]) where {D,KS,T}
   c.fft isa FFTWBackend || throw(ArgumentError("the ablation switches need FFTWBackend"))
   if a.fft !== :passes
     g = interior(c.gp, halo(c.W), c.Ñ)
-    c = NFFTCore(c.N, c.Ñ, c.W, c.B, c.kernel, c.invphi, c.binned, c.gp,
+    c = NFFTCore(c.N, c.Ñ, c.W, c.B, c.kernel, c.invphi, c.binned, c.gp, c.zruns,
                  ablated_fft(a.fft, c.fft, g, c.N, Val(:fwd), c.nthreads),
                  ablated_fft(a.fft, c.fft, g, c.N, Val(:bwd), c.nthreads), c.locks, c.bufs, c.fft, c.nthreads)
   end
@@ -185,7 +185,7 @@ end
 function trafo_core!(out, a::AblatedCore, f)
   c = a.core; s = a.switches
   h = halo(c.W); g = interior(c.gp, h, c.Ñ)
-  @stage :zero threaded_fill!(c.gp, 0, c.nthreads)
+  @stage :zero zero_runs!(c.gp, c.zruns, c.nthreads)
   @stage :correction resampling_correction_core!(g, f, c.invphi, c.N, c.Ñ, c.nthreads)
   @stage :fft apply!(c.fwd, g)
   if s.halo

@@ -11,6 +11,7 @@ struct NFFTCore{D,K<:SymKernel,T,Tk,PF<:PassFFT,PB<:PassFFT,FB<:Union{Nothing,Ab
   invphi::NTuple{D,Vector{T}}
   binned::Binned{D,Tk}
   gp::Array{Complex{T},D}           # padded grid, padded_size(Ñ, W)
+  zruns::Vector{Vector{UnitRange{Int}}}  # what the trafo zeroes, see unkept_runs
   fwd::PF                           # FFT passes of the backend
   bwd::PB
   locks::TileLocks{D}
@@ -31,7 +32,7 @@ function NFFTCore(k::AbstractMatrix, N::NTuple{D,Int}, Ñ::NTuple{D,Int}, W, φ:
   gp = Array{Complex{T}}(undef, padded_size(Ñ, W))   # zeroed by every transform
   g = interior(gp, h, Ñ)
   binned = @stage :sort Binned(k, Ñ, B, nthreads)
-  NFFTCore(N, Ñ, W, B, K, invphi, binned, gp,
+  NFFTCore(N, Ñ, W, B, K, invphi, binned, gp, unkept_runs(N, Ñ, h, size(gp), nthreads),
            PassFFT(fft, g, N, Val(:fwd); nthreads), PassFFT(fft, g, N, Val(:bwd); nthreads),
            TileLocks(size(gp), B), task_buffers(Complex{T}, ntuple(_ -> B + W + 1, D), nthreads),
            fft, nthreads)
@@ -39,7 +40,7 @@ end
 
 function trafo_core!(out, c::NFFTCore, f)
   h = halo(c.W); g = interior(c.gp, h, c.Ñ)
-  @stage :zero threaded_fill!(c.gp, 0, c.nthreads)
+  @stage :zero zero_runs!(c.gp, c.zruns, c.nthreads)
   @stage :correction resampling_correction_core!(g, f, c.invphi, c.N, c.Ñ, c.nthreads)
   @stage :fft apply!(c.fwd, g)
   @stage :halo fill_halo!(c.gp, h, c.nthreads; Ñs=c.Ñ)
@@ -154,7 +155,7 @@ Base.copy(t::TrailCore) = TrailCore(copy(t.core), similar(t.fbuf), similar(t.gbu
 function copy_core(c::NFFTCore{D,K,T}, nthreads) where {D,K,T}
   gp = similar(c.gp)
   g = interior(gp, halo(c.W), c.Ñ)
-  NFFTCore(c.N, c.Ñ, c.W, c.B, c.kernel, c.invphi, c.binned, gp,
+  NFFTCore(c.N, c.Ñ, c.W, c.B, c.kernel, c.invphi, c.binned, gp, unkept_runs(c.N, c.Ñ, halo(c.W), size(gp), nthreads),
            PassFFT(c.fft, g, c.N, Val(:fwd); nthreads), PassFFT(c.fft, g, c.N, Val(:bwd); nthreads),
            TileLocks(size(gp), c.B), task_buffers(Complex{T}, size(c.bufs[1]), nthreads), c.fft, nthreads)
 end
