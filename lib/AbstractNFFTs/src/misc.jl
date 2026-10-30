@@ -21,9 +21,9 @@ const DEFAULT_RELTOL = 1e-8
     default_reltol(T)
 
 Relative error requested from a plan with real element type `T` when `reltol` is not given:
-`DEFAULT_RELTOL`, or `10 * eps(T)` where that is larger (`Float32`: 1.2e-6, `Float16`: 9.8e-3).
+`DEFAULT_RELTOL`, or `100 * eps(T)` where that is larger (`Float32`: 1.2e-5, `Float16`: 0.098).
 """
-default_reltol(::Type{T}) where {T} = max(DEFAULT_RELTOL, 10 * Float64(eps(T)))
+default_reltol(::Type{T}) where {T} = max(DEFAULT_RELTOL, 100 * Float64(eps(T)))
 
 """
     GenericOptions
@@ -31,7 +31,7 @@ default_reltol(::Type{T}) where {T} = max(DEFAULT_RELTOL, 10 * Float64(eps(T)))
 The options every implementation of the interface accepts, resolved from the keyword arguments
 of `plan_nfft` and friends by [`generic_options`](@ref):
 
-* `reltol`: requested relative error (ℓ² norm over random data)
+* `reltol`: requested relative error (ℓ² norm)
 * `dims`: dimensions of the transform (a contiguous range); all other dimensions are batch
   dimensions that pass through unchanged
 * `eltype`: real element type of the data (`Float32`, `Float64`, …)

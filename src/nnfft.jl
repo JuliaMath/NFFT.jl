@@ -101,7 +101,7 @@ function nnfft_plan(::Val{D}, k, y, kc, yc, g::GenericOptions{T}, Nin::NTuple{M,
   J = size(kc, 2); N = size(yc, 2)
   y0, Y = centre(Val(D), yc)
   k0, K = centre(Val(D), kc)
-  outer, e2, n, acc = choose_nnfft(g.reltol, Y, K, N, J, T; window, W, σ)
+  outer, e2, n, acc = choose_nnfft(g.reltol, Y, K, N, J, T; window, W, σ, fft)
   φ = window_function(outer.window, outer.W, outer.β, outer.e0)
   ys, xs, pre, post = nnfft_nodes(Val(D), kc, yc, y0, k0, K, outer, n, φ, g.nthreads)
   core = g.storage <: Array ?
@@ -170,37 +170,44 @@ end
 # Outer window e₁ (spreading) and inner NFFT kernel e₂ at the lowest predicted cost: e₁ with error
 # ε₁ fixes the grid n ≈ 4σ₁·Y·K and leaves (reltol − ε₁)/A₁ for the inner NFFT. Cost:
 # the spreading term of the cost model for the N sources plus the cost of the inner NFFT (both
-# directions). `window`, `W`, `σ` restrict the inner kernel.
-function choose_nnfft(reltol, Y::NTuple{D}, K::NTuple{D}, N, J, ::Type{T}; window=:auto, W=nothing, σ=nothing) where {D,T}
+# directions). `window`, `W`, `σ` restrict the inner kernel, `fft` is the backend of the inner NFFT.
+function choose_nnfft(reltol, Y::NTuple{D}, K::NTuple{D}, N, J, ::Type{T}; window=:auto, W=nothing, σ=nothing,
+                      fft=nothing) where {D,T}
   check_window_options(W, σ)
   window === :auto || window isa Union{KaiserBessel,ExpSemicircle} ||
     throw(ArgumentError("window must be :auto, KaiserBessel() or ExpSemicircle(), got $window"))
   a, a1, b, c = COST_COEF[min(D, 3)]
   grid(e1) = ntuple(d -> smooth_size(ceil(Int, 4 * e1.σ * Y[d] * K[d]) + e1.W + 2), Val(D))
-  inner = filter(KERNEL_TABLE) do e
-    (window === :auto || e.window == window) && (W === nothing || e.W == W)
-  end
-  if σ !== nothing
-    σtab = argmin(s -> abs(s - σ), unique(e.σ for e in inner))
-    inner = filter(e -> e.σ == σtab, inner)
-  end
-  isempty(inner) && throw(ArgumentError("no table entry for window = $window, W = $W, σ = $σ"))
+  inner = kernel_candidates(window, W, σ, T)
   # Only kernels on the Pareto front matter: an inner kernel is dropped if another one is at least as
   # accurate with no larger W and σ, an outer one if another one also has no larger amplification.
-  ε(e) = window_error(e, D) + 10 * eps(T) * e.amp
+  ε(e) = window_error(e, D) + 10 * Float64(eps(T)) * e.amp
   inner = pareto_front(inner, e -> (ε(e), e.W, e.σ))
-  outer = pareto_front(KERNEL_TABLE, e -> (ε(e), e.W, e.σ, e.amp))
+  outer = pareto_front(eps(T) < eps(Float64) ? vcat(KERNEL_TABLE, EXTENDED_KERNELS) : KERNEL_TABLE,
+                       e -> (ε(e), e.W, e.σ, e.amp))
   # inner error without the floor (which depends on n), and the n-independent cost per kernel
   ε2 = [ε(e) for e in inner]
   c2 = [a * J * e.W^D + a1 * J * e.W for e in inner]
   σ2 = [e.σ^D for e in inner]
-  # target: reltol, or 1.5 times the smallest predicted error if reltol is below it; out of reach
-  # (above 10·reltol, as for the NFFT) it throws
+  # target: reltol; out of reach (as for the NFFT) it throws
   fl(e1) = error_floor(grid(e1), T)
-  emin = minimum(e1 -> ε(e1) + fl(e1) + e1.amp * (minimum(ε2) + fl(e1)), outer)
-  (W === nothing || σ === nothing) && emin > 10 * reltol &&
-    throw(ArgumentError("reltol = $reltol is out of reach for eltype $T: the most accurate parameters give ≈ $(round(emin; sigdigits=2))"))
-  tol = max(reltol, 1.5emin)
+  ff(e1) = fft_error(fft, grid(e1), T)    # the inner grid is σ₂ times larger: a lower bound
+  emin = minimum(e1 -> ε(e1) + fl(e1) + e1.amp * (minimum(ε2) + fl(e1) + ff(e1)), outer)
+  fixed = W !== nothing && σ !== nothing
+  fixed || check_reach(emin, reltol, "$N sources, $J targets", T, window, W, σ)
+  best = cheapest_pair(reltol, outer, inner, ε, ε2, c2, σ2, grid, fft, N, a, a1, c, b, D, T)
+  # W and σ fixed by the user: the most accurate combination if none reaches reltol; otherwise emin
+  # is only a lower bound (the inner grid is larger than n), and no combination means out of reach
+  best === nothing && fixed && (best = cheapest_pair(1.5emin, outer, inner, ε, ε2, c2, σ2, grid, fft, N, a, a1, c, b, D, T))
+  best === nothing && throw(ArgumentError("reltol = $reltol is out of reach for eltype $T, $N sources, $J targets: " *
+                                          "no pair of spreading window and inner kernel reaches it"))
+  e1, e2, n, ε1 = best
+  e1, e2, n, (outer=ε1,)
+end
+
+# The pair (outer, inner kernel) of lowest predicted cost within tol, as (e₁, e₂, grid n, error of the
+# outer stage), or nothing
+function cheapest_pair(tol, outer, inner, ε::F, ε2, c2, σ2, grid::G, fft, N, a, a1, c, b, D, ::Type{T}) where {F,G,T}
   best = nothing; bestcost = Inf
   for e1 in outer
     ε(e1) <= tol || continue
@@ -212,14 +219,13 @@ function choose_nnfft(reltol, Y::NTuple{D}, K::NTuple{D}, N, J, ::Type{T}; windo
     c1 = a * N * e1.W^D + a1 * N * e1.W + c
     Mn = prod(n)
     for i in eachindex(inner)
-      ε2[i] <= tol2 || continue
+      ε2[i] + fft_error(fft, grid_size(inner[i].σ, n, inner[i].W), T) <= tol2 || continue
       M = σ2[i] * Mn
       cost = c1 + c2[i] + b * M * log2(M)
       cost < bestcost && ((best, bestcost) = ((e1, inner[i], n, ε1), cost))
     end
   end
-  e1, e2, n, ε1 = best
-  e1, e2, n, (outer=ε1,)
+  best
 end
 
 # entries whose key tuple is not dominated (all components ≥, one >) by another entry's

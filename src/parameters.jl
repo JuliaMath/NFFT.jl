@@ -2,9 +2,11 @@
 # table of optimised kernels, by predicted error and a fitted cost model.
 #
 # data/kernel_table.csv: for each window family, W = 4…16 and σ = 1.20:0.05:2.50 the shape
-# parameters that minimise the worst-mode aliasing estimate max_ξ √(Σ_{r≠0} φ̂(ξ+r)²)/|φ̂(ξ)|, and
-# the RMS of that ratio over the kept modes (est_rms), which predicts the measured relative ℓ²
-# error. Computed by the kernel optimiser of the refactoring workspace (bench/micro/kernel_opt.jl).
+# parameters that minimise the worst-mode aliasing estimate max_ξ √(Σ_{r≠0} φ̂(ξ+r)²)/|φ̂(ξ)| (est_max),
+# the RMS of that ratio over the kept modes (est_rms, the error for random nodes) and the bound for
+# any nodes, est_wc = max_ξ Σ_{r≠0} |φ̂(ξ+r)|/|φ̂(ξ)| (nodes at one fractional grid offset, as in
+# Cartesian sampling, add the aliases of a mode coherently). Computed by the kernel optimiser of the
+# refactoring workspace (bench/micro/kernel_opt.jl, kernel_wc.jl).
 # The kernel family with a free exponent and the per-(W, σ) optimisation follow ducc (Arras et al.,
 # A&A 646, A58, 2021); the table itself is independent of ducc's.
 
@@ -14,7 +16,7 @@ struct KernelEntry
   σ::Float64
   β::Float64
   e0::Float64
-  est_rms::Float64
+  est::Float64        # aliasing bound for any nodes (est_wc of the table)
   amp::Float64        # amplification of the resampling correction, φ̂(0)/φ̂(1/(2σ))
 end
 
@@ -32,7 +34,7 @@ const KERNEL_TABLE = let lines = readlines(joinpath(@__DIR__, "..", "data", "ker
   map(split.(lines, ",")) do v
     w = table_window(v[1]); W = parse(Int, v[2]); σ = parse(Float64, v[3])
     β = parse(Float64, v[4]); e0 = parse(Float64, v[5])
-    KernelEntry(w, W, σ, β, e0, parse(Float64, v[7]), amplification(w, W, σ, β, e0))
+    KernelEntry(w, W, σ, β, e0, parse(Float64, v[8]), amplification(w, W, σ, β, e0))
   end
 end
 
@@ -93,28 +95,35 @@ end
 
 # Beyond the table, W = 17…48, for element types wider than Float64 or an explicit W: the continuous
 # Kaiser–Bessel window with the analytic shape parameter β = πW(1 − 1/(2σ)) (Potts & Tasche 2021; at
-# W = 12, σ = 2 its aliasing estimate is 4 % above that of the optimised β). The estimate, computed as
-# for the table but in BigFloat (256 bits) for W = 12…48 and σ = 1.5, 2, 2.5, is
-# exp(r − πW√(1 − 1/σ)) with r between 0.7 and 2.03; est_rms takes r = log 8, at most 4× too large.
+# W = 12, σ = 2 its aliasing estimate is 4 % above that of the optimised β). The bound est_wc, computed
+# as for the table but in BigFloat (256 bits) for W = 12…48 and σ = 1.5, 2, 2.5, is
+# exp(r − πW√(1 − 1/σ)) with r between 2.98 and 4.31; `est` takes r = log 80.
 const EXTENDED_W = 17:48
 const EXTENDED_σ = 1.5:0.25:2.5
 function extended_entry(W, σ)
   β = π * W * (1 - 1 / (2σ))
-  KernelEntry(KaiserBessel(), W, Float64(σ), β, NaN, 8 * exp(-π * W * sqrt(1 - 1 / σ)),
+  KernelEntry(KaiserBessel(), W, Float64(σ), β, NaN, 80 * exp(-π * W * sqrt(1 - 1 / σ)),
               amplification(KaiserBessel(), W, σ, β, NaN))
 end
 const EXTENDED_KERNELS = [extended_entry(W, σ) for σ in EXTENDED_σ for W in EXTENDED_W]
 
-# Measured relative error ≈ est_rms·√D·(1…1.5); 1.5·√D is about the 90 % quantile over table entries.
-window_error(e::KernelEntry, D) = e.est_rms * sqrt(D) * 1.5
+# Bound on the relative error for any nodes: per dimension the aliases of a mode add up to est, the
+# tensor-product window to (1 + est)^D − 1. Measured (W = 4…12, D = 1…3): up to 0.51 of it for
+# Cartesian nodes, 0.38 for random ones; the RMS estimate est_rms·√D·1.5 is exceeded 2.5× by
+# Cartesian nodes.
+window_error(e::KernelEntry, D) = expm1(D * log1p(e.est))    # (1 + est)^D − 1 without cancellation
 
-# Rounding floor: grid positions in wide(T) limit the phase to ≈ eps(wide(T))·max(N) (position_floor),
-# the working precision T adds ≈ 5·eps(T) (FFT, summation).
-position_floor(N, ::Type{T}) where {T} = 0.5 * Float64(eps(wide(T))) * maximum(N)
-error_floor(N, ::Type{T}) where {T} = position_floor(N, T) + 5 * Float64(eps(T))
+# Rounding floor: grid positions in wide(T) limit the phase to ≈ eps(wide(T))·max(N), the working
+# precision T adds ≈ 5·eps(T) (FFT, summation).
+error_floor(N, ::Type{T}) where {T} = 0.5 * Float64(eps(wide(T))) * maximum(N) + 5 * Float64(eps(T))
 
-predicted_error(e::KernelEntry, N::NTuple{D,Int}, ::Type{T}) where {D,T} =
-  window_error(e, D) + error_floor(N, T) + 10 * eps(T) * e.amp
+# Rounding error of the FFT beyond the ≈ 5·eps(T) of error_floor: FFTA's FFT loses accuracy with the
+# length (measured 3–4400 eps for n = 64…16384 in Float16, Float32, Float64 and Double64, ≤ 0.27·n·eps);
+# FFTW and the GPU FFTs stay within a few eps.
+fft_error(fft, Ñ, ::Type{T}) where {T} = fft isa FFTABackend ? 0.3 * Float64(eps(T)) * maximum(Ñ) : 0.0
+
+predicted_error(e::KernelEntry, N::NTuple{D,Int}, ::Type{T}, fft=nothing) where {D,T} =
+  window_error(e, D) + error_floor(N, T) + 10 * Float64(eps(T)) * e.amp + fft_error(fft, grid_size(e.σ, N, e.W), T)
 
 grid_size(σ, N) = map(n -> smooth_size(ceil(Int, σ * n)), N)
 # The grid of a plan has at least W points, so that the halo (W points) wraps around it once.
@@ -126,13 +135,13 @@ kernel_cost(e::KernelEntry, N::NTuple{D,Int}, J, S=Array, ::Type{T}=Float64) whe
 # The kernels a plan may use, from its options `window`, `W`, `σ`, as pairs (entry, predicted
 # error): a CustomWindow as given (its error is unknown), otherwise the `n` cheapest table entries
 # that reach the tolerance (`choose_kernels`).
-function select_kernels(window, W, σ, reltol, N, J, ::Type{T}; Ncost=N, n=1, storage=Array) where {T}
+function select_kernels(window, W, σ, reltol, N, J, ::Type{T}; Ncost=N, n=1, storage=Array, fft=nothing) where {T}
   check_window_options(W, σ)
   if window isa CustomWindow
     (W === nothing || σ === nothing) && throw(ArgumentError("a CustomWindow needs W and σ"))
     [(KernelEntry(window, W, σ, NaN, NaN, NaN, NaN), NaN)]
   elseif window === :auto || window isa AbstractWindow
-    choose_kernels(reltol, N, J, T; window, W, σ, Ncost, n, storage)
+    choose_kernels(reltol, N, J, T; window, W, σ, Ncost, n, storage, fft)
   else
     throw(ArgumentError("window must be :auto or an AbstractWindow, got $window"))
   end
@@ -163,13 +172,13 @@ end
 # `window` (`:auto` or a family), `W` and `σ`, cheapest first, as pairs (entry, predicted error);
 # σ is replaced by the user's σ when given. `Ncost` is the size whose oversampled grid the cost
 # model sees (NFCT/NFST: the error is that of an NFFT of twice the size on half its grid), `storage`
-# selects the cost model.
+# selects the cost model, `fft` the FFT backend (its rounding error).
 function choose_kernels(reltol, N::NTuple{D,Int}, J, ::Type{T}; window=:auto, W=nothing, σ=nothing, Ncost=N,
-                        n=1, storage=Array) where {D,T}
+                        n=1, storage=Array, fft=nothing) where {D,T}
   cands = kernel_candidates(window, W, σ, T)
-  err = [predicted_error(e, N, T) for e in cands]
+  err = [predicted_error(e, N, T, fft) for e in cands]
   emin = minimum(err)
-  (W === nothing || σ === nothing) && check_reach(emin - position_floor(N, T), reltol, N, T, window, W, σ)
+  (W === nothing || σ === nothing) && check_reach(emin, reltol, "N = $N", T, window, W, σ)
   tol = max(reltol, emin)
   ok = cands[err .<= tol]
   # the cost once per entry: it searches the next FFT-friendly grid size. A loop: a closure over
@@ -179,8 +188,8 @@ function choose_kernels(reltol, N::NTuple{D,Int}, J, ::Type{T}; window=:auto, W=
     cost[i] = kernel_cost(e, Ncost, J, storage, T)
   end
   best = ok[cheapest(cost, n)]
-  σ === nothing ? [(e, predicted_error(e, N, T)) for e in best] :
-                  [(with_σ(e, σ), predicted_error(e, N, T)) for e in best]
+  σ === nothing ? [(e, predicted_error(e, N, T, fft)) for e in best] :
+                  [(with_σ(e, σ), predicted_error(e, N, T, fft)) for e in best]
 end
 
 # Table entries for the user's window, W and σ (the nearest tabulated σ); the extension beyond the
@@ -201,16 +210,14 @@ end
 # Entry e with the user's σ: the extension takes the analytic β for it, a table entry keeps the
 # shape parameters of the nearest tabulated σ.
 with_σ(e::KernelEntry, σ) = e.W in EXTENDED_W ? extended_entry(e.W, σ) :
-  KernelEntry(e.window, e.W, Float64(σ), e.β, e.e0, e.est_rms, e.amp)
+  KernelEntry(e.window, e.W, Float64(σ), e.β, e.e0, e.est, e.amp)
 
-# A reltol out of reach throws (only checked unless the user fixed both W and σ). The predicted
-# error is conservative (measured errors 3–10× below), so only a predicted error above 10·reltol
-# counts as out of reach; up to that, the most accurate candidate is taken. `reach` leaves out the
-# rounding floor of the node positions: it depends on N, not on the parameters, and the interface
-# contract allows it (≈ eps·max(N)).
-function check_reach(reach, reltol, N, ::Type{T}, window, W, σ) where {T}
-  reach > 10 * reltol || return nothing
+# A reltol out of reach throws (only checked unless the user fixed both W and σ): the predicted error
+# bounds the measured one, so a plan whose prediction is at most reltol keeps error ≤ reltol, and
+# none other is taken.
+function check_reach(reach, reltol, size, ::Type{T}, window, W, σ) where {T}
+  reach > reltol || return nothing
   restricted = window === :auto && W === nothing && σ === nothing ? "" : ", window = $(repr(window)), W = $W, σ = $σ"
-  throw(ArgumentError("reltol = $reltol is out of reach for eltype $T, N = $N$restricted: the most accurate " *
+  throw(ArgumentError("reltol = $reltol is out of reach for eltype $T, $size$restricted: the most accurate " *
                       "parameters give ≈ $(round(reach; sigdigits=2))"))
 end

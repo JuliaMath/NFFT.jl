@@ -7,10 +7,11 @@
 #
 # ## From `reltol` to parameters
 #
-# `reltol` is the requested relative error in the ``\ell^2`` norm, for random data. For each
+# `reltol` is the requested relative error in the ``\ell^2`` norm, for any nodes and data. For each
 # combination of window family, ``W`` and ``\sigma`` NFFT.jl carries a table with the optimised
-# shape parameter of the window and the error it reaches. From all entries whose predicted error
-# is below `reltol`, the plan takes the one with the lowest predicted run time. The cost model
+# shape parameter of the window and a bound on its aliasing error that also holds for nodes on grid
+# points (Cartesian sampling, where the aliases of all nodes add up coherently). From all entries
+# whose predicted error is below `reltol`, the plan takes the one with the lowest predicted run time. The cost model
 # weighs the resampling (``J W^D``) against the FFT (``\sigma^D |\bm{N}| \log``), so the choice
 # depends on the dimension and on the ratio of nodes to grid size. Plans on a GPU use a cost model
 # of their own (see [Parameter choice on a GPU](@ref)).
@@ -31,10 +32,10 @@ p = plan_nfft(k, N; reltol=1e-6)
 
 NFFT.parameters(p)
 
-# Over a range of tolerances, the measured error stays below the requested one, and
-# `accuracy(p)` predicts it well:
+# Over a range of tolerances, the measured error stays below the requested one and below
+# `accuracy(p)`, the bound the plan predicts:
 
-tols = [10.0^-i for i in 2:14]
+tols = [10.0^-i for i in 2:13]
 plans = [plan_nfft(k, N; reltol=t) for t in tols]
 measured = relerr.(plans)
 predicted = accuracy.(plans)
@@ -53,19 +54,21 @@ fig
 
 [(reltol=t, W=NFFT.parameters(q).W, σ=NFFT.parameters(q).σ) for (t, q) in zip(tols, plans)]
 
-# Below about ``10^{-14}`` rounding errors dominate in double precision; in single precision the
-# floor is about ``10^{-6}``. A `reltol` somewhat below the floor gives the most accurate plan
-# available; one that no parameters reach (the predicted error more than 10 times larger) throws an
-# `ArgumentError`, unless `W` and `σ` are both given. Without `reltol` a plan uses
-# [`default_reltol`](@ref) of its element type: ``10^{-8}``, in single precision ``1.2 \cdot 10^{-6}``.
+# Below about ``10^{-13}`` rounding errors dominate in double precision (more for large ``N``: node
+# positions are accurate to ``\approx \varepsilon \max N``); in single precision the floor is about
+# ``3 \cdot 10^{-6}``. A `reltol` below what any parameters reach throws an `ArgumentError` instead of
+# returning a less accurate plan, unless `W` and `σ` are both given. Without `reltol` a plan uses
+# [`default_reltol`](@ref) of its element type: ``10^{-8}``, in single precision ``1.2 \cdot 10^{-5}``.
 #
 # Element types wider than `Float64` (`Double64` from DoubleFloats.jl, `Float128` from Quadmath.jl)
 # compute the window fit, the correction factors and the grid positions in their own precision and,
 # with an FFT for them (`fft = FFTABackend()`), reach correspondingly smaller errors: `reltol = 1e-25`
 # with `Double64` gives about ``10^{-26}``, `1e-28` with `Float128` about ``10^{-29}``. Beyond the table
 # (``W > 16``) the plan uses the Kaiser–Bessel window with ``\beta = \pi W (1 - 1/(2\sigma))``, up to
-# ``W = 48``. The resampling kernels are unrolled in ``W``: with `Double64` and ``W \approx 30`` the
-# first transform compiles for minutes; `BigFloat` beyond the table is impractical.
+# ``W = 48``; `BigFloat` (256 bits) reaches ``10^{-40}`` with ``W = 39``. The resampling kernels are
+# unrolled in ``W``: with `Double64` and ``W \approx 30`` in 2D the first transform compiles for
+# minutes. The FFT of FFTA.jl loses accuracy with the length (up to ``0.3 \, n \varepsilon``); the
+# predicted error accounts for it.
 
 # ## Window families
 #

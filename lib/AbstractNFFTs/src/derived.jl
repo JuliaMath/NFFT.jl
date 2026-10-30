@@ -34,7 +34,8 @@ array including batch dimensions). Without `backend` the active backend is used.
 
 Generic options, accepted by every implementation:
 
-* `reltol`: requested relative error (ℓ² norm over random data)
+* `reltol`: requested relative error (ℓ² norm); a value the implementation cannot reach throws an
+  `ArgumentError`
 * `dims`: dimensions to transform (`:`, an integer or a contiguous range); the other dimensions
   are batch dimensions and pass through unchanged
 * `eltype`: real element type of the data, default `float(eltype(k))`

@@ -52,11 +52,11 @@
     for tol in (1e-4, 1e-8, 1e-12)
       @test accuracy(plan_nfft(k, N; reltol=tol)) <= tol
     end
-    # slightly below what any kernel reaches: the most accurate one; far below: an error
-    best = accuracy(plan_nfft(k, N; reltol=1e-14))
+    # the most accurate kernel is reachable, anything below it an error
+    best = minimum(NFFT.predicted_error(e, N, Float64) for e in NFFT.kernel_candidates(:auto, nothing, nothing, Float64))
     @test best < 1e-13
-    @test accuracy(plan_nfft(k, N; reltol=best / 2)) == best
-    @test_throws ArgumentError plan_nfft(k, N; reltol=best / 20)
+    @test accuracy(plan_nfft(k, N; reltol=best)) == best
+    @test_throws ArgumentError plan_nfft(k, N; reltol=best / 2)
     @test_throws ArgumentError plan_nfft(Float32.(k), N; reltol=1e-9)
     @test_throws ArgumentError plan_nfft(k, N; reltol=1e-14, W=6)
     @test plan_nfft(k, N; reltol=1e-14, W=6, σ=2.0).kernel.W == 6      # W and σ fixed: as given
@@ -73,7 +73,7 @@
     @test p.kernel in cands
     @test accuracy(p) <= 1e-8
     @test norm(p * f - plan_nfft(k, N; reltol=1e-12) * f) / norm(p * f) < 1e-7
-    q = plan_nfst(rand(rng, 2, 50) ./ 2, (12, 10); measure=true, W=8)
+    q = plan_nfst(rand(rng, 2, 50) ./ 2, (12, 10); reltol=1e-6, measure=true, W=8)
     @test q.kernel.W == 8
     # cost model: fitted on this machine, or set per storage and element type
     c = NFFT.calibrate_cost(; J=(2^10, 2^12), W=4:5, σ=(1.5, 2.0), dims=1:1, sizes=(((2^12,), (2^14,)),), nrep=1, set=false)

@@ -7,7 +7,7 @@
     k = (rand(rng, D, J) .- 0.6) .* 2Ks .- 4.2
     f = randn(rng, ComplexF64, N); v = randn(rng, ComplexF64, J)
     pd = NNDFTPlan(k, y)
-    for reltol in (T == Float32 ? (1e-3, 1e-5) : (1e-4, 1e-8, 1e-12))
+    for reltol in (T == Float32 ? (1e-3, 1e-5) : (1e-4, 1e-8, 1e-11))
       p = plan_nnfft(T.(k), T.(y); reltol)
       @test size(p) == (J, N)
       @test p * Complex{T}.(f) isa Vector{Complex{T}}

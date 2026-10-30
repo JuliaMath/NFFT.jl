@@ -246,8 +246,8 @@ Nodes of the plan `p` (a d × J matrix).
 """
     accuracy(p) -> Float64
 
-Relative error (ℓ² norm over random data) the plan `p` is expected to achieve; what the
-requested `reltol` turned into.
+Bound on the relative error (ℓ² norm) of the plan `p`; at most the requested `reltol`, unless the
+implementation's parameters were fixed by the caller.
 """
 @mustimplement accuracy(p::AbstractFTPlan)
 

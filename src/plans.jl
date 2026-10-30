@@ -22,7 +22,7 @@ function fast_plan(::Type{P}, k::AbstractMatrix, N::NTuple{D,Int}, g::GenericOpt
   fft = cpu_options(g.storage, fft, tilesize)
   check_backend(P, fft)
   dims = g.dims; Nd = N[dims]; J = size(k, 2)
-  kernels = select_kernels(window, W, σ, g.reltol, error_size(P, Nd), J, T; Ncost=Nd,
+  kernels = select_kernels(window, W, σ, g.reltol, error_size(P, Nd), J, T; Ncost=Nd, fft,
                            n=measure ? MEASURE_CANDIDATES : 1, storage=g.storage)
   NOut = out_size(N, dims, J)
   build((kernel, acc)) = P{T,D,R}(N, input_size(P, N, dims), NOut, dims, to_storage(g.storage, k, T),

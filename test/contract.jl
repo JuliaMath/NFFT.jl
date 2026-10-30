@@ -62,8 +62,19 @@ relerr(x, y) = norm(x - y) / norm(y)
 # for tiny transforms), and node
 # coordinates given in Float64 limit the phase to ≈ eps(Float64)·max(N) (this floor is the same for
 # every implementation; data precision T does not change it if positions are reduced in Float64).
-allowed(reltol, T, N; slack=10) =
-  max(slack * reltol, 20 * eps(T) * max(log2(prod(N)), 5) + 2 * eps(Float64) * maximum(N))
+precision_floor(T, N) = 20 * eps(T) * max(log2(prod(N)), 5) + 2 * eps(Float64) * maximum(N)
+allowed(reltol, T, N; slack=10) = max(slack * reltol, precision_floor(T, N))
+
+# A plan for reltol, or `nothing` where the implementation rejects a reltol below the precision
+# floor with an ArgumentError (rather than missing it); above the floor it must not reject.
+function plan_or_reject(make_plan, k, N, tol)
+  try
+    make_plan(k, N; reltol=tol)
+  catch e
+    (e isa ArgumentError && tol < precision_floor(eltype(k), N)) || rethrow()
+    nothing
+  end
+end
 
 random_nodes(rng, T, D, J) = T.(rand(rng, D, J) .- 0.5)
 
@@ -95,10 +106,12 @@ function contract_tests(make_plan; T=Float64, tols=(T == Float64 ? (1e-4, 1e-8, 
   @testset "accuracy against NDFT ($(T), N = $N, reltol = $tol)" for N in sizes, tol in tols
     D = length(N); J = prod(N)
     k = random_nodes(rng, T, D, J)
-    p = make_plan(k, N; reltol=tol)
-    f = randn(rng, C, N); fHat = randn(rng, C, J)
-    @test relerr(p * f, ndft_ref(k, f)) <= allowed(tol, T, N; slack)
-    @test relerr(adjoint(p) * fHat, ndft_adjoint_ref(k, N, fHat)) <= allowed(tol, T, N; slack)
+    p = plan_or_reject(make_plan, k, N, tol)
+    if p !== nothing
+      f = randn(rng, C, N); fHat = randn(rng, C, J)
+      @test relerr(p * f, ndft_ref(k, f)) <= allowed(tol, T, N; slack)
+      @test relerr(adjoint(p) * fHat, ndft_adjoint_ref(k, N, fHat)) <= allowed(tol, T, N; slack)
+    end
   end
 
   @testset "large 1D problem, sampled reference ($(T), reltol = $tol)" for tol in tols
@@ -106,13 +119,15 @@ function contract_tests(make_plan; T=Float64, tols=(T == Float64 ? (1e-4, 1e-8, 
     # ≈ eps(Float32)·Ñ grid points (1e-2 relative error at Ñ ≈ 4·10^5).
     N = (2^17,); J = 2^17; ns = 40
     k = random_nodes(rng, T, 1, J)
-    p = make_plan(k, N; reltol=tol)
-    f = randn(rng, C, N); fHat = randn(rng, C, J)
-    js = rand(rng, 1:J, ns); ls = rand(rng, 1:N[1], ns)
-    g = p * f; h = adjoint(p) * fHat
-    @test relerr(g[js], ndft_ref(k[:, js], f)) <= allowed(tol, T, N; slack)
-    href = [sum(ComplexF64(fHat[j]) * cis2pi_exact(1, freqs(N[1])[l], Float64(k[1, j])) for j in 1:J) for l in ls]
-    @test relerr(h[ls], href) <= allowed(tol, T, N; slack)
+    p = plan_or_reject(make_plan, k, N, tol)
+    if p !== nothing
+      f = randn(rng, C, N); fHat = randn(rng, C, J)
+      js = rand(rng, 1:J, ns); ls = rand(rng, 1:N[1], ns)
+      g = p * f; h = adjoint(p) * fHat
+      @test relerr(g[js], ndft_ref(k[:, js], f)) <= allowed(tol, T, N; slack)
+      href = [sum(ComplexF64(fHat[j]) * cis2pi_exact(1, freqs(N[1])[l], Float64(k[1, j])) for j in 1:J) for l in ls]
+      @test relerr(h[ls], href) <= allowed(tol, T, N; slack)
+    end
   end
 
   @testset "adjointness ($(T), N = $N)" for N in sizes
