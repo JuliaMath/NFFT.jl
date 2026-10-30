@@ -7,7 +7,7 @@ CurrentModule = NFFT
 ## Options
 
 Keyword arguments of `plan_nfft`, `plan_rnfft`, `plan_nfct` and `plan_nfst`; `plan_nnfft` takes
-them without `tilesize` and `measure`, its `dims` is the dimension of the sources in an array of the
+them without `tilesize`, `gridsize` and `measure`, its `dims` is the dimension of the sources in an array of the
 size given as third argument, and its `window`, `W` and `σ` apply to its inner NFFT:
 
 | keyword | meaning |
@@ -21,11 +21,12 @@ size given as third argument, and its `window`, `W` and `σ` apply to its inner 
 | `W`, `σ` | window width and oversampling factor |
 | `fft` | FFT backend: `FFTWBackend()` (default) or `FFTABackend()` (pure Julia, `using FFTA`; NFFT and NNFFT) |
 | `tilesize` | edge length of the tiles the nodes are sorted into (expert option) |
+| `gridsize` | size Ñ of the oversampled grid, an integer or one per transformed dimension, at least σN and W; any size, not only the 2,3,5-smooth ones the planner takes (expert option, `plan_nfft` only) |
 | `measure` | `true`: time the four parameter sets of lowest predicted cost at plan time and keep the fastest |
 
 The first five are part of the [Abstract Interface](@ref) and mean the same for every
 implementation; the others are specific to NFFT.jl. An unknown option is an error, and so are
-`fft` and `tilesize` for plans on a GPU. How to use
+`fft`, `tilesize` and `gridsize` for plans on a GPU. How to use
 `window`, `W`, `σ` and `fft` is shown in [Choosing Parameters](@ref).
 
 ## Plans and transforms

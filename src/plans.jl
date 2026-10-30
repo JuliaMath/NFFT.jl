@@ -5,7 +5,7 @@
 
 const FastPlan{T,D,R} = Union{NFFTPlan{T,D,R},RNFFTPlan{T,D,R},NFCTPlan{T,D,R},NFSTPlan{T,D,R}}
 
-const NFFT_OPTIONS = (:window, :W, :σ, :fft, :tilesize, :measure)
+const NFFT_OPTIONS = (:window, :W, :σ, :fft, :tilesize, :gridsize, :measure)
 
 # Candidates timed with `measure = true`.
 const MEASURE_CANDIDATES = 4
@@ -18,14 +18,17 @@ out_ndims(::Val{D}, dims) where {D} = D - length(dims) + 1
 out_ndims(::NTuple{D,Int}, kwargs) where {D} = Val(out_ndims(Val(D), get(kwargs, :dims, Colon())))
 
 function fast_plan(::Type{P}, k::AbstractMatrix, N::NTuple{D,Int}, g::GenericOptions{T}, ::Val{R}=Val(D - length(g.dims) + 1);
-                   window=:auto, W=nothing, σ=nothing, fft=nothing, tilesize=nothing, measure=false) where {P,D,T,R}
-  fft = cpu_options(g.storage, fft, tilesize)
+                   window=:auto, W=nothing, σ=nothing, fft=nothing, tilesize=nothing, gridsize=nothing,
+                   measure=false) where {P,D,T,R}
+  fft = cpu_options(g.storage, fft, tilesize, gridsize)
   dims = g.dims; Nd = N[dims]; J = size(k, 2)
   kernels = select_kernels(window, W, σ, g.reltol, error_size(P, Nd), J, T; Ncost=Nd, fft,
                            n=measure ? MEASURE_CANDIDATES : 1, storage=g.storage)
+  gridsize = check_gridsize(P, gridsize, Nd, kernels)
   NOut = out_size(N, dims, J)
   build((kernel, acc)) = P{T,D,R}(N, input_size(P, N, dims), NOut, dims, to_storage(g.storage, k, T),
-    kernel, acc, g, fft, tilesize, make_engine(P, k, N, dims, kernel, T, fft, tilesize, g.nthreads, g.storage)...)
+    kernel, acc, g, fft, tilesize, gridsize,
+    make_engine(P, k, N, dims, kernel, T, fft, tilesize, gridsize, g.nthreads, g.storage)...)
   p = build(kernels[1])
   length(kernels) == 1 && return p
   # measure: the cost model cannot see how fast the FFT is for a particular grid size
@@ -134,19 +137,20 @@ end
 # - :lead, :trail: the batch kernels of the NFFT (`batch_strategy`)
 # The plan is set up on the CPU (parameters, binning, window); a device core moves what the
 # transforms need to the device.
-function make_engine(P, k, N, dims, kernel::KernelEntry, ::Type{T}, fft, tilesize, nthreads, storage) where {T}
+function make_engine(P, k, N, dims, kernel::KernelEntry, ::Type{T}, fft, tilesize, gridsize, nthreads,
+                     storage) where {T}
   Nd = N[dims]; J = size(k, 2)
   L1, L3 = batch_sizes(N, dims); L = L1 * L3
   k = k isa Array ? k : Array(k)
   check_nodes(P, k)
   if !(storage <: Array) || L == 1
-    return :single, make_core(P, k, Nd, kernel, T, fft, tilesize, nthreads, storage, L1, L3)
+    return :single, make_core(P, k, Nd, kernel, T, fft, tilesize, gridsize, nthreads, storage, L1, L3)
   end
   use_slices(L, J + prod(Nd), nthreads) &&
-    return :slices, single_cores(make_core(P, k, Nd, kernel, T, fft, tilesize, nthreads, storage, 1, 1), L)
+    return :slices, single_cores(make_core(P, k, Nd, kernel, T, fft, tilesize, gridsize, nthreads, storage, 1, 1), L)
   strategy = batch_strategy(P, length(dims), L1, L3)
-  strategy === :loop || return batch_engine(strategy, k, Nd, kernel, T, fft, tilesize, nthreads, L1, L3)
-  :loop, make_core(P, k, Nd, kernel, T, fft, tilesize, nthreads, storage, 1, 1)
+  strategy === :loop || return batch_engine(strategy, k, Nd, kernel, T, fft, tilesize, gridsize, nthreads, L1, L3)
+  :loop, make_core(P, k, Nd, kernel, T, fft, tilesize, gridsize, nthreads, storage, 1, 1)
 end
 
 batch_strategy(P, Dd, L1, L3) = :loop
@@ -166,13 +170,31 @@ function check_range(k, lo, hi, msg)
   nothing
 end
 
-# The FFT backend and the tile size are options of the CPU code; plans on a device reject them
-# instead of ignoring them.
-function cpu_options(storage, fft, tilesize)
-  storage <: Array || (fft === nothing && tilesize === nothing) ||
-    throw(ArgumentError("the options fft and tilesize are not supported with storage = $storage"))
+# The FFT backend, the tile size and the grid size are options of the CPU code; plans on a device
+# reject them instead of ignoring them.
+function cpu_options(storage, fft, tilesize, gridsize)
+  storage <: Array || (fft === nothing && tilesize === nothing && gridsize === nothing) ||
+    throw(ArgumentError("the options fft, tilesize and gridsize are not supported with storage = $storage"))
   something(fft, FFTWBackend())
 end
+
+# The grid size of a plan: `nothing` (from σ and W, see `grid_size`) or Ñ per dimension of dims. A
+# given Ñ must hold the oversampled modes (Ñ ≥ σN, the window is designed for σ) and the halo (Ñ ≥ W).
+check_gridsize(P, ::Nothing, Nd::NTuple{D,Int}, kernels) where {D} = nothing
+function check_gridsize(P, gridsize, Nd::NTuple{D,Int}, kernels) where {D}
+  P <: NFFTPlan || throw(ArgumentError("the option gridsize is supported for the NFFT only"))
+  Ñ = gridsize isa Integer ? ntuple(_ -> Int(gridsize), D) : Tuple(gridsize)
+  (Ñ isa NTuple{D,Integer}) ||
+    throw(ArgumentError("gridsize must be an integer or have one entry per transformed dimension ($D)"))
+  for (kernel, _) in kernels, d in 1:D
+    Ñ[d] >= kernel.W && Ñ[d] >= kernel.σ * Nd[d] || throw(ArgumentError(
+      "gridsize $(Ñ[d]) in dimension $d is below σN = $(kernel.σ * Nd[d]) or W = $(kernel.W)"))
+  end
+  collect(Int, Ñ)
+end
+
+plan_grid(kernel, Nd::NTuple{D,Int}, gridsize) where {D} =
+  gridsize === nothing ? grid_size(kernel.σ, Nd, kernel.W) : NTuple{D,Int}(gridsize)
 
 # Core of a plan whose data live on a device (GPU array types); implemented by the GPU extension.
 device_core(storage, args...) = throw(ArgumentError(
@@ -201,13 +223,13 @@ Base.copy(c::Union{NFFTCore,BatchCore,RNFFTCore,RealCore}) = copy_core(c, c.nthr
 # gets its own work arrays, so that copies can run concurrently.
 function Base.copy(p::FastPlan)
   core = p.strategy === :slices ? single_cores(p.core[1], length(p.core)) : copy(p.core)
-  typeof(p)(p.N, p.Nin, p.NOut, p.dims, p.k, p.kernel, p.accuracy, p.options, p.fft, p.tilesize, p.strategy,
+  typeof(p)(p.N, p.Nin, p.NOut, p.dims, p.k, p.kernel, p.accuracy, p.options, p.fft, p.tilesize, p.gridsize, p.strategy,
             core)
 end
 
 function AbstractNFFTs.nodes!(p::FastPlan{T}, k::AbstractMatrix) where {T}
   size(k, 1) == length(p.dims) || throw(DimensionMismatch("nodes must have $(length(p.dims)) rows"))
-  p.strategy, p.core = make_engine(typeof(p), k, p.N, p.dims, p.kernel, T, p.fft, p.tilesize,
+  p.strategy, p.core = make_engine(typeof(p), k, p.N, p.dims, p.kernel, T, p.fft, p.tilesize, p.gridsize,
                                                    p.options.nthreads, p.options.storage)
   p.k = to_storage(p.options.storage, k, T)
   p.NOut = out_size(p.N, p.dims, size(k, 2))

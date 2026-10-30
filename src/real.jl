@@ -351,8 +351,8 @@ error_size(P::Type{<:RealPlan}, Nd) = virtual_size(kind(P), Nd)
 
 check_nodes(::Type{<:RealPlan}, k) = check_range(k, 0.0, 0.5, "nodes of an NFCT/NFST must be in [0, 1/2]")
 
-function make_core(P::Type{<:RealPlan}, k, Nd, kernel::KernelEntry, ::Type{T}, fft, tilesize, nthreads, storage,
-                   L1, L3) where {T}
+function make_core(P::Type{<:RealPlan}, k, Nd, kernel::KernelEntry, ::Type{T}, fft, tilesize, gridsize, nthreads,
+                   storage, L1, L3) where {T}
   S = kind(P)
   Ñv = grid_size(kernel.σ, virtual_size(S, Nd), kernel.W)
   φ = window_function(kernel)

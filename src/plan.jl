@@ -69,6 +69,7 @@ macro plan_fields()
     options::GenericOptions{T}
     fft::AbstractFFTBackend
     tilesize::Union{Nothing,Int}
+    gridsize::Union{Nothing,Vector{Int}}  # Ñ per dimension of dims; nothing: from σ and W
     strategy::Symbol                  # batch dimensions, see make_engine
     core::Any                         # the engine of the strategy; behind it the transforms are type stable
   end)
@@ -89,6 +90,9 @@ Generic options (every AbstractNFFTs implementation): `reltol` (default 1e-8), `
 * `fft`: FFT backend, `FFTWBackend()` (default) or `FFTABackend()` (`using FFTA`), see
   [`AbstractFFTBackend`](@ref)
 * `tilesize`: expert option, tile edge of the node binning
+* `gridsize`: expert option, size Ñ of the oversampled grid (integer, or one per transformed
+  dimension), at least σN and W; any size, not only the FFT-friendly ones (2, 3, 5) the planner
+  takes. The window stays the one designed for σ.
 * `measure`: `true` times the four parameter sets of lowest predicted cost at plan
   time (transform and adjoint) and keeps the fastest; the cost model cannot see how fast the FFT
   is for a particular grid size
@@ -113,9 +117,9 @@ NFFTPlan(k::AbstractVector, N; kwargs...) = plan_nfft(NFFTBackend(), k, N; kwarg
 NFFTPlan(k::AbstractMatrix, N::NTuple{D,Int}, g::GenericOptions; kwargs...) where {D} =
   fast_plan(NFFTPlan, k, N, g; kwargs...)
 
-function make_core(::Type{<:NFFTPlan}, k, Nd, kernel::KernelEntry, ::Type{T}, fft, tilesize, nthreads, storage,
-                   L1, L3) where {T}
-  Ñ = grid_size(kernel.σ, Nd, kernel.W)
+function make_core(::Type{<:NFFTPlan}, k, Nd, kernel::KernelEntry, ::Type{T}, fft, tilesize, gridsize, nthreads,
+                   storage, L1, L3) where {T}
+  Ñ = plan_grid(kernel, Nd, gridsize)
   φ = window_function(kernel)
   storage <: Array || return device_core(storage, k, Nd, Ñ, kernel.W, φ, T, nthreads, L1, L3)
   NFFTCore(k, Nd, Ñ, kernel.W, φ, T, fft, tilesize, nthreads)
@@ -127,8 +131,9 @@ slice_size(c::NFFTCore) = c.N
 # transposed into them.
 batch_strategy(::Type{<:NFFTPlan}, Dd, L1, L3) = Dd > 2 ? :loop : L3 == 1 ? :lead : L1 == 1 ? :trail : :loop
 
-function batch_engine(strategy, k, Nd, kernel::KernelEntry, ::Type{T}, fft, tilesize, nthreads, L1, L3) where {T}
-  Ñ = grid_size(kernel.σ, Nd, kernel.W)
+function batch_engine(strategy, k, Nd, kernel::KernelEntry, ::Type{T}, fft, tilesize, gridsize, nthreads, L1,
+                      L3) where {T}
+  Ñ = plan_grid(kernel, Nd, gridsize)
   c = BatchCore(k, Nd, Ñ, kernel.W, window_function(kernel), T, fft, L1 * L3, tilesize, nthreads)
   strategy === :lead && return :lead, c
   :trail, TrailCore(c, Array{Complex{T}}(undef, L3, Nd...), Array{Complex{T}}(undef, L3, size(k, 2)))

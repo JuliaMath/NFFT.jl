@@ -90,6 +90,25 @@
     p = plan_nfft(k, N; window=gauss, W=8, σ=2.0)
     @test isnan(accuracy(p))
     @test norm(p * f - plan_nfft(k, N; reltol=1e-10) * f) / norm(p * f) < 1e-2
+    # gridsize: any grid of at least σN points, also with factors 7, 11 and odd
+    ref = NDFTPlan(k, N)
+    for Ñ in ((56, 44), (49, 33))
+      p = plan_nfft(k, N; window=KaiserBessel(), W=10, σ=1.6, gridsize=Ñ)
+      @test p.core.Ñ == Ñ
+      @test norm(p * f - ref * f) / norm(ref * f) < 1e-7
+      @test norm(adjoint(p) * fHat - adjoint(ref) * fHat) / norm(adjoint(ref) * fHat) < 1e-7
+    end
+    p = plan_nfft(k, N; reltol=1e-6, gridsize=77)
+    @test p.core.Ñ == (77, 77)
+    @test norm(p * f - ref * f) / norm(ref * f) < 1e-6
+    nodes!(p, k[:, 1:100])
+    @test p.core.Ñ == (77, 77)
+    fb = randn(rng, ComplexF64, N..., 3)
+    pb = plan_nfft(k, (N..., 3); dims=1:2, W=10, σ=2.0, gridsize=(56, 44))
+    @test norm(pb * fb - plan_nfft(k, (N..., 3); dims=1:2, W=10, σ=2.0) * fb) / norm(pb * fb) < 1e-8
+    @test_throws ArgumentError plan_nfft(k, N; W=10, σ=2.0, gridsize=(47, 44))   # below σN
+    @test_throws ArgumentError plan_nfft(k, N; W=10, σ=2.0, gridsize=(56, 44, 3))
+    @test_throws ArgumentError plan_nfct(rand(rng, 2, 50) ./ 2, N; gridsize=(56, 44))
   end
 
   @testset "threads and copies give the same result" begin

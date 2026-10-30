@@ -91,7 +91,7 @@ NNFFTPlan(k::AbstractVecOrMat, y::AbstractVecOrMat, N::Dims...; kwargs...) = pla
 
 function NNFFTPlan(k::AbstractMatrix, y::AbstractMatrix, g::GenericOptions{T}; N=(size(y, 2),), window=:auto,
                    W=nothing, σ=nothing, fft=nothing) where {T}
-  cpu_options(g.storage, fft, nothing)
+  cpu_options(g.storage, fft, nothing, nothing)
   kc = Array{wide(T)}(k); yc = Array{wide(T)}(y)
   all(isfinite, kc) && all(isfinite, yc) || throw(ArgumentError("nodes must be finite"))
   nnfft_plan(Val(size(kc, 1)), k, y, kc, yc, g, N; window, W, σ, fft)

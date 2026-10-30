@@ -150,8 +150,8 @@ RNFFTPlan(k::AbstractMatrix, N::NTuple{D,Int}, g::GenericOptions; kwargs...) whe
 
 input_size(::Type{<:RNFFTPlan}, N, dims) = Base.setindex(N, N[first(dims)] ÷ 2 + 1, first(dims))
 
-function make_core(::Type{<:RNFFTPlan}, k, Nd, kernel::KernelEntry, ::Type{T}, fft, tilesize, nthreads, storage,
-                   L1, L3) where {T}
+function make_core(::Type{<:RNFFTPlan}, k, Nd, kernel::KernelEntry, ::Type{T}, fft, tilesize, gridsize, nthreads,
+                   storage, L1, L3) where {T}
   φ = window_function(kernel)
   Ñ = grid_size(kernel.σ, Nd, kernel.W)
   storage <: Array || return device_rnfft_core(storage, k, Nd, Ñ, kernel.W, φ, T, nthreads, L1, L3)
