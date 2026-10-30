@@ -30,7 +30,8 @@ function NFFTCore(k::AbstractMatrix, N::NTuple{D,Int}, Ñ::NTuple{D,Int}, W, φ:
   h = halo(W)
   gp = Array{Complex{T}}(undef, Ñ .+ W)         # zeroed by every transform
   g = interior(gp, h)
-  NFFTCore(N, Ñ, W, B, K, invphi, Binned(k, Ñ, B, nthreads), gp,
+  binned = @stage :sort Binned(k, Ñ, B, nthreads)
+  NFFTCore(N, Ñ, W, B, K, invphi, binned, gp,
            PassFFT(fft, g, N, Val(:fwd); nthreads), PassFFT(fft, g, N, Val(:bwd); nthreads),
            TileLocks(size(gp), B), task_buffers(Complex{T}, ntuple(_ -> B + W + 1, D), nthreads),
            fft, nthreads)
@@ -38,21 +39,21 @@ end
 
 function trafo_core!(out, c::NFFTCore, f)
   h = halo(c.W); g = interior(c.gp, h)
-  threaded_fill!(c.gp, 0, c.nthreads)
-  resampling_correction_core!(g, f, c.invphi, c.N, c.Ñ, c.nthreads)
-  apply!(c.fwd, g)
-  fill_halo!(c.gp, h, c.nthreads)
-  resample!(out, c.gp, c.kernel, c.binned, c.Ñ, c.bufs)
+  @stage :zero threaded_fill!(c.gp, 0, c.nthreads)
+  @stage :correction resampling_correction_core!(g, f, c.invphi, c.N, c.Ñ, c.nthreads)
+  @stage :fft apply!(c.fwd, g)
+  @stage :halo fill_halo!(c.gp, h, c.nthreads)
+  @stage :resampling resample!(out, c.gp, c.kernel, c.binned, c.Ñ, c.bufs)
   out
 end
 
 function adjoint_core!(f, c::NFFTCore, vals)
   h = halo(c.W); g = interior(c.gp, h)
-  threaded_fill!(c.gp, 0, c.nthreads)
-  resample_adjoint!(c.gp, c.kernel, c.binned, vals, c.Ñ, c.locks, c.bufs)
-  fold_halo!(c.gp, h, c.nthreads)
-  apply!(c.bwd, g)
-  resampling_correction_adjoint_core!(f, g, c.invphi, c.N, c.Ñ, c.nthreads)
+  @stage :zero threaded_fill!(c.gp, 0, c.nthreads)
+  @stage :resampling resample_adjoint!(c.gp, c.kernel, c.binned, vals, c.Ñ, c.locks, c.bufs)
+  @stage :halo fold_halo!(c.gp, h, c.nthreads)
+  @stage :fft apply!(c.bwd, g)
+  @stage :correction resampling_correction_adjoint_core!(f, g, c.invphi, c.N, c.Ñ, c.nthreads)
   f
 end
 

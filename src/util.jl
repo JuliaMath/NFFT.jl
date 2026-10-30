@@ -31,6 +31,28 @@ function threaded_foreach(f, xs, n)
   nothing
 end
 
+# Stage timers of the CPU NFFT core for the benchmark, off by default: `TIME_STAGES[] = true` makes
+# every transform (and plan creation, for :sort) write the wall time of each stage in seconds into
+# `STAGE_TIMES` (order of `STAGES`; stages a call does not run keep their last value). Not API.
+const STAGES = (:sort, :zero, :correction, :fft, :halo, :resampling)
+const TIME_STAGES = Ref(false)
+const STAGE_TIMES = zeros(length(STAGES))
+
+macro stage(name, ex)
+  i = findfirst(==(name isa QuoteNode ? name.value : name), STAGES)
+  i === nothing && error("unknown stage $name")
+  esc(quote
+    if $(GlobalRef(@__MODULE__, :TIME_STAGES))[]
+      local t0 = time_ns()
+      local r = $ex
+      $(GlobalRef(@__MODULE__, :STAGE_TIMES))[$i] = 1e-9 * (time_ns() - t0)
+      r
+    else
+      $ex
+    end
+  end)
+end
+
 # Split a range into at most k contiguous chunks of nearly equal length.
 chunks(r, k) = isempty(r) ? typeof(r[1:0])[] :
   [r[i:min(i + cld(length(r), k) - 1, end)] for i in 1:cld(length(r), k):length(r)]
