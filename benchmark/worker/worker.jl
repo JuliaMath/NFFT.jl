@@ -81,8 +81,12 @@ function measure(prob::Problem, task)
   prob = Problem((f === :task ? task : getfield(prob, f) for f in fieldnames(Problem))...)
   tol = Float64(task["tol"]); budget = Float64(get(task, "budget", 0.1))
   x, y = map(upload, natural(prob))
+  # FFTW_MEASURE plans take up to minutes for large grids: only the timed plan uses the task's flag;
+  # the compiling plan and the reported grid (independent of the flag) use ESTIMATE
+  est = Problem((f === :task ? merge(task, Dict("fft_flag" => "ESTIMATE")) : getfield(prob, f)
+                 for f in fieldnames(Problem))...)
   forget_fftw_wisdom()
-  p = plan(prob, tol)                                  # compiles
+  p = plan(est, tol)                                   # compiles
   release!(p)
   t_plan = Inf
   for _ in 1:Int(get(task, "plans", 3)) - 1
@@ -108,7 +112,7 @@ function measure(prob::Problem, task)
   release!(p)
   # the grid Ñ per dimension: from the plan, or what the library reports (outside the timing)
   need = !haskey(r, "rep_W") && (haskey(task, "rule") || !haskey(r, "grid"))
-  rep = need && @isdefined(reported) ? reported(prob, tol) : r
+  rep = need && @isdefined(reported) ? reported(est, tol) : r
   haskey(rep, "rep_grid") && !haskey(r, "grid") && (r["grid"] = rep["rep_grid"]; r["grid_adj"] = rep["rep_grid_adj"])
   haskey(r, "grid") && !haskey(r, "grid_adj") && (r["grid_adj"] = r["grid"])
   haskey(task, "rule") && merge!(r, rule_check(prob, task, tol, rep))
