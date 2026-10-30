@@ -47,6 +47,8 @@ function natural(prob::Problem)
 end
 
 function measure(prob::Problem, task)
+  # the cached problem carries the task that created it; the plan needs this one (e.g. its sigma_req)
+  prob = Problem((f === :task ? task : getfield(prob, f) for f in fieldnames(Problem))...)
   tol = Float64(task["tol"]); budget = Float64(get(task, "budget", 0.1))
   x, y = map(upload, natural(prob))
   p = plan(prob, tol)                                  # compiles

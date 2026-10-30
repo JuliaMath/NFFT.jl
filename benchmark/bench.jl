@@ -56,6 +56,7 @@ end
 
 using Dates
 function main(args)
+  Benchmarks.LOAD_START[] = Benchmarks.loadavg()
   o, pos = parse_opts(args)
   cmd = isempty(pos) ? "list" : pos[1]
   if cmd == "list"

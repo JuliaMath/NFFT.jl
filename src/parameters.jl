@@ -42,12 +42,15 @@ end
 # storage and coefficients c per dimension (D ≤ 3), storage and element type: the defaults of
 # `default_cost`, or those set by `set_cost_model!` (`calibrate_cost`).
 #
-# CPU: fitted on an M1 Max with 8 threads for J = 2^18, W ∈ 4:16, σ ∈ 1.25:0.25:2.25,
-# t ≈ a·J·W^D + a1·J·W + b·Ñ^D·log2(Ñ^D) + c. It only interpolates within that range (median
-# deviation 5 % in 2D/3D, 11 % in 1D); the coefficients have no physical meaning.
-const COST_COEF = Dict(1 => [2.32e-07, 2.32e-07, 4.38e-07, -1.15],
-                       2 => [1.84e-08, 1.33e-06, 1.19e-07, 0.639],
-                       3 => [8.17e-08, -2.83e-06, 1.62e-07, 6.17])
+# CPU: t ≈ a·J·W^D (taps) + a1·J·W (window evaluation per node and dimension; the same term as the
+# taps in 1D) + b·M·log2(M) (FFT of the oversampled grid, M = Ñ^D) + c (fixed costs: tasks, small
+# loops), all nonnegative. Fitted by `calibrate_cost` on an M1 Max with 8 threads, Float64, over the
+# node densities J/N = 0.01…100, W = 4:2:14, σ = 1.25…2.5, two sizes per dimension: model/measured
+# median 0.94–1.12 at every density (5–95 % quantiles 0.39–1.22). Per tap a = 0.43 ns (1D), 0.053 ns (2D),
+# 0.056 ns (3D); b = 0.13–0.16 ns; c = 0.4–0.6 ms.
+const COST_COEF = Dict(1 => [4.26e-07, 0.0, 1.26e-07, 0.377],
+                       2 => [5.33e-08, 8.50e-07, 1.55e-07, 0.425],
+                       3 => [5.56e-08, 1.37e-06, 1.64e-07, 0.580])
 
 cost_terms(::Type{<:Array}, D, W, M, J, T) = (J * W^D, J * W, M * log2(M), 1.0)
 default_cost(::Type{<:Array}, T) = COST_COEF

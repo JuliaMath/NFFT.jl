@@ -5,11 +5,16 @@
 const SIZES = Dict(1 => [2^18], 2 => [512, 512], 3 => [64, 64, 64])
 const COMPETITORS = ["NFFT", "FINUFFT", "ducc"]
 
-task(; lib, N, J=prod(N), transform="nfft", L=1, nodes="uniform", T="Float64", tol=1e-8,
-     threads=8, budget=0.1, seed=1234, suite="", stages=false, plans=3) =
-  Dict{String,Any}("lib" => lib, "transform" => transform, "N" => collect(N), "J" => J, "L" => L,
-                   "nodes" => nodes, "T" => T, "tol" => tol, "threads" => threads, "budget" => budget,
-                   "seed" => seed, "suite" => suite, "stages" => stages, "plans" => plans)
+# sigma_req: a fixed oversampling factor (NFFT.jl: the smallest W that reaches tol at it) instead of
+# the library's own choice
+function task(; lib, N, J=prod(N), transform="nfft", L=1, nodes="uniform", T="Float64", tol=1e-8,
+              threads=8, budget=0.1, seed=1234, suite="", stages=false, plans=3, sigma_req=nothing)
+  t = Dict{String,Any}("lib" => lib, "transform" => transform, "N" => collect(N), "J" => J, "L" => L,
+                       "nodes" => nodes, "T" => T, "tol" => tol, "threads" => threads, "budget" => budget,
+                       "seed" => seed, "suite" => suite, "stages" => stages, "plans" => plans)
+  sigma_req === nothing || (t["sigma_req"] = sigma_req)
+  t
+end
 
 opt(o, key, default) = get(o, key, default)
 # Performance cores only: on Apple silicon the efficiency cores slow down threaded loops with static
@@ -104,6 +109,22 @@ const NNFFT_SIZES = Dict(1 => [2^16], 2 => [256, 256], 3 => [32, 32, 32])
        budget=opt(o, :budget, 0.1), suite="metal")
   for D in opt(o, :dims, [1, 2, 3]) for tol in opt(o, :tols, [1e-2, 1e-3, 1e-4, 1e-5])
   for lib in opt(o, :libs, ["NFFT Metal", "mlx-nufft"])]
+
+# The optimal σ against the node density J/N: for every σ of the kernel table the smallest W that
+# reaches tol, and the planner's choice (also of `libs`, e.g. an NFFT@<rev> with another cost model).
+# N such that J = 100·N stays below ≈ 10^10 taps per transform at 1e-12.
+const SIGMA_SIZES = Dict(1 => [2^16], 2 => [256, 256], 3 => [32, 32, 32])
+const SIGMA_DENSITIES = [0.01, 0.03, 0.1, 0.3, 1, 3, 10, 30, 100]
+const SIGMA_TABLE = round.(1.2:0.05:2.5; digits=2)
+@suite "sigma" "σ against node density J/N = 0.01…100: every σ with its smallest W, and the planner (M13)" o -> [
+  [task(; lib="NFFT", N=SIGMA_SIZES[D], J=round(Int, ρ * prod(SIGMA_SIZES[D])), tol, T, sigma_req=σ, plans=1,
+        threads=opt(o, :threads, [default_threads()])[1], budget=opt(o, :budget, 0.1), suite="sigma")
+   for D in opt(o, :dims, [1, 2, 3]) for ρ in SIGMA_DENSITIES for T in opt(o, :T, ["Float64", "Float32"])
+   for tol in opt(o, :tols, T == "Float32" ? [1e-3, 1e-5] : [1e-4, 1e-8, 1e-12]) for σ in SIGMA_TABLE];
+  [task(; lib, N=SIGMA_SIZES[D], J=round(Int, ρ * prod(SIGMA_SIZES[D])), tol, T, plans=1,
+        threads=opt(o, :threads, [default_threads()])[1], budget=opt(o, :budget, 0.1), suite="sigma")
+   for D in opt(o, :dims, [1, 2, 3]) for ρ in SIGMA_DENSITIES for T in opt(o, :T, ["Float64", "Float32"])
+   for tol in opt(o, :tols, T == "Float32" ? [1e-3, 1e-5] : [1e-4, 1e-8, 1e-12]) for lib in opt(o, :libs, ["NFFT"])]]
 
 const HOMEPAGE = ["pareto", "threads", "sizes", "nodes", "batch", "real", "nnfft", "history"]
 @suite "all" "all suites of the documentation (" * join(HOMEPAGE, ", ") * ")" o ->

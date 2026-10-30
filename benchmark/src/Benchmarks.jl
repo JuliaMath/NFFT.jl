@@ -24,7 +24,7 @@ const LIBS = Dict(
   "mlx-nufft" => (env=joinpath(ROOT, "envs", "mlxnufft"), adapter="mlxnufft.jl"),
 )
 
-const COLUMNS = ["suite", "lib", "transform", "D", "N", "J", "L", "nodes", "T", "threads", "tol",
+const COLUMNS = ["suite", "lib", "transform", "D", "N", "J", "L", "nodes", "T", "threads", "tol", "sigma_req",
                  "err_trafo", "err_adj", "t_plan", "t_trafo", "t_adj", "t_trafo_med", "t_adj_med",
                  "alloc_trafo", "alloc_adj", "W", "sigma", "window", "lib_version", "lib_library",
                  "skipped", "error"]
@@ -205,14 +205,18 @@ function read_csv(file)
   meta, rows
 end
 
+# Load average (1, 5, 15 min) when the orchestrator started and when the results are written.
+const LOAD_START = Ref("")
+loadavg() = join(round.(Sys.loadavg(); digits=2), " ")
+
 meta_info(suite, args) = Dict{String,Any}("date" => string(now()), "machine" => machine(),
   "cpu" => Sys.CPU_NAME, "julia" => string(VERSION), "commit" => repo_commit(),
-  "suite" => suite, "command" => join(args, " "))
+  "suite" => suite, "command" => join(args, " "), "load_start" => LOAD_START[], "load_end" => loadavg())
 
 # ── comparison ───────────────────────────────────────────────────────────────────────────────
 
 key(r; lib=true) = (lib ? r["lib"] : "", r["transform"], r["N"], r["J"], get(r, "L", 1), r["nodes"], r["T"],
-                    r["threads"], r["tol"])
+                    r["threads"], r["tol"], get(r, "sigma_req", ""))
 ok(r) = get(r, "skipped", "") == "" && get(r, "error", "") == ""
 geomean(x) = isempty(x) ? NaN : exp(sum(log, x) / length(x))
 

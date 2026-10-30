@@ -13,7 +13,19 @@ function plan(prob, tol)
   D = length(prob.N); L = size(prob.y, 2)
   N = L == 1 ? prob.N : (prob.N..., L)
   f = getfield(AbstractNFFTs, KIND_PLANS[prob.task["transform"]])
-  f(NFFT.backend(), prob.k, N; reltol=tol, dims=1:D)
+  haskey(prob.task, "sigma_req") || return f(NFFT.backend(), prob.k, N; reltol=tol, dims=1:D)
+  e = smallest_width(prob.task["sigma_req"], tol, prob.N, eltype(prob.k))
+  f(NFFT.backend(), prob.k, N; reltol=tol, dims=1:D, window=e.window, W=e.W, σ=e.σ)
+end
+
+# The table entry at the tabulated σ nearest to σ with the smallest W whose predicted error reaches tol
+# (either window family; the more accurate one at equal W).
+function smallest_width(σ, tol, N, ::Type{T}) where {T}
+  isdefined(NFFT, :kernel_candidates) || throw(Unsupported("no kernel_candidates in this revision"))
+  cands = NFFT.kernel_candidates(:auto, nothing, σ, T)
+  ok = filter(e -> NFFT.predicted_error(e, Tuple(N), T) <= tol, cands)
+  isempty(ok) && throw(Unsupported("no W reaches tol at σ = $σ"))
+  argmin(e -> (e.W, NFFT.predicted_error(e, Tuple(N), T)), ok)
 end
 trafo!(p, out, x) = mul!(out, p, x)
 adjoint!(p, out, y) = mul!(out, p isa AbstractNFFTs.AbstractRealFTPlan ? transpose(p) : adjoint(p), y)

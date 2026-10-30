@@ -76,7 +76,8 @@
     q = plan_nfst(rand(rng, 2, 50) ./ 2, (12, 10); reltol=1e-6, measure=true, W=8)
     @test q.kernel.W == 8
     # cost model: fitted on this machine, or set per storage and element type
-    c = NFFT.calibrate_cost(; J=(2^10, 2^12), W=4:5, σ=(1.5, 2.0), dims=1:1, sizes=(((2^12,), (2^14,)),), nrep=1, set=false)
+    c = NFFT.calibrate_cost(; densities=(0.1, 1), W=4:5, σ=(1.5, 2.0), dims=1:1, sizes=(((2^10,), (2^12,)),), nrep=1, set=false)
+    @test all(>=(0), c[1])
     @test length(c[1]) == 4 && all(isfinite, c[1])
     fftonly = Dict(D => (0.0, 0.0, 1.0, 0.0) for D in 1:3)
     NFFT.set_cost_model!(Array, Float64, fftonly)

@@ -58,42 +58,49 @@ end
 synchronize(x) = nothing
 
 # Relative least squares (the small times weigh as much as the large ones) with nonnegative
-# coefficients: every term is a cost; a negative coefficient would make extrapolation favour the
-# large grids. Terms with negative coefficients are dropped one at a time, the most negative first.
+# coefficients: every term is a cost, and a negative coefficient makes the model predict costs below
+# the measured ones, even negative, outside the fitted range. Exact: the best fit over all subsets of
+# terms whose free solution is nonnegative (the models have at most five terms).
 function nonneg_fit(A, t)
-  B = A ./ t
-  keep = trues(size(A, 2))
-  while true
-    c = zeros(size(A, 2))
-    c[keep] = B[:, keep] \ ones(length(t))
-    all(>=(0), c) && return c
-    keep[argmin(c)] = false
+  B = A ./ t; n = size(A, 2); y = ones(length(t))
+  best = zeros(n); res = sum(abs2, y)
+  for mask in 1:(2^n - 1)
+    keep = [isodd(mask >> (i - 1)) for i in 1:n]
+    c = zeros(n)
+    c[keep] = B[:, keep] \ y
+    all(>=(0), c) || continue
+    r = sum(abs2, B * c - y)
+    r < res && ((best, res) = (c, r))
   end
+  best
 end
 
-const CALIBRATION_SIZES = (((2^16,), (2^20,)), ((256, 256), (1024, 1024)), ((32, 32, 32), (96, 96, 96)))
+# Two sizes per dimension, each with J = ρ·|N| nodes for every density ρ of `calibrate_cost`.
+const CALIBRATION_SIZES = (((2^12,), (2^16,)), ((64, 64), (256, 256)), ((16, 16, 16), (32, 32, 32)))
+const CALIBRATION_DENSITIES = (0.01, 0.1, 1, 10, 100)
 
 """
-    NFFT.calibrate_cost(storage=Array; eltype=Float64, J=(2^16, 2^18, 2^20), W=4:2:12,
-                        σ=(1.25, 1.5, 2.0, 2.5), dims=1:3, sizes=CALIBRATION_SIZES, nrep=10, set=true)
+    NFFT.calibrate_cost(storage=Array; eltype=Float64, densities=(0.01, 0.1, 1, 10, 100), W=4:2:14,
+                        σ=(1.25, 1.5, 2.0, 2.5), dims=1:3, sizes=CALIBRATION_SIZES, nrep=3, set=true)
 
 Fit the cost model by which plans choose window width and oversampling to NFFTs timed on this
-machine: transform and adjoint for random nodes and every combination of `J`, `W`, `σ` and the
-sizes in `sizes[D]` (default 2^16 and 2^20, 256² and 1024², 32³ and 96³) in the dimensions
-`dims`. With `set`, plans with this `storage` and `eltype` use the result for the rest of the
-session. Returns a `Dict` from the dimension to the coefficients, for
+machine: transform and adjoint for random nodes and every combination of the node density `J/|N|`,
+`W`, `σ` and the sizes in `sizes[D]` (default 2^12 and 2^16, 64² and 256², 16³ and 32³) in the
+dimensions `dims`. The coefficients are nonnegative, so that the model also extrapolates to
+densities outside the sweep. With `set`, plans with this `storage` and `eltype` use the result for
+the rest of the session. Returns a `Dict` from the dimension to the coefficients, for
 [`NFFT.set_cost_model!`](@ref) in a later session.
 
 The built-in models are fitted on an Apple M1 Max (CPU with 8 threads, GPU with Metal and
 `Float32`). Other machines, thread counts and GPUs have other ratios of resampling, FFT and fixed
-costs. The default sweep takes about three minutes on the M1 Max GPU; on the CPU, smaller `J`,
-sizes and fewer `W` keep it short.
+costs. The default sweep takes a few minutes; fewer densities, widths and sizes keep it short.
 """
-function calibrate_cost(S=Array; eltype::Type{T}=Float64, J=(2^16, 2^18, 2^20), W=4:2:12,
-                        σ=(1.25, 1.5, 2.0, 2.5), dims=1:3, sizes=CALIBRATION_SIZES, nrep=10, set=true) where {T}
+function calibrate_cost(S=Array; eltype::Type{T}=Float64, densities=CALIBRATION_DENSITIES, W=4:2:14,
+                        σ=(1.25, 1.5, 2.0, 2.5), dims=1:3, sizes=CALIBRATION_SIZES, nrep=3, set=true) where {T}
   coef = Dict{Int,Any}()
   for D in dims
-    rows = vec(map(Iterators.product(J, W, σ, sizes[D])) do (j, w, s, N)
+    rows = vec(map(Iterators.product(densities, W, σ, sizes[D])) do (ρ, w, s, N)
+      j = max(1, round(Int, ρ * prod(N)))
       k = rand(D, j) .- 0.5
       p = plan_nfft(NFFTBackend(), k, N; eltype=T, storage=S, W=w, σ=s, reltol=1e-2)
       q = parameters(p)
