@@ -6,7 +6,7 @@
 # task plus the measured values; the results file is rewritten after every task, so that a crash
 # keeps what was measured.
 
-using TOML, Printf, Statistics, Libdl
+using TOML, Printf, Statistics
 include("problems.jl")
 
 # thrown by an adapter for a problem the library cannot do; recorded as skipped
@@ -28,16 +28,7 @@ function capture_c(f)
   r, out
 end
 
-# FFTW keeps the plans it measured as wisdom per process; later plans of any flag reuse it. Every
-# plan of a task starts without it, in each loaded FFTW (FFTW.jl's and a library's own build).
-function forget_fftw_wisdom()
-  for lib in Libdl.dllist(), (pat, sym) in ((r"libfftw3\.", :fftw_forget_wisdom), (r"libfftw3f\.", :fftwf_forget_wisdom))
-    occursin(pat, basename(lib)) || continue
-    fp = Libdl.dlsym(Libdl.dlopen(lib), sym; throw_error=false)
-    fp === nothing || ccall(fp, Cvoid, ())
-  end
-end
-
+include("fftw.jl")
 include(joinpath(@__DIR__, "..", "src", "rules.jl"))
 using .Rules
 

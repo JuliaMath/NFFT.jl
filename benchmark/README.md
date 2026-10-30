@@ -13,6 +13,7 @@ julia benchmark/bench.jl ab HEAD~1                  # working tree against a rev
 julia benchmark/bench.jl compare out/a.csv out/b.csv
 julia benchmark/bench.jl run all --save             # all suites of the documentation, ≈ 15 min
 julia benchmark/bench.jl report                     # figures and explorer data for the docs
+julia benchmark/bench.jl check                      # worker's FFTW threads against a fresh process
 ```
 
 Run from the repository root with any Julia (the orchestrator uses the standard library only).
@@ -36,6 +37,10 @@ revision, checked out as a worktree in `.cache/`.
 - `worker/worker.jl`: plan (3 times, minimum), direct and adjoint transform (minimum and median of
   repeated calls within the budget), relative error against the reference, allocations, the
   parameters the library chose.
+- `worker/fftw.jl`: forgets FFTW's wisdom before every plan, in every loaded FFTW, after
+  initialising FFTW's threads (a planner created before `fftw_init_threads` lacks the threaded
+  Cooley-Tukey solvers). `bench.jl check` times threaded FFTW and FINUFFT plans after this call
+  against a fresh process; run it after changing the worker.
 - `worker/adapters/<lib>.jl`: maps the convention of NFFT.jl (nodes in [-1/2, 1/2), modes in
   increasing order, e^{-2πi l·k} for the direct transform) onto each library. A wrong mapping shows
   up as an error of order one.

@@ -5,6 +5,7 @@
 #   julia benchmark/bench.jl ab <rev> [suite] [options]  working tree against a git revision (default suite: fast)
 #   julia benchmark/bench.jl compare <new.csv> <old.csv> time ratios of two runs
 #   julia benchmark/bench.jl report [machine]            figures and data for the documentation
+#   julia benchmark/bench.jl check [--threads 8]         worker's FFTW state against a fresh process
 #
 # Options: --libs NFFT,FINUFFT  --dims 1,2  --tols 1e-4,1e-8  --T Float32  --threads 1,8
 #          --budget 0.1  --rounds 2 (ab)  --save (results/<machine>/<suite>.csv, for the docs)
@@ -84,6 +85,10 @@ function main(args)
     env = joinpath(ROOT, "envs", "report")
     Benchmarks.ensure_env(env)
     run(`$(Benchmarks.julia()) --project=$env $(joinpath(ROOT, "src", "report.jl")) $(get(pos, 2, machine()))`)
+  elseif cmd == "check"
+    env = LIBS["FINUFFT"].env
+    Benchmarks.ensure_env(env)
+    run(`$(Benchmarks.julia()) --project=$env -t $(get(o, :threads, [8])[1]) $(joinpath(ROOT, "worker", "check_fftw.jl"))`)
   else
     error("unknown command $cmd")
   end
