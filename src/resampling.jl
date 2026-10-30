@@ -119,8 +119,19 @@ end
 end
 
 # Hint to load a[i] into the cache (read, high locality); no effect on the result.
-@inline prefetch(a::StridedArray, i) =
-  ccall("llvm.prefetch", llvmcall, Cvoid, (Ptr{Cvoid}, Int32, Int32, Int32), pointer(a, i), 0, 3, 1)
+# Julia < 1.12 rejects the intrinsic in ccall(…, llvmcall, …) and needs it as typed-pointer IR.
+@static if VERSION >= v"1.12"
+  @inline prefetch(a::StridedArray, i) =
+    ccall("llvm.prefetch", llvmcall, Cvoid, (Ptr{Cvoid}, Int32, Int32, Int32), pointer(a, i), 0, 3, 1)
+else
+  @inline prefetch(a::StridedArray, i) = Base.llvmcall(("""
+    declare void @llvm.prefetch(i8*, i32, i32, i32)
+    define void @entry(i64 %p) {
+      %ptr = inttoptr i64 %p to i8*
+      call void @llvm.prefetch(i8* %ptr, i32 0, i32 3, i32 1)
+      ret void
+    }""", "entry"), Cvoid, Tuple{Int}, Int(pointer(a, i)))
+end
 @inline prefetch(a, i) = nothing
 
 # Adjoint resampling: each task takes the next tile, adds its nodes into a private zeroed buffer of
