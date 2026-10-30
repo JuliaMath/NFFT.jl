@@ -8,20 +8,7 @@ const KIND_PLANS = Dict("nfft" => :plan_nfft, "rnfft" => :plan_rnfft, "nfct" => 
 supports(task) = isdefined(AbstractNFFTs, KIND_PLANS[task["transform"]]) ? nothing :
                  "no $(task["transform"]) in this revision"
 
-# raise_tol: an unreachable tol is doubled until NFFT.jl accepts it, up to 0.5 (as FINUFFT's adapter).
 function plan(prob, tol)
-  get(prob.task, "raise_tol", false) || return plan_at(prob, tol)
-  while true
-    try
-      return plan_at(prob, tol)
-    catch e
-      e isa ArgumentError && occursin("out of reach", e.msg) && tol < 0.25 || rethrow()
-      tol *= 2
-    end
-  end
-end
-
-function plan_at(prob, tol)
   prob.task["transform"] == "nnfft" && return AbstractNFFTs.plan_nnfft(NFFT.backend(), prob.k, prob.src; reltol=tol)
   D = length(prob.N); L = size(prob.y, 2)
   N = L == 1 ? prob.N : (prob.N..., L)

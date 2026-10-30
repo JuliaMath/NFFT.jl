@@ -4,8 +4,9 @@
 #
 #   Rules.choose(rule, T, N, J, tol; threads) -> (trafo = c, adjoint = c)
 #
-# with c = (; window, β, e0, W, sigma, grid): `sigma` the nominal oversampling factor of the rule,
-# `grid` the oversampled grid per dimension as X builds it. The trafo is X's type 2, the adjoint its
+# with c = (; window, β, e0, W, sigma, tol, grid): `sigma` the nominal oversampling factor of the rule,
+# `tol` the tolerance X works with (raised or clamped as X or its adapter does), `grid` the
+# oversampled grid per dimension as X builds it. The trafo is X's type 2, the adjoint its
 # type 1. Windows (z in grid units, |z| < W/2, x = 2z/W):
 #   "es"       exp(β((1 − x²)^e0 − 1))                     FINUFFT ≤ 2.4, cuFINUFFT, ducc, mlx-nufft
 #   "pswf"     ψ₀ᶜ(x) with c = β, the prolate spheroidal wave function of order 0     FINUFFT ≥ 2.5
@@ -20,7 +21,7 @@ const RULES = ["FINUFFT 2.5", "FINUFFT 2.6-dev", "cuFINUFFT 2.5", "ducc 0.29", "
 const RULE_OF_LIB = Dict("FINUFFT 2.5" => "FINUFFT 2.5", "FINUFFT" => "FINUFFT 2.6-dev", "ducc" => "ducc 0.29",
                          "NonuniformFFTs" => "NonuniformFFTs 0.9", "mlx-nufft" => "mlx-nufft 0.3")
 
-choice(window, β, e0, W, σ, grid) = (; window, β=Float64(β), e0=Float64(e0), W=Int(W), sigma=Float64(σ),
+choice(window, β, e0, W, σ, grid, tol) = (; window, β=Float64(β), e0=Float64(e0), W=Int(W), sigma=Float64(σ), tol=Float64(tol),
                                      grid=collect(Int, grid))
 
 function choose(rule, ::Type{T}, N, J, tol; threads=8) where {T}
@@ -74,7 +75,7 @@ function finufft251(::Type{T}, N, J, tol, type, threads) where {T}
   tol = max(tol, Float64(eps(T)))
   ns = clamp(theoretical_ns(tol, length(N), type, σ), 2, 16)
   T == Float32 && σ < 1.4 && (ns = min(ns, 8))
-  choice("pswf", finufft_beta(ns, σ), 0, ns, σ, [next235even(max(ceil(Int, σ * n), 2ns)) for n in N])
+  choice("pswf", finufft_beta(ns, σ), 0, ns, σ, [next235even(max(ceil(Int, σ * n), 2ns)) for n in N], tol)
 end
 
 # ── FINUFFT 2.6.0-dev (main at da76a57, the build of the benchmark) ───────────────────────────────
@@ -173,7 +174,7 @@ function finufft26(::Type{T}, N, J, tol, type, threads) where {T}
     ns = clamp_ns(theoretical_ns(tol, D, type, σ), σ, D, T)
     grid = [fine_grid_len(σ, n, ns) for n in N]
     if lowest_sigma(tol, D, ns, Float64(eps(T)), maximum(grid)) <= σ || tol >= 0.25
-      return choice("pswf", finufft_beta(ns, σ), 0, ns, σ, grid)
+      return choice("pswf", finufft_beta(ns, σ), 0, ns, σ, grid, tol)
     end
     tol = Float64(T(2tol))
   end
@@ -188,7 +189,7 @@ function cufinufft251(::Type{T}, N, J, tol, type, threads) where {T}
   e = max(T(tol), eps(T))
   ns = clamp(ceil(Int, -log10(e / T(10))), 2, 16)
   βn = ns == 2 ? 2.20 : ns == 3 ? 2.26 : ns == 4 ? 2.38 : 2.30
-  choice("es", Float64(T(βn)) * ns, 0.5, ns, 2.0, [next235even(max(ceil(Int, 2.0 * n), 2ns)) for n in N])
+  choice("es", Float64(T(βn)) * ns, 0.5, ns, 2.0, [next235even(max(ceil(Int, 2.0 * n), 2ns)) for n in N], e)
 end
 
 # ── ducc 0.29.0 (ducc0_jll 0.29.0+2, through Ducc0.jl) ───────────────────────────────────────────
@@ -267,7 +268,7 @@ function ducc029(::Type{T}, N, J, tol, type, threads) where {T}
     gridcost = 2.2e-10 * J * (kernelpoints + D * nvec * (k.W + 3) * vlen) / threads
     if fftcost + gridcost < mincost
       mincost = fftcost + gridcost
-      best = choice("es", k.beta * k.W, k.e0, k.W, k.ofactor, grid)
+      best = choice("es", k.beta * k.W, k.e0, k.W, k.ofactor, grid, tol)
     end
   end
   best
@@ -285,7 +286,7 @@ function nonuniformffts098(::Type{T}, N, J, tol, type, threads) where {T}
   σ = maximum(grid ./ collect(N))
   a = M * (2 - 1 / σ)
   β = π * a * max(0.995, sqrt(1 - 0.3 / a^2))
-  choice("kb-sinh", Float64(T(β)), 0, 2M, 2.0, grid)
+  choice("kb-sinh", Float64(T(β)), 0, 2M, 2.0, grid, tol)
 end
 
 # ── NFFT3 (github.com/NFFT/nfft, master at 6506edc) ──────────────────────────────────────────────
@@ -297,7 +298,7 @@ function nfft3(::Type{T}, N, J, tol, type, threads) where {T}
   m = T == Float32 ? 4 : 8
   grid = [2 * nextpow(2, n) for n in N]
   σ = grid[1] / N[1]
-  choice("kb-sinh", π * (2 - 1 / σ) * (m + 1), 0, 2m + 2, σ, grid)
+  choice("kb-sinh", π * (2 - 1 / σ) * (m + 1), 0, 2m + 2, σ, grid, tol)
 end
 
 # ── mlx-nufft 0.3.3 (github.com/martinlachaine/mlx-nufft, edce21c) ───────────────────────────────
@@ -329,7 +330,7 @@ function mlxnufft033(::Type{T}, N, J, tol, type, threads) where {T}
   σ < 2 && (ns = min(ns, D >= 3 ? 8 : 10))
   βn = ns == 2 ? 2.20 : ns == 3 ? 2.26 : ns == 4 ? 2.38 : 2.30
   σ != 2 && (βn = 0.97 * π * (1 - 1 / (2σ)))
-  choice("es", βn * ns, 0.5, ns, σ, [next235even(max(2ns, ceil(Int, σ * n))) for n in N])
+  choice("es", βn * ns, 0.5, ns, σ, [next235even(max(2ns, ceil(Int, σ * n))) for n in N], tol)
 end
 
 const RULE_FUNCTIONS = Dict("FINUFFT 2.5" => finufft251, "FINUFFT 2.6-dev" => finufft26,

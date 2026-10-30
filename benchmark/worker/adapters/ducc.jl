@@ -8,6 +8,7 @@ supports(task) = task["transform"] == "nfft" ? nothing : "ducc has no $(task["tr
 function plan(prob, tol)
   D = size(prob.k, 1)
   tol = max(tol, 1.1 * Ducc0.Nufft.best_epsilon(D, prob.T == Float32))
+  TOL_USED[] = tol
   Ducc0.Nufft.make_plan(prob.k, prob.N; epsilon=tol, nthreads=Threads.nthreads(), periodicity=1.0,
                         fft_order=false)
 end

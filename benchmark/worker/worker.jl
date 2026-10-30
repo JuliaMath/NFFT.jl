@@ -31,6 +31,9 @@ end
 include(joinpath(@__DIR__, "..", "src", "rules.jl"))
 using .Rules
 
+# the tolerance the library actually got, where its adapter raises or clamps the requested one
+const TOL_USED = Ref(NaN)
+
 const CFG = TOML.parsefile(ARGS[1])
 include(CFG["adapter"])
 
@@ -75,13 +78,15 @@ function measure(prob::Problem, task)
     t_plan = min(t_plan, @elapsed(q = plan(prob, tol)))
     release!(q)
   end
+  TOL_USED[] = NaN
   t_plan = min(t_plan, @elapsed(p = plan(prob, tol)))
+  tol_used = isnan(TOL_USED[]) ? tol : TOL_USED[]
   outT = similar(y); outA = similar(x)
   t_trafo, t_trafo_med = timeit(() -> trafo!(p, outT, x), budget)
   t_adj, t_adj_med = timeit(() -> adjoint!(p, outA, y), budget)
   r = Dict{String,Any}(
     "err_trafo" => err_trafo(prob, tohost(outT)), "err_adj" => err_adjoint(prob, tohost(outA)),
-    "t_plan" => t_plan, "t_trafo" => t_trafo, "t_adj" => t_adj,
+    "tol_used" => tol_used, "t_plan" => t_plan, "t_trafo" => t_trafo, "t_adj" => t_adj,
     "t_trafo_med" => t_trafo_med, "t_adj_med" => t_adj_med,
     "alloc_trafo" => @allocated(trafo!(p, outT, x)), "alloc_adj" => @allocated(adjoint!(p, outA, y)))
   merge!(r, params(p))
@@ -102,6 +107,7 @@ function rule_check(prob, task, tol, r)
     out["rule_beta"*suffix] = ci.β; out["rule_grid"*suffix] = ci.grid
   end
   out["rule_window"] = c.trafo.window
+  out["rule_tol"] = c.trafo.tol
   rep = haskey(r, "rep_W") ? r : @isdefined(reported) ? reported(prob, tol) : Dict{String,Any}()
   merge!(out, filter(kv -> startswith(kv[1], "rep_"), rep))
   dev = String[]
@@ -112,6 +118,9 @@ function rule_check(prob, task, tol, r)
     same || push!(dev, "$f $(a isa Vector ? join(a, "x") : a) ≠ $(b isa Vector ? join(b, "x") : b)")
   end
   out["rule_dev"] = join(dev, "; ")
+  # NFFT.jl with a rule whose grid is not from {2, 3, 5} (ducc: 7, 11) builds the next larger grid
+  out["grid_rounded"] = task["lib"] == "NFFT" && haskey(out, "rep_grid") &&
+                        (out["rep_grid"] != out["rule_grid"] || out["rep_grid_adj"] != out["rule_grid_adj"])
   out
 end
 

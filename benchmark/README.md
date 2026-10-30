@@ -107,8 +107,11 @@ grid the library would choose (each rule cites its source); NFFT.jl runs with th
 `CustomWindow`. A task with `rule` records the rule's parameters (`rule_*`), what the library
 reports (`rep_*`: the debug output of FINUFFT, ducc's verbose report, the parameters of
 NonuniformFFTs.jl, or the grid NFFT.jl built) and their differences (`rule_dev`). A grid with
-factors 7 or 11 (ducc) rounds up to the next one from {2, 3, 5} in NFFT.jl; `rule_dev` shows it.
+factors 7 or 11 (ducc) rounds up to the next one from {2, 3, 5} in NFFT.jl (`grid_rounded`).
+`tol_used` is the tolerance a library got after its adapter raised or clamped it. NFFT.jl with its
+own choice runs on half decades of tolerance, so that its time can be interpolated at the error
+each original delivers.
 
 ```
-julia benchmark/bench.jl run decomposition --rounds 5     # 405 tasks per round
+julia benchmark/bench.jl run decomposition --rounds 5     # 675 tasks per round
 ```

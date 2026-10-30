@@ -8,14 +8,12 @@ const COMPETITORS = ["NFFT", "FINUFFT", "ducc"]
 # sigma_req: a fixed oversampling factor (NFFT.jl: the smallest W that reaches tol at it) instead of
 # the library's own choice
 function task(; lib, N, J=prod(N), transform="nfft", L=1, nodes="uniform", T="Float64", tol=1e-8,
-              threads=8, budget=0.1, seed=1234, suite="", stages=false, plans=3, sigma_req=nothing, rule=nothing,
-              raise_tol=false)
+              threads=8, budget=0.1, seed=1234, suite="", stages=false, plans=3, sigma_req=nothing, rule=nothing)
   t = Dict{String,Any}("lib" => lib, "transform" => transform, "N" => collect(N), "J" => J, "L" => L,
                        "nodes" => nodes, "T" => T, "tol" => tol, "threads" => threads, "budget" => budget,
                        "seed" => seed, "suite" => suite, "stages" => stages, "plans" => plans)
   sigma_req === nothing || (t["sigma_req"] = sigma_req)
   rule === nothing || (t["rule"] = rule)
-  raise_tol && (t["raise_tol"] = true)
   t
 end
 
@@ -141,24 +139,28 @@ sigma_cases(o) = [(D, N, ρ, T, tol) for D in opt(o, :dims, [1, 2, 3]) for ρ in
 
 # Decomposition of a speed ratio NFFT.jl : X (paper M15) into a parameter factor T_jl(rule X)/T_jl(own)
 # and an implementation factor T_X/T_jl(rule X): per case the original libraries (with the rule of
-# their own choice, to compare the emulation with what they report), NFFT.jl with its own choice, and
-# NFFT.jl with the parameters of every rule in src/rules.jl. N as in the suite sigma (J/N = 0.1 on
-# the larger N, so that the cases take more than ≈ 2 ms). mlx-nufft runs in Float32 only. NFFT.jl
-# raises an unreachable tol as the FINUFFT adapter does (`raise_tol`), so that every case has its
-# own choice; the delivered error is in the results.
+# their own choice, to compare the emulation with what they report) and NFFT.jl with the parameters of
+# every rule in src/rules.jl, at the tolerances of DECOMP_PRECISIONS; NFFT.jl with its own choice on
+# half decades over the whole range (DECOMP_OWN_TOLS), so that its time can be interpolated at the
+# error each original delivers (unreachable tolerances end as errors). N as in the suite sigma (J/N =
+# 0.1 on the larger N, so that the cases take more than ≈ 2 ms). mlx-nufft runs in Float32 only.
 const DECOMP_LIBS = ["FINUFFT", "FINUFFT 2.5", "ducc", "NonuniformFFTs"]
 const DECOMP_PRECISIONS = [("Float64", 1e-4), ("Float64", 1e-8), ("Float64", 1e-12), ("Float32", 1e-5)]
-decomp_cases(o) = [(N, ρ, T, tol) for D in opt(o, :dims, [1, 2, 3]) for ρ in [0.1, 1, 10]
-                   for N in [ρ < 1 ? SIGMA_SIZES_SPARSE[D] : SIGMA_SIZES[D]]
-                   for (T, tol) in DECOMP_PRECISIONS
-                   if T in opt(o, :T, ["Float64", "Float32"]) && tol in opt(o, :tols, [tol])]
+const DECOMP_OWN_TOLS = Dict("Float64" => [10.0^(-e / 2) for e in 4:28], "Float32" => [10.0^(-e / 2) for e in 4:12])
+decomp_sizes(o) = [(N, ρ) for D in opt(o, :dims, [1, 2, 3]) for ρ in [0.1, 1, 10]
+                   for N in [ρ < 1 ? SIGMA_SIZES_SPARSE[D] : SIGMA_SIZES[D]]]
 decomp_rules(T) = filter(r -> T == "Float32" || !startswith(r, "mlx-nufft"), Rules.RULES)
-@suite "decomposition" "speed ratio = parameter factor × implementation factor: NFFT.jl with the rules of other libraries (M15)" o -> [
-  task(; lib, N, J=round(Int, ρ * prod(N)), tol, T, rule, plans=1, raise_tol=true, threads=opt(o, :threads, [default_threads()])[1],
+decomp_task(o; lib, N, ρ, T, tol, rule=nothing) =
+  task(; lib, N, J=round(Int, ρ * prod(N)), tol, T, rule, plans=1, threads=opt(o, :threads, [default_threads()])[1],
        budget=opt(o, :budget, 0.1), suite="decomposition")
-  for (N, ρ, T, tol) in decomp_cases(o)
-  for (lib, rule) in [("NFFT", nothing); [("NFFT", r) for r in decomp_rules(T)];
-                      [(l, get(Rules.RULE_OF_LIB, l, nothing)) for l in opt(o, :libs, DECOMP_LIBS)]]]
+@suite "decomposition" "speed ratio = parameter factor × implementation factor: NFFT.jl with the rules of other libraries (M15)" o -> [
+  [decomp_task(o; lib, N, ρ, T, tol, rule)
+   for (N, ρ) in decomp_sizes(o) for (T, tol) in DECOMP_PRECISIONS
+   if T in opt(o, :T, ["Float64", "Float32"]) && tol in opt(o, :tols, [tol])
+   for (lib, rule) in [[("NFFT", r) for r in decomp_rules(T)];
+                       [(l, get(Rules.RULE_OF_LIB, l, nothing)) for l in opt(o, :libs, DECOMP_LIBS)]]];
+  [decomp_task(o; lib="NFFT", N, ρ, T, tol)
+   for (N, ρ) in decomp_sizes(o) for T in opt(o, :T, ["Float64", "Float32"]) for tol in DECOMP_OWN_TOLS[T]]]
 
 const HOMEPAGE = ["pareto", "threads", "sizes", "nodes", "batch", "real", "nnfft", "history"]
 @suite "all" "all suites of the documentation (" * join(HOMEPAGE, ", ") * ")" o ->

@@ -27,12 +27,12 @@ const LIBS = Dict(
   "FINUFFT 2.5" => (env=joinpath(ROOT, "envs", "finufft25"), adapter="finufft.jl"),
 )
 
-const COLUMNS = ["suite", "lib", "transform", "D", "N", "J", "L", "nodes", "T", "threads", "tol", "sigma_req", "round", "load",
+const COLUMNS = ["suite", "lib", "transform", "D", "N", "J", "L", "nodes", "T", "threads", "tol", "tol_used", "sigma_req", "round", "load",
                  "err_trafo", "err_adj", "t_plan", "t_trafo", "t_adj", "t_trafo_med", "t_adj_med",
                  "alloc_trafo", "alloc_adj", "W", "sigma", "window", "lib_version", "lib_library",
-                 "rule", "rule_window", "rule_W", "rule_W_adj", "rule_sigma", "rule_sigma_adj", "rule_beta", "rule_beta_adj",
+                 "rule", "rule_tol", "rule_window", "rule_W", "rule_W_adj", "rule_sigma", "rule_sigma_adj", "rule_beta", "rule_beta_adj",
                  "rule_grid", "rule_grid_adj", "rep_W", "rep_W_adj", "rep_sigma", "rep_sigma_adj", "rep_beta", "rep_beta_adj",
-                 "rep_grid", "rep_grid_adj", "rule_dev", "commit", "skipped", "error"]
+                 "rep_grid", "rep_grid_adj", "rule_dev", "grid_rounded", "commit", "skipped", "error"]
 
 julia() = `$(Base.julia_cmd()) --startup-file=no`
 

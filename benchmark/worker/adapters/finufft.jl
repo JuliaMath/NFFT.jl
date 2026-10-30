@@ -33,6 +33,7 @@ function plan(prob, tol; debug=0)
           FINUFFT.finufft_setpts!(p, x...)
         end
       end
+      TOL_USED[] = tol
       return (plans[1], plans[2])
     catch e
       foreach(FINUFFT.finufft_destroy!, plans)
