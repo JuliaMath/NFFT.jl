@@ -5,7 +5,7 @@ Standard library only, so that it runs without a project.
 """
 module Benchmarks
 
-using TOML, Printf, Dates
+using TOML, Printf, Dates, Random
 
 const ROOT = dirname(@__DIR__)                   # benchmark/
 const REPO = dirname(ROOT)                       # NFFT.jl repository
@@ -24,7 +24,7 @@ const LIBS = Dict(
   "mlx-nufft" => (env=joinpath(ROOT, "envs", "mlxnufft"), adapter="mlxnufft.jl"),
 )
 
-const COLUMNS = ["suite", "lib", "transform", "D", "N", "J", "L", "nodes", "T", "threads", "tol", "sigma_req",
+const COLUMNS = ["suite", "lib", "transform", "D", "N", "J", "L", "nodes", "T", "threads", "tol", "sigma_req", "round", "load",
                  "err_trafo", "err_adj", "t_plan", "t_trafo", "t_adj", "t_trafo_med", "t_adj_med",
                  "alloc_trafo", "alloc_adj", "W", "sigma", "window", "lib_version", "lib_library",
                  "skipped", "error"]
@@ -87,6 +87,29 @@ function run_tasks(tasks; io=stdout)
   results = Dict{String,Any}[]
   for key in order
     append!(results, run_group(key..., groups[key]; io))
+  end
+  results
+end
+
+# `rounds` repetitions of all tasks, each round in a new random order (seed = round): the cases (tasks
+# on the same problem) in random order and the tasks of a case in random order, so that drift
+# (thermal, background load) spreads over the candidates. Every result records its round and the
+# load average (1, 5, 15 min) when the round started.
+case_key(t) = (t["transform"], t["N"], t["J"], get(t, "L", 1), t["nodes"], t["T"], t["tol"], get(t, "seed", 1234))
+function run_rounds(tasks, rounds; io=stdout)
+  results = Dict{String,Any}[]
+  for r in 1:rounds
+    rng = Random.Xoshiro(r)
+    cases = Dict{Any,Vector{Dict{String,Any}}}(); order = Any[]
+    for t in tasks
+      k = case_key(t)
+      haskey(cases, k) || push!(order, k)
+      push!(get!(cases, k, Dict{String,Any}[]), t)
+    end
+    load = loadavg()
+    println(io, "═══ round $r of $rounds (load $load)")
+    shuffled = reduce(vcat, [Random.shuffle(rng, cases[k]) for k in Random.shuffle(rng, order)])
+    append!(results, run_tasks([merge(t, Dict{String,Any}("round" => r, "load" => load)) for t in shuffled]; io))
   end
   results
 end
@@ -216,7 +239,7 @@ meta_info(suite, args) = Dict{String,Any}("date" => string(now()), "machine" => 
 # ── comparison ───────────────────────────────────────────────────────────────────────────────
 
 key(r; lib=true) = (lib ? r["lib"] : "", r["transform"], r["N"], r["J"], get(r, "L", 1), r["nodes"], r["T"],
-                    r["threads"], r["tol"], get(r, "sigma_req", ""))
+                    r["threads"], r["tol"], get(r, "sigma_req", ""), get(r, "round", ""))
 ok(r) = get(r, "skipped", "") == "" && get(r, "error", "") == ""
 geomean(x) = isempty(x) ? NaN : exp(sum(log, x) / length(x))
 

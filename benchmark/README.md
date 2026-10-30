@@ -17,7 +17,9 @@ julia benchmark/bench.jl report                     # figures and explorer data 
 
 Run from the repository root with any Julia (the orchestrator uses the standard library only).
 Options: `--libs`, `--dims`, `--tols`, `--T Float32`, `--threads 1,8`, `--budget` (seconds of
-repeated calls per measurement, default 0.1), `--rounds` (`ab`), `--save`.
+repeated calls per measurement, default 0.1), `--rounds` (`ab`; `run`: repeat all tasks, each round
+in a new random order of cases and of the tasks within a case, with the round and its load average
+in the CSV), `--save`.
 
 ## How it works
 

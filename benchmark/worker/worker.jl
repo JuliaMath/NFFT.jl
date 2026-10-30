@@ -86,6 +86,8 @@ function main()
       r["skipped"] = reason
     else
       try
+        # one problem at a time: tasks come grouped by problem, and large ones take gigabytes
+        haskey(cache, problem_key(task)) || empty!(cache)
         prob = get!(() -> Problem(task), cache, problem_key(task))
         merge!(r, measure(prob, task))
       catch e

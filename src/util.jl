@@ -39,21 +39,18 @@ chunks(r, k) = isempty(r) ? typeof(r[1:0])[] :
 # T where T is wider (Double64, Float128).
 wide(::Type{T}) where {T} = promote_type(T, Float64)
 
-# Smallest even n′ ≥ n whose prime factors are 2, 3, 5 and 7 (FFT-friendly grid sizes). Looked up
-# in the sorted 7-smooth numbers: the search by trial division takes thousands of steps for large n,
-# and the parameter choice calls it for every candidate kernel.
-const SMOOTH7 = let lim = 2^40, s = Int[]
+# Smallest even n′ ≥ n whose prime factors are 2, 3 and 5 (FFT-friendly grid sizes; FINUFFT's
+# next235(n, 2) in src/common/utils.cpp, while ducc's NUFFT also admits 7 and 11, good_size_complex).
+# Looked up in the sorted 5-smooth numbers: the search by trial division takes thousands of steps for
+# large n, and the parameter choice calls it for every candidate kernel.
+const SMOOTH5 = let lim = 2^40, s = Int[]
   p2 = 1
   while p2 <= lim
     p3 = p2
     while p3 <= lim
       p5 = p3
       while p5 <= lim
-        p7 = p5
-        while p7 <= lim
-          push!(s, p7); p7 *= 7
-        end
-        p5 *= 5
+        push!(s, p5); p5 *= 5
       end
       p3 *= 3
     end
@@ -63,7 +60,7 @@ const SMOOTH7 = let lim = 2^40, s = Int[]
 end
 function smooth_size(n)
   h = cld(n, 2)
-  h <= last(SMOOTH7) && return 2 * SMOOTH7[searchsortedfirst(SMOOTH7, h)]
+  h <= last(SMOOTH5) && return 2 * SMOOTH5[searchsortedfirst(SMOOTH5, h)]
   m = n + isodd(n)
   while !issmooth(m)
     m += 2
@@ -71,7 +68,7 @@ function smooth_size(n)
   m
 end
 function issmooth(n)
-  for p in (2, 3, 5, 7)
+  for p in (2, 3, 5)
     while n % p == 0
       n ÷= p
     end

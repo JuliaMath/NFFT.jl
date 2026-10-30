@@ -111,20 +111,30 @@ const NNFFT_SIZES = Dict(1 => [2^16], 2 => [256, 256], 3 => [32, 32, 32])
   for lib in opt(o, :libs, ["NFFT Metal", "mlx-nufft"])]
 
 # The optimal σ against the node density J/N: for every σ of the kernel table the smallest W that
-# reaches tol, and the planner's choice (also of `libs`, e.g. an NFFT@<rev> with another cost model).
-# N such that J = 100·N stays below ≈ 10^10 taps per transform at 1e-12.
+# reaches tol (for each of `libs` but revisions NFFT@<rev>), and the planner's choice of every lib
+# (an NFFT@<rev> with another cost model, "NFFT Metal" with `--T Float32`). N such that J = 100·N stays
+# below ≈ 10^10 taps per transform at 1e-12; for J/N ≤ 1 also a larger N, so that the sparse cases
+# take more than ≈ 2 ms (at J/N = 0.3 and 1 both sizes: the effect of N on the optimum). The sizes are
+# powers of two, so σ = 2 alone gets a power-of-two grid; at J/N = 0.1, 1, 10 also N without that
+# (60000 = 2⁵·3·5⁴, 240², 30³).
 const SIGMA_SIZES = Dict(1 => [2^16], 2 => [256, 256], 3 => [32, 32, 32])
+const SIGMA_SIZES_SPARSE = Dict(1 => [2^20], 2 => [1024, 1024], 3 => [64, 64, 64])
+const SIGMA_SIZES_NOT2 = Dict(1 => [60000], 2 => [240, 240], 3 => [30, 30, 30])
 const SIGMA_DENSITIES = [0.01, 0.03, 0.1, 0.3, 1, 3, 10, 30, 100]
 const SIGMA_TABLE = round.(1.2:0.05:2.5; digits=2)
+sigma_cases(o) = [(D, N, ρ, T, tol) for D in opt(o, :dims, [1, 2, 3]) for ρ in SIGMA_DENSITIES
+                  for N in [ρ >= 0.3 ? [SIGMA_SIZES[D]] : []; ρ <= 1 ? [SIGMA_SIZES_SPARSE[D]] : [];
+                            ρ in (0.1, 1, 10) ? [SIGMA_SIZES_NOT2[D]] : []]
+                  for T in opt(o, :T, ["Float64", "Float32"])
+                  for tol in opt(o, :tols, T == "Float32" ? [1e-3, 1e-5] : [1e-4, 1e-8, 1e-12])]
 @suite "sigma" "σ against node density J/N = 0.01…100: every σ with its smallest W, and the planner (M13)" o -> [
-  [task(; lib="NFFT", N=SIGMA_SIZES[D], J=round(Int, ρ * prod(SIGMA_SIZES[D])), tol, T, sigma_req=σ, plans=1,
+  [task(; lib, N, J=round(Int, ρ * prod(N)), tol, T, sigma_req=σ, plans=1,
         threads=opt(o, :threads, [default_threads()])[1], budget=opt(o, :budget, 0.1), suite="sigma")
-   for D in opt(o, :dims, [1, 2, 3]) for ρ in SIGMA_DENSITIES for T in opt(o, :T, ["Float64", "Float32"])
-   for tol in opt(o, :tols, T == "Float32" ? [1e-3, 1e-5] : [1e-4, 1e-8, 1e-12]) for σ in SIGMA_TABLE];
-  [task(; lib, N=SIGMA_SIZES[D], J=round(Int, ρ * prod(SIGMA_SIZES[D])), tol, T, plans=1,
+   for lib in filter(l -> !startswith(l, "NFFT@"), opt(o, :libs, ["NFFT"]))
+   for (D, N, ρ, T, tol) in sigma_cases(o) for σ in SIGMA_TABLE];
+  [task(; lib, N, J=round(Int, ρ * prod(N)), tol, T, plans=1,
         threads=opt(o, :threads, [default_threads()])[1], budget=opt(o, :budget, 0.1), suite="sigma")
-   for D in opt(o, :dims, [1, 2, 3]) for ρ in SIGMA_DENSITIES for T in opt(o, :T, ["Float64", "Float32"])
-   for tol in opt(o, :tols, T == "Float32" ? [1e-3, 1e-5] : [1e-4, 1e-8, 1e-12]) for lib in opt(o, :libs, ["NFFT"])]]
+   for (D, N, ρ, T, tol) in sigma_cases(o) for lib in opt(o, :libs, ["NFFT"])]]
 
 const HOMEPAGE = ["pareto", "threads", "sizes", "nodes", "batch", "real", "nnfft", "history"]
 @suite "all" "all suites of the documentation (" * join(HOMEPAGE, ", ") * ")" o ->

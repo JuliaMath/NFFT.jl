@@ -80,7 +80,7 @@ lines, in 3D the first two passes a quarter and a half; the adjoint saves the sa
 passes. Each pass is split into boxes of lines that run in parallel, each with a single-threaded
 batched FFTW plan: with `ESTIMATE`, FFTW's own threading produces plans up to 17 times slower than
 `MEASURE` plans, while single-threaded batched `ESTIMATE` plans come within 10–20 % of `MEASURE`.
-In 1D, FFTW's threading is used. The grid sizes are products of 2, 3, 5 and 7,
+In 1D, FFTW's threading is used. The grid sizes are even products of 2, 3 and 5 (as in FINUFFT),
 not powers of two, so that ``\sigma`` can be chosen freely.
 
 ## Batch strategies
