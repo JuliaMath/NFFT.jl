@@ -86,7 +86,7 @@ function ablated_fft(mode, fft, x::AbstractArray{C,D}, N, ::Val{dir}, nthreads) 
   full = ntuple(k -> 1:Ñ[k], D)
   if mode === :full
     p = planning(() -> pass_plan(fft, K, view(x, full...), 1:D), fft, nthreads)
-    return PassFFT([[p]], [[full]])
+    return PassFFT([[p]], [[full]], nthreads)
   end
   order = dir === :fwd ? reverse(1:D) : 1:D
   if mode === :unpruned
@@ -100,14 +100,14 @@ function ablated_fft(mode, fft, x::AbstractArray{C,D}, N, ::Val{dir}, nthreads) 
     plans = planning(fft, D == 1 ? fft_nthreads(length(x), nthreads) : 1) do
       [pass_plans(fft, K, [view(x, b...) for b in bs], d) for (d, bs) in zip(order, boxes)]
     end
-    return PassFFT(plans, boxes)
+    return PassFFT(plans, boxes, nthreads)
   end
   # :pruned_fftw: the pruned boxes, not split, each its own pass
   bs = [(d, b) for d in order for b in pass_boxes(x, N, d, 1:D, true, nthreads)]
   plans = planning(fft, nthreads) do
     [[pass_plan(fft, K, view(x, b...), d)] for (d, b) in bs]
   end
-  PassFFT(plans, [[b] for (_, b) in bs])
+  PassFFT(plans, [[b] for (_, b) in bs], nthreads)
 end
 
 # The window with each of its W pieces evaluated by its own Horner chain in s (NFFT.jl 0.14's

@@ -67,6 +67,7 @@ end
 struct PassFFT{D,P}
   plans::Vector{Vector{P}}
   boxes::Vector{Vector{NTuple{D,UnitRange{Int}}}}
+  nthreads::Int                     # tasks per pass at most
 end
 
 # `Val(dir)` selects the transform (:fwd forward, :bwd unnormalised backward; a type, so that the
@@ -81,7 +82,7 @@ function PassFFT(fft::AbstractFFTBackend, x::AbstractArray{C,D}, N::NTuple{D,Int
   plans = planning(fft, fft_threads ? fft_nthreads(length(x), nthreads) : 1) do
     [pass_plans(fft, K, [view(x, b...) for b in bs], d) for (d, bs) in zip(order, boxes)]
   end
-  PassFFT(plans, boxes)
+  PassFFT(plans, boxes, nthreads)
 end
 
 # The plans of one pass, one per box. FFTW executes a plan on any array of the same size, strides
@@ -118,7 +119,7 @@ end
 
 # No FFT: the core of the NNFFT spreading only resamples.
 PassFFT(::Nothing, x::AbstractArray{C,D}, N, dir; kwargs...) where {C,D} =
-  PassFFT{D,Nothing}(Vector{Nothing}[], Vector{NTuple{D,UnitRange{Int}}}[])
+  PassFFT{D,Nothing}(Vector{Nothing}[], Vector{NTuple{D,UnitRange{Int}}}[], 1)
 
 # The full FFT of `g` along all dimensions (the FFT stages of the stage interface).
 function full_fft!(fft, g::AbstractArray{C,D}, dir) where {C,D}
@@ -131,7 +132,7 @@ end
 
 function apply!(P::PassFFT, x)
   for (ps, bs) in zip(P.plans, P.boxes)
-    @maybe_threads length(ps) :dynamic for i in eachindex(ps)
+    @maybe_threads min(P.nthreads, length(ps)) :dynamic for i in eachindex(ps)
       apply_pass!(ps[i], view(x, bs[i]...))
     end
   end
