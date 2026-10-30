@@ -20,8 +20,10 @@ function plan(prob, tol)
 end
 
 # The parameters another library would choose (src/rules.jl): its window as a CustomWindow, its W, and
-# its grid through σ (a grid with factors 7 or 11, as ducc's, rounds up to the next one from {2, 3, 5}).
-# One plan per direction where the rule differs between trafo (type 2) and adjoint (type 1).
+# its grid, exactly through the option gridsize. Revisions without gridsize get the grid through σ (a
+# grid with factors 7 or 11, as ducc's, then rounds up to the next one from {2, 3, 5}, and only one σ
+# for all dimensions). One plan per direction where the rule differs between trafo (type 2) and
+# adjoint (type 1).
 struct RulePlan{P,Q}
   trafo::P
   adjoint::Q
@@ -32,10 +34,12 @@ end
 function rule_plan(f, prob, N, tol)
   c = Rules.choose(prob.task["rule"], eltype(prob.k), prob.N, size(prob.k, 2), tol; threads=Threads.nthreads())
   D = length(prob.N)
+  window(ci) = NFFT.CustomWindow(Rules.window(ci))
   function mk(ci)
+    has_gridsize() && return f(NFFT.backend(), prob.k, N; reltol=tol, dims=1:D, window=window(ci), W=ci.W,
+                               σ=minimum(ci.grid ./ collect(prob.N)), gridsize=Tuple(ci.grid))
     allequal(ci.grid ./ collect(prob.N)) || throw(Unsupported("the grid of the rule is not one σ for all dimensions"))
-    f(NFFT.backend(), prob.k, N; reltol=tol, dims=1:D, window=NFFT.CustomWindow(Rules.window(ci)), W=ci.W,
-      σ=(ci.grid[1] - 0.5) / prob.N[1])
+    f(NFFT.backend(), prob.k, N; reltol=tol, dims=1:D, window=window(ci), W=ci.W, σ=(ci.grid[1] - 0.5) / prob.N[1])
   end
   p = mk(c.trafo)
   RulePlan(p, c.trafo == c.adjoint ? p : mk(c.adjoint), c, collect(prob.N))
@@ -55,12 +59,21 @@ adjoint!(p, out, y) = mul!(out, p isa AbstractNFFTs.AbstractRealFTPlan ? transpo
 trafo!(p::RulePlan, out, x) = trafo!(p.trafo, out, x)
 adjoint!(p::RulePlan, out, y) = adjoint!(p.adjoint, out, y)
 
-grid_of(q, N) = collect(NFFT.grid_size(q.σ, Tuple(N), q.W))
+has_gridsize() = isdefined(NFFT, :NFFT_OPTIONS) && :gridsize in NFFT.NFFT_OPTIONS
+fft_flag(task) = "ESTIMATE"
+
+# The grid the plan built.
+function grid_of(p, N)
+  hasproperty(p, :gridsize) && p.gridsize !== nothing && return collect(p.gridsize)
+  q = NFFT.parameters(p)
+  collect(applicable(NFFT.grid_size, q.σ, Tuple(N), q.W) ? NFFT.grid_size(q.σ, Tuple(N), q.W) :
+          NFFT.grid_size(q.σ, Tuple(N)))
+end
 function params(p::RulePlan)
   N = p.N; q, qa = NFFT.parameters(p.trafo), NFFT.parameters(p.adjoint)
-  g, ga = grid_of(q, N), grid_of(qa, N)
-  Dict{String,Any}("W" => q.W, "sigma" => g[1] / N[1], "window" => p.choice.trafo.window,
-                   "rep_W" => q.W, "rep_W_adj" => qa.W, "rep_grid" => g, "rep_grid_adj" => ga)
+  g, ga = grid_of(p.trafo, N), grid_of(p.adjoint, N)
+  Dict{String,Any}("W" => q.W, "sigma" => g[1] / N[1], "window" => p.choice.trafo.window, "grid" => g,
+                   "grid_adj" => ga, "rep_W" => q.W, "rep_W_adj" => qa.W, "rep_grid" => g, "rep_grid_adj" => ga)
 end
 
 function params(p)
@@ -69,7 +82,9 @@ function params(p)
     return Dict{String,Any}("W" => p.outer.W, "sigma" => p.outer.σ, "window" => "n = " * join(p.n, "×"))
   isdefined(NFFT, :parameters) || return Dict{String,Any}()
   q = NFFT.parameters(p)
-  Dict{String,Any}("W" => q.W, "sigma" => q.σ, "window" => string(nameof(typeof(q.window))))
+  r = Dict{String,Any}("W" => q.W, "sigma" => q.σ, "window" => string(nameof(typeof(q.window))))
+  p isa NFFT.NFFTPlan && hasproperty(p, :dims) && isdefined(NFFT, :grid_size) && (r["grid"] = grid_of(p, p.N[p.dims]))
+  r
 end
 
 libinfo() = Dict{String,Any}("version" => string(pkgversion(NFFT)), "library" => dirname(dirname(pathof(NFFT))))

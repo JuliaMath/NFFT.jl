@@ -2,15 +2,17 @@
 # NFFT, type 1 with iflag +1 its adjoint; batches through ntrans. NNFFT: type 3 from the sources 2πy
 # to the targets k with iflag -1, and from 2πk to y with iflag +1 for the adjoint. FINUFFT rejects tolerances below
 # its rounding floor (which grows with N, in single precision above 1e-2 for N = 2^18); the
-# tolerance is then raised until accepted, up to 0.5.
+# tolerance is then raised until accepted, up to 0.5. FFTW planning flag: the task's `fft_flag`, by
+# default ESTIMATE, FINUFFT's default (opts.fftw).
 import FINUFFT, finufft_jll, FFTW
 
 supports(task) = task["transform"] in ("nfft", "nnfft") ? nothing : "FINUFFT has no $(task["transform"])"
+fft_flag(task) = get(task, "fft_flag", "ESTIMATE")
 
 function plan(prob, tol; debug=0)
   T = prob.T; L = size(prob.y, 2)
   x = ntuple(d -> T(2π) .* prob.k[d, :], size(prob.k, 1))
-  opts = (; dtype=T, nthreads=Threads.nthreads(), fftw=UInt32(FFTW.ESTIMATE), debug)
+  opts = (; dtype=T, nthreads=Threads.nthreads(), fftw=UInt32(getfield(FFTW, Symbol(fft_flag(prob.task)))), debug)
   nnfft = prob.task["transform"] == "nnfft"
   D = size(prob.k, 1)
   pad(v) = (v..., ntuple(_ -> T[], 3 - D)...)          # setpts! takes x, y, z, then s, t, u

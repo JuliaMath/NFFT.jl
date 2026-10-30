@@ -102,16 +102,23 @@ cd build/src && c++ -dynamiclib -o libfinufft.dylib -install_name @rpath/libfinu
 
 Splits a speed ratio NFFT.jl : X into a parameter factor T_jl(rule X)/T_jl(own) and an
 implementation factor T_X/T_jl(rule X). `src/rules.jl` gives, for FINUFFT 2.5.1 and 2.6-dev,
-cuFINUFFT 2.5.1, ducc 0.29, NonuniformFFTs.jl 0.9.8, NFFT3 and mlx-nufft 0.3.3, the window, W and
+cuFINUFFT 2.5.1, ducc 0.42, NonuniformFFTs.jl 0.9.8, NFFT3 and mlx-nufft 0.3.3, the window, W and
 grid the library would choose (each rule cites its source); NFFT.jl runs with them through a
-`CustomWindow`. A task with `rule` records the rule's parameters (`rule_*`), what the library
-reports (`rep_*`: the debug output of FINUFFT, ducc's verbose report, the parameters of
-NonuniformFFTs.jl, or the grid NFFT.jl built) and their differences (`rule_dev`). A grid with
-factors 7 or 11 (ducc) rounds up to the next one from {2, 3, 5} in NFFT.jl (`grid_rounded`).
-`tol_used` is the tolerance a library got after its adapter raised or clamped it. NFFT.jl with its
-own choice runs on half decades of tolerance, so that its time can be interpolated at the error
-each original delivers.
+`CustomWindow` and the option `gridsize` (the grid exactly, also with factors 7 and 11 as ducc's). A
+task with `rule` records the rule's parameters (`rule_*`), what the library reports (`rep_*`: the
+debug output of FINUFFT, ducc's verbose report, the parameters of NonuniformFFTs.jl, or the grid
+NFFT.jl built) and their differences (`rule_dev`). A revision of NFFT.jl without `gridsize` rounds
+such a grid up to the next one from {2, 3, 5} (`grid_rounded`). `tol_used` is the tolerance a library
+got after its adapter raised or clamped it. NFFT.jl with its own choice runs on half decades of
+tolerance, so that its time can be interpolated at the error each original delivers. The originals
+on FFTW (FINUFFT, NonuniformFFTs.jl) run with both planning flags, ESTIMATE and MEASURE
+(`fft_flag`); every plan starts without FFTW wisdom, so that a measured plan does not speed up later
+ones in the same worker.
+
+Every row of every suite has `grid` and `grid_adj`, the oversampled grid Ñ per dimension of the trafo
+and the adjoint: from the plan (NFFT.jl, NonuniformFFTs.jl) or from what the library reports (FINUFFT,
+ducc; one more plan outside the timing).
 
 ```
-julia benchmark/bench.jl run decomposition --rounds 5     # 675 tasks per round
+julia benchmark/bench.jl run decomposition --rounds 5     # 783 tasks per round
 ```

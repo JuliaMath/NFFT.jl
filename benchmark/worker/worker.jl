@@ -6,7 +6,7 @@
 # task plus the measured values; the results file is rewritten after every task, so that a crash
 # keeps what was measured.
 
-using TOML, Printf, Statistics
+using TOML, Printf, Statistics, Libdl
 include("problems.jl")
 
 # thrown by an adapter for a problem the library cannot do; recorded as skipped
@@ -26,6 +26,16 @@ function capture_c(f)
   end
   out = read(path, String); rm(path)
   r, out
+end
+
+# FFTW keeps the plans it measured as wisdom per process; later plans of any flag reuse it. Every
+# plan of a task starts without it, in each loaded FFTW (FFTW.jl's and a library's own build).
+function forget_fftw_wisdom()
+  for lib in Libdl.dllist(), (pat, sym) in ((r"libfftw3\.", :fftw_forget_wisdom), (r"libfftw3f\.", :fftwf_forget_wisdom))
+    occursin(pat, basename(lib)) || continue
+    fp = Libdl.dlsym(Libdl.dlopen(lib), sym; throw_error=false)
+    fp === nothing || ccall(fp, Cvoid, ())
+  end
 end
 
 include(joinpath(@__DIR__, "..", "src", "rules.jl"))
@@ -71,14 +81,17 @@ function measure(prob::Problem, task)
   prob = Problem((f === :task ? task : getfield(prob, f) for f in fieldnames(Problem))...)
   tol = Float64(task["tol"]); budget = Float64(get(task, "budget", 0.1))
   x, y = map(upload, natural(prob))
+  forget_fftw_wisdom()
   p = plan(prob, tol)                                  # compiles
   release!(p)
   t_plan = Inf
   for _ in 1:Int(get(task, "plans", 3)) - 1
+    forget_fftw_wisdom()
     t_plan = min(t_plan, @elapsed(q = plan(prob, tol)))
     release!(q)
   end
   TOL_USED[] = NaN
+  forget_fftw_wisdom()
   t_plan = min(t_plan, @elapsed(p = plan(prob, tol)))
   tol_used = isnan(TOL_USED[]) ? tol : TOL_USED[]
   outT = similar(y); outA = similar(x)
@@ -90,16 +103,22 @@ function measure(prob::Problem, task)
     "t_trafo_med" => t_trafo_med, "t_adj_med" => t_adj_med,
     "alloc_trafo" => @allocated(trafo!(p, outT, x)), "alloc_adj" => @allocated(adjoint!(p, outA, y)))
   merge!(r, params(p))
+  @isdefined(fft_flag) && (r["fft_flag"] = fft_flag(task))
   get(task, "stages", false) && merge!(r, stages(p, prob))
   release!(p)
-  haskey(task, "rule") && merge!(r, rule_check(prob, task, tol, r))
+  # the grid Ñ per dimension: from the plan, or what the library reports (outside the timing)
+  need = !haskey(r, "rep_W") && (haskey(task, "rule") || !haskey(r, "grid"))
+  rep = need && @isdefined(reported) ? reported(prob, tol) : r
+  haskey(rep, "rep_grid") && !haskey(r, "grid") && (r["grid"] = rep["rep_grid"]; r["grid_adj"] = rep["rep_grid_adj"])
+  haskey(r, "grid") && !haskey(r, "grid_adj") && (r["grid_adj"] = r["grid"])
+  haskey(task, "rule") && merge!(r, rule_check(prob, task, tol, rep))
   r
 end
 
 # Suite `decomposition`: the parameters of the rule (src/rules.jl) next to those the library reports
-# (rep_*: NFFT.jl with the rule's parameters, or the original library's own choice), and the fields
-# where they differ. σ and β of FINUFFT are printed with three digits, hence the relative 1 %.
-function rule_check(prob, task, tol, r)
+# (rep_*: NFFT.jl with the rule's parameters, or the original library's own choice, in `rep`), and
+# the fields where they differ. σ and β of FINUFFT are printed with three digits, hence the relative 1 %.
+function rule_check(prob, task, tol, rep)
   c = Rules.choose(task["rule"], prob.T, prob.N, size(prob.k, 2), tol; threads=Threads.nthreads())
   out = Dict{String,Any}()
   for (suffix, ci) in (("", c.trafo), ("_adj", c.adjoint))
@@ -108,7 +127,6 @@ function rule_check(prob, task, tol, r)
   end
   out["rule_window"] = c.trafo.window
   out["rule_tol"] = c.trafo.tol
-  rep = haskey(r, "rep_W") ? r : @isdefined(reported) ? reported(prob, tol) : Dict{String,Any}()
   merge!(out, filter(kv -> startswith(kv[1], "rep_"), rep))
   dev = String[]
   for f in ("W", "W_adj", "grid", "grid_adj", "sigma", "sigma_adj", "beta", "beta_adj")
@@ -118,7 +136,8 @@ function rule_check(prob, task, tol, r)
     same || push!(dev, "$f $(a isa Vector ? join(a, "x") : a) ≠ $(b isa Vector ? join(b, "x") : b)")
   end
   out["rule_dev"] = join(dev, "; ")
-  # NFFT.jl with a rule whose grid is not from {2, 3, 5} (ducc: 7, 11) builds the next larger grid
+  # NFFT.jl without the option gridsize, with a rule whose grid is not from {2, 3, 5} (ducc: 7, 11),
+  # builds the next larger grid
   out["grid_rounded"] = task["lib"] == "NFFT" && haskey(out, "rep_grid") &&
                         (out["rep_grid"] != out["rule_grid"] || out["rep_grid_adj"] != out["rule_grid_adj"])
   out
@@ -153,6 +172,7 @@ end
 
 function progress(r)
   lib = haskey(r, "rule") && r["lib"] == "NFFT" ? "NFFT[" * r["rule"] * "]" : r["lib"]
+  haskey(r, "fft_flag") && r["lib"] != "NFFT" && (lib *= "/" * lowercase(r["fft_flag"][1:4]))
   head = @sprintf("  %-14s %-5s D=%d N=%-8d J=%-7d L=%-4d %-9s %-7s t=%-2d tol=%.0e",
                   lib, r["transform"], length(r["N"]), r["N"][1], r["J"], get(r, "L", 1),
                   r["nodes"], r["T"], r["threads"], r["tol"])

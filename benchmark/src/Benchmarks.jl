@@ -29,7 +29,7 @@ const LIBS = Dict(
 
 const COLUMNS = ["suite", "lib", "transform", "D", "N", "J", "L", "nodes", "T", "threads", "tol", "tol_used", "sigma_req", "round", "load",
                  "err_trafo", "err_adj", "t_plan", "t_trafo", "t_adj", "t_trafo_med", "t_adj_med",
-                 "alloc_trafo", "alloc_adj", "W", "sigma", "window", "lib_version", "lib_library",
+                 "alloc_trafo", "alloc_adj", "W", "sigma", "grid", "grid_adj", "window", "fft_flag", "lib_version", "lib_library",
                  "rule", "rule_tol", "rule_window", "rule_W", "rule_W_adj", "rule_sigma", "rule_sigma_adj", "rule_beta", "rule_beta_adj",
                  "rule_grid", "rule_grid_adj", "rep_W", "rep_W_adj", "rep_sigma", "rep_sigma_adj", "rep_beta", "rep_beta_adj",
                  "rep_grid", "rep_grid_adj", "rule_dev", "grid_rounded", "commit", "skipped", "error"]
@@ -246,7 +246,8 @@ meta_info(suite, args) = Dict{String,Any}("date" => string(now()), "machine" => 
 # ── comparison ───────────────────────────────────────────────────────────────────────────────
 
 key(r; lib=true) = (lib ? r["lib"] : "", r["transform"], r["N"], r["J"], get(r, "L", 1), r["nodes"], r["T"],
-                    r["threads"], r["tol"], get(r, "sigma_req", ""), get(r, "rule", ""), get(r, "round", ""))
+                    r["threads"], r["tol"], get(r, "sigma_req", ""), get(r, "rule", ""), get(r, "fft_flag", ""),
+                    get(r, "round", ""))
 ok(r) = get(r, "skipped", "") == "" && get(r, "error", "") == ""
 geomean(x) = isempty(x) ? NaN : exp(sum(log, x) / length(x))
 

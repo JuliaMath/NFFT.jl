@@ -15,10 +15,10 @@ module Rules
 
 using LinearAlgebra: SymTridiagonal, eigen
 
-const RULES = ["FINUFFT 2.5", "FINUFFT 2.6-dev", "cuFINUFFT 2.5", "ducc 0.29", "NonuniformFFTs 0.9", "NFFT3",
+const RULES = ["FINUFFT 2.5", "FINUFFT 2.6-dev", "cuFINUFFT 2.5", "ducc 0.42", "NonuniformFFTs 0.9", "NFFT3",
                "mlx-nufft 0.3"]
 # the library of the benchmark whose own choice a rule describes
-const RULE_OF_LIB = Dict("FINUFFT 2.5" => "FINUFFT 2.5", "FINUFFT" => "FINUFFT 2.6-dev", "ducc" => "ducc 0.29",
+const RULE_OF_LIB = Dict("FINUFFT 2.5" => "FINUFFT 2.5", "FINUFFT" => "FINUFFT 2.6-dev", "ducc" => "ducc 0.42",
                          "NonuniformFFTs" => "NonuniformFFTs 0.9", "mlx-nufft" => "mlx-nufft 0.3")
 
 choice(window, β, e0, W, σ, grid, tol) = (; window, β=Float64(β), e0=Float64(e0), W=Int(W), sigma=Float64(σ), tol=Float64(tol),
@@ -84,7 +84,9 @@ end
 # rounding floor and grid: include/finufft_common/kernel.h and src/common/kernel.cpp
 # (upsampfac_feasible, clamp_kernel_ns, float_max_ns_cc, lowest_sigma, fine_grid_len), constants
 # include/finufft_common/constants.h. SIMD widths of include/finufft/simd.hpp on NEON (128 bit: 2
-# Float64, 4 Float32). Kernel and β as in 2.5.1 (kerformula 8).
+# Float64, 4 Float32). Kernel and β as in 2.5.1 (kerformula 8). Clang contracts a·b + c into an FMA
+# on ARM (-ffp-contract=on); where a choice sits on a rounding boundary (σ of smallest_sigma_for_ns,
+# where the width jumps), the rule does the same.
 const MIN_AUTO_UPSAMPFAC = 1.25
 const MAX_AUTO_UPSAMPFAC = 2.5
 const MAX_CHECK_SIGMA = 2.0
@@ -103,7 +105,7 @@ function smallest_sigma_for_ns(tol, D, type, ns)
   tol >= tolfac && return 1.01
   u = log(tolfac / tol) / ((ns - 1.0) * π)
   u >= 1 && return MAX_AUTO_UPSAMPFAC
-  min(1 / (1 - u^2), MAX_AUTO_UPSAMPFAC)
+  min(1 / fma(-u, u, 1.0), MAX_AUTO_UPSAMPFAC)
 end
 
 function lowest_sigma(tol, D, ns, epsm, gridlen)
@@ -112,7 +114,7 @@ function lowest_sigma(tol, D, ns, epsm, gridlen)
   pure = smallest_sigma_for_ns(tol, D, 1, ns)
   r >= 10 && return min(pure, MAX_CHECK_SIGMA)
   a2, a1, a0 = ns > 8 ? (0.014, 0.291, -0.043) : (0.555, -0.290, 0.071)
-  corr = (a2 / r + a1) / r + a0
+  corr = fma(fma(a2, 1 / r, a1), 1 / r, a0)
   min(pure + max(corr, 0.0), MAX_CHECK_SIGMA)
 end
 
@@ -192,16 +194,16 @@ function cufinufft251(::Type{T}, N, J, tol, type, threads) where {T}
   choice("es", Float64(T(βn)) * ns, 0.5, ns, 2.0, [next235even(max(ceil(Int, 2.0 * n), 2ns)) for n in N], e)
 end
 
-# ── ducc 0.29.0 (ducc0_jll 0.29.0+2, through Ducc0.jl) ───────────────────────────────────────────
-# Kernels: KernelDB of src/ducc0/math/gridding_kernel.cc (ducc_kernels_0.29.csv), per W ≤ 16 (Float32:
+# ── ducc 0.42.0 (branch ducc0 at 31d9fe9, the build of the benchmark, through Ducc0.jl) ──────────────
+# Kernels: KernelDB of src/ducc0/math/gridding_kernel.cc (ducc_kernels_0.42.csv), per W ≤ 16 (Float32:
 # 8) the smallest σ in [1.1, 2.6] whose ε reaches tol (gridding_kernel.h getAvailableKernels).
-# Choice among them: src/ducc0/nufft/nufft.h findNufftParameters, a cost model in the number of
+# Choice among them: src/ducc0/nufft/nufft_common.h findNufftParameters, a cost model in the number of
 # threads; vector length of NEON (2 Float64, 4 Float32). Grid 2·good_size_complex(⌊Nσ/2⌋ + 1) ≥ 16,
-# sizes with factors 2, 3, 5, 7, 11 (src/ducc0/fft/fft1d.h). Window esknew(v, βW, e0). One plan
+# sizes with factors 2, 3, 5, 7, 11 (src/ducc0/fft/fft.h). Window esknew(v, βW, e0). One plan
 # serves both directions; Float64 accumulates in Float64, so the cost is the same for both. The
 # benchmark adapter raises tol to 1.1 × the best ε of the table.
 const DUCC_DB = let
-  rows = filter(l -> !startswith(l, "#"), readlines(joinpath(@__DIR__, "ducc_kernels_0.29.csv")))[2:end]
+  rows = filter(l -> !startswith(l, "#"), readlines(joinpath(@__DIR__, "ducc_kernels_0.42.csv")))[2:end]
   map(rows) do l
     c = split(l, ",")
     (W=parse(Int, c[1]), ofactor=parse(Float64, c[2]), epsilon=parse(Float64, c[3]), beta=parse(Float64, c[4]),
@@ -245,7 +247,7 @@ end
 ducc_best_epsilon(D, sp) = minimum(k.epsilon for k in DUCC_DB if k.ndim == D && k.singleprec == sp &&
                                    1.1 <= k.ofactor <= 2.6)
 
-function ducc029(::Type{T}, N, J, tol, type, threads) where {T}
+function ducc042(::Type{T}, N, J, tol, type, threads) where {T}
   D = length(N); sp = T == Float32
   tol = max(tol, 1.1 * ducc_best_epsilon(D, sp))
   ofc = fill(2.6, 20); idx = zeros(Int, 20)
@@ -334,7 +336,7 @@ function mlxnufft033(::Type{T}, N, J, tol, type, threads) where {T}
 end
 
 const RULE_FUNCTIONS = Dict("FINUFFT 2.5" => finufft251, "FINUFFT 2.6-dev" => finufft26,
-                            "cuFINUFFT 2.5" => cufinufft251, "ducc 0.29" => ducc029,
+                            "cuFINUFFT 2.5" => cufinufft251, "ducc 0.42" => ducc042,
                             "NonuniformFFTs 0.9" => nonuniformffts098, "NFFT3" => nfft3,
                             "mlx-nufft 0.3" => mlxnufft033)
 
