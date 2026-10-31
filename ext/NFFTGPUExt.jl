@@ -87,17 +87,24 @@ function tile_edges(D, W, T)
 end
 
 # Bin edges for the resampling by subproblems: the largest up to `sub_edge` for which the padded
-# tile (B + W per dimension, two 32-bit values), a chunk of nodes and the reduction buffer fit into
-# the local memory; the larger the bins, the fewer tile points overlap and are flushed twice.
-# Float32 only: Float64 would need more than the 32 bits of the fixed-point accumulation.
+# tile (B + W per dimension, two values of the accumulation type), a chunk of nodes and the reduction
+# buffer fit into the local memory; the larger the bins, the fewer tile points overlap and are
+# flushed twice. Float32, and Float64 in 1D and 2D (a 3D tile of Float64 is too small to pay off).
 function sub_edges(D, W, T)
-  T === Float32 || return nothing
+  T === Float32 || (T === Float64 && D <= 2) || return nothing
   chunk = SUB_CHUNK * (D * W * sizeof(T) + 4D + 2sizeof(T)) + SUB_WORKGROUP * sizeof(T)
   for b in sub_edge(D):-1:1
-    8 * (b + W)^D + chunk <= LOCAL_BYTES && return ntuple(_ -> b, D)
+    2sizeof(acc_type(T)) * (b + W)^D + chunk <= LOCAL_BYTES && return ntuple(_ -> b, D)
   end
   nothing
 end
+
+# Accumulation type of the adjoint subproblems: Int32 fixed point for Float32 (Metal has no atomic
+# float additions in local memory), the float itself for Float64 (which Metal does not support).
+acc_type(::Type{Float32}) = Int32
+acc_type(::Type{T}) where {T} = T
+@inline to_acc(::Type{A}, x) where {A<:Integer} = fixed(x)
+@inline to_acc(::Type{A}, x) where {A} = A(x)
 
 # Cost model (see NFFT.cost_terms): fixed cost, nodes, taps J·W^D, grid points and the tile points
 # flushed by the adjoint resampling by subproblems, for uniformly distributed nodes (bins of edge b,
@@ -335,10 +342,11 @@ end
 # into the padded tile of its bin, o .+ (0:B+W-1), in local memory. The work-items split the pairs of
 # a node of a chunk and its support points in dimensions 2…D and run along dimension 1, which is
 # contiguous in the tile and the grid (in 1D they split the pairs of node and support point). They
-# add with Int32 atomics: Metal has no atomic float additions in local memory, and integer additions
-# make the tile independent of their order. The scale 2^30/(count·vmax), vmax the largest |re|, |im|
-# of the subproblem's values, keeps every tile value below 2^30 (weights ≤ 1); each of the at most
-# `count` additions to a value rounds by half a unit, together at most 2^-21 of count·vmax. The
+# add with atomics of `acc_type(T)`. For Float32 these are Int32 atomics: Metal has no atomic float
+# additions in local memory, and integer additions make the tile independent of their order. The
+# scale 2^30/(count·vmax), vmax the largest |re|, |im| of the subproblem's values, keeps every tile
+# value below 2^30 (weights ≤ 1); each of the at most `count` additions to a value rounds by half a
+# unit, together at most 2^-21 of count·vmax. Float64 adds floats, unscaled. The
 # tile is then added with atomic additions to the padded grid, or with WRAP directly to the periodic
 # grid (`gv`: the grids as a vector of real numbers).
 #
@@ -348,13 +356,13 @@ end
 @kernel function adjoint_sub_kernel!(gv, K, @Const(offs), @Const(ss), @Const(perm), @Const(vals),
                                      @Const(sstart), @Const(scount), @Const(sbin), nsub, nb, h, n, L1,
                                      ::Val{D}, ::Val{W}, ::Val{B}, ::Val{S}, ::Val{C}, ::Type{T}, ::Type{G},
-                                     ::Val{WRAP}) where {D,W,B,S,C,T,G,WRAP}
+                                     ::Type{A}, ::Val{WRAP}) where {D,W,B,S,C,T,G,A,WRAP}
   s, l = batch(@index(Group, Linear), nsub)
   a0, b0 = batch(l, L1)
   li = Int32(@index(Local, Linear)) - Int32(1)
   gs = Int32(SUB_WORKGROUP)
-  bre = @localmem Int32 (S,)
-  bim = @localmem Int32 (S,)
+  bre = @localmem A (S,)
+  bim = @localmem A (S,)
   wb = @localmem T (C * D * W,)
   ob = @localmem Int32 (C * D,)
   vre = @localmem T (C,)
@@ -364,28 +372,31 @@ end
   pstr = strides_of(pe, Val(D))
   i = li
   while i < Int32(S)
-    @inbounds bre[i+1] = Int32(0); @inbounds bim[i+1] = Int32(0)
+    @inbounds bre[i+1] = zero(A); @inbounds bim[i+1] = zero(A)
     i += gs
   end
   q0 = @inbounds sstart[s]; cnt = @inbounds scount[s]
   o = map(*, cart0(UInt32(@inbounds(sbin[s]) - Int32(1)), nb), map(Int32, B))
-  # largest |re|, |im| of the subproblem's values, reduced in local memory
-  vm = zero(T); i = li
-  while i < cnt
-    v = @inbounds vals[a0, perm[q0 + i], b0]
-    vm = max(vm, abs(real(v)), abs(imag(v)))
-    i += gs
-  end
-  @inbounds red[li+1] = vm
-  k = gs ÷ Int32(2)
-  while k > Int32(0)
+  scale = one(T)
+  if A <: Integer
+    # largest |re|, |im| of the subproblem's values, reduced in local memory
+    vm = zero(T); i = li
+    while i < cnt
+      v = @inbounds vals[a0, perm[q0 + i], b0]
+      vm = max(vm, abs(real(v)), abs(imag(v)))
+      i += gs
+    end
+    @inbounds red[li+1] = vm
+    k = gs ÷ Int32(2)
+    while k > Int32(0)
+      @synchronize
+      li < k && (@inbounds red[li+1] = max(red[li+1], red[li+k+1]))
+      k ÷= Int32(2)
+    end
     @synchronize
-    li < k && (@inbounds red[li+1] = max(red[li+1], red[li+k+1]))
-    k ÷= Int32(2)
+    vm = @inbounds red[1]
+    scale = vm > 0 ? T(2^30) / (T(cnt) * vm) : zero(T)
   end
-  @synchronize
-  vm = @inbounds red[1]
-  scale = vm > 0 ? T(2^30) / (T(cnt) * vm) : zero(T)
   TPN = Int32(W^D ÷ inner_taps(Val(D), Val(W)))     # tasks per node
   qc = Int32(0)
   while qc < cnt
@@ -416,20 +427,20 @@ end
       for t in Int32(0):Int32(inner_taps(Val(D), Val(W)) - 1)
         w = @inbounds wb[c * Int32(D * W) + t0 + t + Int32(1)]
         i = i0 + t0 + t
-        @inbounds KA.@atomic :monotonic bre[i] += fixed(w * vr)
-        G <: Complex && (@inbounds KA.@atomic :monotonic bim[i] += fixed(w * vi))
+        @inbounds KA.@atomic :monotonic bre[i] += to_acc(A, w * vr)
+        G <: Complex && (@inbounds KA.@atomic :monotonic bim[i] += to_acc(A, w * vi))
       end
       j += gs
     end
     @synchronize
     qc += Int32(C)
   end
-  isc = vm > 0 ? inv(scale) : zero(T)
+  isc = scale > 0 ? inv(scale) : zero(T)
   ng = prod(n)
   i = li
   while i < Int32(S)
     re = @inbounds bre[i+1]; im = @inbounds bim[i+1]
-    if re != Int32(0) || im != Int32(0)
+    if re != zero(A) || im != zero(A)
       gi = target_index(o, cart0(UInt32(i), pe), h, n, Val(WRAP))
       if WRAP || all(map((x, m) -> 1 <= x <= m, gi, n))
         cell = Int(linear0(gi, n, Val(D))) + (l - 1) * Int(ng)
@@ -619,7 +630,7 @@ function adjoint_sub!(backend, nd, g, vals, L1, h, ::Val{D}, ::Val{WRAP}) where 
   gv = eltype(g) <: Complex ? reinterpret(T, vec(g)) : vec(g)
   adjoint_sub_kernel!(backend, SUB_WORKGROUP)(gv, nd.kernel, nd.offs, nd.ss, nd.perm, vals, sp.start,
     sp.count, sp.bin, nsub, map(Int32, sp.nb), Int32(h), map(Int32, size(g)[1:D]), L1, Val(D), Val(nd.W),
-    Val(sp.B), Val(prod(sp.B .+ nd.W)), Val(SUB_CHUNK), T, eltype(g), Val(WRAP);
+    Val(sp.B), Val(prod(sp.B .+ nd.W)), Val(SUB_CHUNK), T, eltype(g), acc_type(T), Val(WRAP);
     ndrange=nsub * size(g, D + 1) * SUB_WORKGROUP)
   g
 end
