@@ -103,10 +103,11 @@ const DENSITIES = [0.01, 0.03, 0.1, 0.3, 1, 3, 10, 30, 100]
 const BATCH_CASES = [("oct", [2048], 2048, [1, 8, 64, 512]), ("mri", [256, 256], 65536, [1, 4, 16, 32]),
                      ("volume", [64, 64, 64], 2^18, [1, 4, 8])]
 @suite "batch" "many transforms with the same nodes (OCT, multi-coil MRI, volumes)" o -> [
-  task(; lib, N, J, L, tol, threads=opt(o, :threads, [default_threads()])[1], budget=opt(o, :budget, 0.1),
+  task(; lib, N, J, L, tol, T, threads=opt(o, :threads, [default_threads()])[1], budget=opt(o, :budget, 0.1),
        suite="batch:" * name)
   for (name, N, J, Ls) in BATCH_CASES if length(N) in opt(o, :dims, [1, 2, 3])
-  for L in Ls for tol in opt(o, :tols, [1e-4, 1e-8]) for lib in opt(o, :libs, COMPETITORS)]
+  for L in Ls for T in opt(o, :T, ["Float64"]) for tol in opt(o, :tols, [1e-4, 1e-8])
+  for lib in opt(o, :libs, COMPETITORS)]
 
 @suite "real" "real data: RNFFT, NFCT, NFST against the complex NFFT of the same size" o -> [
   [task(; lib="NFFT", N=SIZES[D], transform, tol, threads=opt(o, :threads, [default_threads()])[1],

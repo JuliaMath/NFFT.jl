@@ -64,7 +64,7 @@ Results that were not written by `--save` on their machine, with their origin:
 | `apple-m1-max/contract.csv` | `out/2026-10-31_023233-contract.csv` (`run contract`, NFFT.jl 00b3c45) |
 | `amd-epyc-7763/*.csv` | `run lite` (2 rounds) on a shared AMD EPYC 7763 server, 8 threads, 2026-10-31, NFFT.jl 4e0df8a; FINUFFT 2.5.1 from its JLL, ducc0 0.42 built with `-march=native`. The run overlapped with GPU runs in the same clone; its rows were sorted back by suite and library. Header lines added by hand. Provisional. |
 | `rtx-a6000/cuda.csv` | `run cuda` and `run cuda --sizes big` on GPU 5 of the same server, 2026-10-31: the rows of NFFT CUDA from a run with the unrolled interpolation kernel and inlined window weights (on top of 4e0df8a, before 3588e7a), the rows of NonuniformFFTs CUDA from the first runs (two rounds at the default sizes, one at the big sizes). Header lines added by hand. Provisional. |
-| `rtx-a6000/cufinufft*.csv` | `python benchmark/cufinufft.py [big]` on the same GPU, cuFINUFFT 2.5.1 with CuPy 14.2; header lines added by hand. |
+| `rtx-a6000/cufinufft*.csv` | `python benchmark/cufinufft_bench.py [big]` on the same GPU, cuFINUFFT 2.5.1 with CuPy 14.2; header lines added by hand. |
 
 Every library uses its defaults apart from the tolerance and the number of threads; FFTW plans use
 `ESTIMATE`. The libraries interpret the tolerance differently, so compare time against the
@@ -98,7 +98,9 @@ and writes its own CSV:
 
 ```
 CUDA_VISIBLE_DEVICES=5 julia benchmark/bench.jl run cuda --sizes big
-CUDA_VISIBLE_DEVICES=5 python benchmark/cufinufft.py big > cufinufft-big.csv
+CUDA_VISIBLE_DEVICES=5 python benchmark/cufinufft_bench.py big > cufinufft-big.csv
+CUDA_VISIBLE_DEVICES=5 julia benchmark/bench.jl run batch --libs "NFFT CUDA" --T Float64,Float32
+CUDA_VISIBLE_DEVICES=5 python benchmark/cufinufft_bench.py batch > cufinufft-batch.csv
 ```
 
 The cuFINUFFT reference uses the nodes rounded to the precision the library receives them in.
