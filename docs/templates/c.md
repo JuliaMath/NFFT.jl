@@ -52,8 +52,12 @@ computes both and checks the first values against the direct sum:
   (``D \times J``, column major: node `j` is `k[D*j]`, …, `k[D*j + D-1]`, entries in
   ``[-1/2, 1/2)``). `reltol` is the requested relative error: window, window width and
   oversampling factor are chosen for it at the lowest predicted cost (see
-  [Accuracy and Parameters](@ref)). `nthreads = 0` uses `nfftjl_num_threads()`. Returns a handle,
-  or −1 on error. The nodes are copied.
+  [Accuracy and Parameters](@ref)). As in Julia, a `reltol` that no parameters reach is an error
+  rather than a less accurate plan. The library is compiled for window widths ``W = 4, \dots, 16``
+  (single precision: ``4, \dots, 8``), which covers the tolerances that the planner accepts in each
+  precision; the NNFFT chooses both of its windows within this range. `nthreads = 0` uses
+  `nfftjl_num_threads()`. Returns a handle, or −1 on error (`nfftjl_last_error` gives the message).
+  The nodes are copied.
 
 `nfftjl_trafo(p, f, fhat)`, `nfftjl_adjoint(p, fhat, f)`
 : The NFFT of `f` (``N_0 \times \dots \times N_{D-1}`` complex values, column major: element

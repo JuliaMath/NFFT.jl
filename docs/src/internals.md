@@ -10,7 +10,9 @@ NFFT.jl, none of it is needed. The mathematics behind the three stages is in
 Creating a plan does all work that depends only on the nodes and the sizes:
 
 - **Parameters.** From `reltol` the plan picks window family, width ``W`` and oversampling factor
-  ``\sigma`` with the lowest predicted cost (see [Accuracy and Parameters](@ref)).
+  ``\sigma`` with the lowest predicted cost among those whose predicted error is at most `reltol`
+  for any nodes; if no parameters reach `reltol`, it throws an `ArgumentError` (see
+  [Accuracy and Parameters](@ref)).
 - **The window** as ``W`` polynomial pieces (below), and the correction factors
   ``1/\hat\varphi`` for the kept modes.
 - **The nodes, binned into tiles** of the oversampled grid (below), with their coordinates in the
@@ -42,7 +44,9 @@ The oversampled grid is periodic: the support of a node near the edge continues 
 NFFT.jl stores the grid with a halo of ``W`` extra points per dimension. Before the resampling the
 halo is filled with copies from the opposite side, after the adjoint resampling it is added back.
 In between, every node reads or writes one block of ``W^D`` points without wrap-around, and the
-inner loops contain no modulo operations and no branches.
+inner loops contain no modulo operations and no branches. Where the length of a dimension (other
+than the last) with its halo is a multiple of 8, the grid gets 4 unused points more: strides with
+many factors of two make the FFT passes slow through cache set conflicts.
 
 The node positions on the grid are always computed in double precision, also for single-precision
 data: in `Float32`, ``k \tilde N`` would be off by about ``10^{-2}`` grid points for
@@ -58,7 +62,8 @@ processes the grid tile by tile, and every task takes the next tile from a share
 - **Resampling** (grid to nodes): the task copies the tile with its halo into a private buffer and
   computes the values of the tile's nodes from it. Reading from the compact copy instead of the
   large grid makes the time independent of the grid size, which otherwise varies by up to 65 %
-  through cache conflicts.
+  through cache conflicts. A tile with few nodes (fewer grid reads than four times the size of the
+  copy) is read directly from the grid instead, since the copy would cost more than it saves.
 - **Adjoint resampling** (nodes to grid): the task adds the nodes of its tile into a zeroed private
   buffer of edge ``B + W + 1``, which stays in the L1 or L2 cache, and then adds the buffer to the
   grid. Neighbouring buffers overlap, so this addition takes a lock for each tile of the grid it
@@ -73,14 +78,16 @@ same time.
 ![Pruned FFT](./assets/nfft_pruned_fft.svg)
 
 Before the FFT of the direct transform, only the ``|\bm{N}|`` kept modes in the corners of the
-grid are nonzero; after the FFT of the adjoint, only those are needed. NFFT.jl runs the FFT as one
+grid are nonzero; after the FFT of the adjoint, only those are needed. The direct transform zeroes
+only the part of the grid outside these corners (the correction overwrites the corners), in long
+contiguous runs with `memset`. NFFT.jl runs the FFT as one
 pass per dimension and skips the lines that contain only zeros (direct) or are not needed later
 (adjoint). In 2D with ``\sigma = 2`` the first pass of the direct transform touches half of the
 lines, in 3D the first two passes a quarter and a half; the adjoint saves the same in its last
 passes. Each pass is split into boxes of lines that run in parallel, each with a single-threaded
 batched FFTW plan: with `ESTIMATE`, FFTW's own threading produces plans up to 17 times slower than
 `MEASURE` plans, while single-threaded batched `ESTIMATE` plans come within 10–20 % of `MEASURE`.
-In 1D, FFTW's threading is used. The grid sizes are even products of 2, 3 and 5 (as in FINUFFT),
+A pass uses at most as many tasks as the plan has threads. In 1D, FFTW's threading is used. The grid sizes are even products of 2, 3 and 5 (as in FINUFFT),
 not powers of two, so that ``\sigma`` can be chosen freely.
 
 ## Batch strategies
@@ -172,6 +179,33 @@ precision; the grid positions themselves were computed in double precision. Each
   time are unsigned; atomics are relaxed. On Apple GPUs 64-bit and signed divisions, and atomics
   with sequential consistency, each cost a factor of 2 to 10 in the kernels concerned.
 - **FFT**: through AbstractFFTs, so the GPU package provides it (cuFFT, rocFFT, Metal).
+
+## Measuring the techniques
+
+Two internal tools (not part of the API, for measurements only) take the implementation apart:
+
+- **Stage timers.** With `NFFT.TIME_STAGES[] = true`, the CPU core records the time of each stage
+  (sorting the nodes at plan time, zeroing, correction, FFT, halo, resampling) in `NFFT.STAGE_TIMES`.
+- **Ablation switches.** `NFFT.ablate!(; switches...)` replaces one technique of the default by the
+  alternative another library uses, at the same window, ``W``, ``\sigma`` and grid, for plans
+  created afterwards (single NFFT plans, `FFTWBackend`); `NFFT.ablate!()` restores the default.
+  Such a plan runs its own copies of the resampling loops, so the default path is untouched. The
+  switches: `fft` (one multidimensional FFTW plan, unpruned passes, or the pruned boxes with FFTW's
+  threads), `interp` (always copy the tile, or always read the grid), `halo = false` (no halo; the
+  periodic wrap is resolved in the tile copy and the flush) and with it `wrap = :index` (the direct
+  transform reads the grid with the wrap resolved per index, as FINUFFT does), `flush` (one global
+  lock, a `ReentrantLock`, or atomic additions instead of the tile locks), `window` (a Horner chain
+  per piece instead of the even/odd evaluation), `coords` (node coordinates read through the
+  sorting permutation instead of a sorted copy), `rowdot2`, `prefetch`, `slide` (no sliding buffer
+  in 3D), `schedule` (contiguous chunks of tiles instead of a shared counter) and `bufs` (one buffer
+  per tile instead of per task). The list with the details is in `src/ablation.jl`.
+
+The benchmark suite (`benchmark/README.md`) uses them with other libraries' parameters: the suite
+`decomposition` runs NFFT.jl with the window, ``W`` and grid that FINUFFT, ducc, NonuniformFFTs.jl,
+NFFT3 and others would choose (expert options `window = CustomWindow(…)` and `gridsize`), which
+splits a speed ratio into a part due to the parameters and a part due to the implementation;
+`fftflags` measures the other libraries with FFTW's `ESTIMATE` and `MEASURE` plans; `contract`
+compares the delivered error with the requested tolerance, also for nodes on a regular lattice.
 
 ## Where the ideas come from
 

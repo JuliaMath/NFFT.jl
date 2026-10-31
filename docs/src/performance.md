@@ -33,6 +33,29 @@ transform and 1.2–2× in the adjoint. FINUFFT cannot reach
 small errors in single precision for these sizes (its tolerance floor grows with ``N``; in 1D it
 rejects even ``10^{-2}``).
 
+## Delivered error
+
+A tolerance is only comparable if it is kept. The suite `contract` measures the error each library
+delivers for the tolerance it was given, over the sweep above, in double and single precision, for
+uniformly random nodes and for nodes on a regular lattice, where the aliasing errors of the window
+add up coherently. NFFT.jl promises an error of at most `reltol` for any nodes, or an
+`ArgumentError` if no parameters reach it (see [Accuracy and Parameters](@ref)); in the contract run
+of 2026-10-31 it never exceeded the tolerance, for either node distribution, and rejected the
+tolerances below its rounding floor. Each of the other libraries exceeded its tolerance in some
+cases: ducc in a few, FINUFFT in about half, NonuniformFFTs.jl and NFFT.jl 0.14 in most, and these
+two in every case with lattice nodes.
+
+## Parameters or implementation
+
+A speed ratio between two libraries mixes the parameters each one chooses (window, ``W``, grid) with
+the implementation. The suite `decomposition` separates the two: NFFT.jl also runs with the
+parameters the other library would choose (expert options `window = CustomWindow(…)` and
+`gridsize`), so that the ratio splits into a parameter factor and an implementation factor. FFT
+planning counts as implementation: every library plans with its own default flag; the suite
+`fftflags` shows what `ESTIMATE` and `MEASURE` change for the other libraries. Which technique
+accounts for how much of NFFT.jl's own speed can be measured with the ablation switches described
+in [How NFFT.jl Works](@ref "Measuring the techniques").
+
 ## Threads
 
 Speedup over one thread at a tolerance of ``10^{-8}`` (solid: direct, dashed: adjoint; dotted:
@@ -154,6 +177,9 @@ julia benchmark/bench.jl run fast                  # ≈ 15 s, NFFT.jl alone
 julia benchmark/bench.jl run quick                 # ≈ 1 min, NFFT.jl, FINUFFT and ducc
 julia benchmark/bench.jl run all --save            # all suites of this page, ≈ 15 min
 julia benchmark/bench.jl report                    # figures and explorer data
+julia benchmark/bench.jl run contract              # delivered error against the tolerance
+julia benchmark/bench.jl run decomposition         # parameter and implementation factors
+julia benchmark/bench.jl run fftflags              # the other libraries with ESTIMATE and MEASURE
 julia benchmark/bench.jl ab v1.0.0                 # the working tree against a release
 ```
 
