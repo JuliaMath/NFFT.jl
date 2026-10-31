@@ -84,10 +84,19 @@
     e = first(NFFT.choose_kernels(1e-6, N, J, Float64))[1]
     NFFT.set_cost_model!(Array, Float64, nothing)
     @test e.σ <= 1.25   # the smallest grid (σ = 1.2 and 1.25 round to the same size)
-    # Wmax (the C library's compiled widths): a narrower window that still reaches reltol
+    # Wmax (the C library's compiled widths): a narrower window on a larger grid that still reaches
+    # reltol (3D Float32 at 1e-4: W = 9 without the bound), or an error
+    k3 = rand(rng, 3, 60) .- 0.5; f3 = randn(rng, ComplexF32, 12, 9, 6); v3 = randn(rng, ComplexF32, 60)
     @test first(NFFT.choose_kernels(1e-4, (12, 9, 6), 60, Float32))[1].W > 8
-    e, err = first(NFFT.choose_kernels(1e-4, (12, 9, 6), 60, Float32; Wmax=8))
-    @test e.W <= 8 && err <= 1e-4
+    for tol in (1e-4, 1e-5)
+      e, err = first(NFFT.choose_kernels(tol, (12, 9, 6), 60, Float32; Wmax=8))
+      @test e.W <= 8 && err <= tol
+      p = plan_nfft(Float32.(k3), (12, 9, 6); window=e.window, W=e.W, σ=e.σ)
+      ref = NDFTPlan(Float64.(Float32.(k3)), (12, 9, 6))
+      @test relerr(p * f3, ref * ComplexF64.(f3)) <= tol
+      @test relerr(adjoint(p) * v3, adjoint(ref) * ComplexF64.(v3)) <= tol
+    end
+    @test_throws ArgumentError NFFT.choose_kernels(1e-10, (12, 9, 6), 60, Float64; Wmax=8)
     @test NFFT.cost_model(Array, Float64) === NFFT.COST_COEF
     # a custom window with explicit width and oversampling
     gauss = CustomWindow((z, W) -> abs(z) < W / 2 ? exp(-(2z / W)^2 * 9) : 0.0)

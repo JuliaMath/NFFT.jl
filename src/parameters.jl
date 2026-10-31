@@ -183,7 +183,8 @@ function choose_kernels(reltol, N::NTuple{D,Int}, J, ::Type{T}; window=:auto, W=
   isempty(cands) && throw(ArgumentError("no kernel for window = $window, W = $W, σ = $σ with W ≤ $Wmax"))
   err = [predicted_error(e, N, T, fft) for e in cands]
   emin = minimum(err)
-  (W === nothing || σ === nothing) && check_reach(emin, reltol, "N = $N", T, window, W, σ)
+  limit = Wmax < typemax(Int) ? ", W ≤ $Wmax" : ""
+  (W === nothing || σ === nothing) && check_reach(emin, reltol, "N = $N$limit", T, window, W, σ)
   tol = max(reltol, emin)
   ok = cands[err .<= tol]
   # the cost once per entry: it searches the next FFT-friendly grid size. A loop: a closure over

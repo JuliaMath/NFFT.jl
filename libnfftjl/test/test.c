@@ -67,7 +67,7 @@ static void timing(int D, const int64_t *N, int64_t J, double reltol, int nthrea
 }
 
 /* single precision against the direct sum in double precision */
-static int accuracy_f32(int D, const int64_t *N, int64_t J, double reltol, int nthreads) {
+static int accuracy_f32(int D, const int64_t *N, int64_t J, double reltol, double slack, int nthreads) {
   int64_t M = 1; for (int d = 0; d < D; d++) M *= N[d];
   double *k = malloc(sizeof(double) * D * J);
   double complex *f = malloc(sizeof(double complex) * M), *g = malloc(sizeof(double complex) * M),
@@ -88,7 +88,7 @@ static int accuracy_f32(int D, const int64_t *N, int64_t J, double reltol, int n
   int bad = nfftjl_trafo(p, f, fh) != -1;   /* a single-precision plan is not a double one */
   nfftjlf_plan_destroy(p);
   free(k); free(f); free(g); free(fh); free(gh); free(ff); free(fhf);
-  return bad || !(e1 < 10 * reltol && e2 < 10 * reltol);
+  return bad || !(e1 <= slack * reltol && e2 <= slack * reltol);
 }
 
 /* batches: data L1 x N x L3 and L1 x J x L3; every slice against the direct sum */
@@ -271,9 +271,19 @@ int main(int argc, char **argv) {
     printf("failing plan: %lld, \"%s\"\n", p, msg);
     fail |= p != -1 || n == 0 || !strstr(msg, "[0, 1/2]");
   }
-  fail |= accuracy_f32(1, N1, 300, 1e-5, nthreads);
-  fail |= accuracy_f32(2, N2, 300, 1e-5, nthreads);
-  fail |= accuracy_f32(3, N3, 300, 1e-3, nthreads);
+  fail |= accuracy_f32(1, N1, 300, 1e-5, 10, nthreads);
+  fail |= accuracy_f32(2, N2, 300, 1e-5, 10, nthreads);
+  fail |= accuracy_f32(3, N3, 300, 1e-3, 10, nthreads);
+  { /* the planner keeps to the compiled widths (Float32: W <= 8) and still reaches reltol, or fails */
+    int64_t S3[] = {12, 9, 6}; double kz[3 * 60]; char msg[300];
+    fail |= accuracy_f32(3, S3, 60, 1e-4, 1, nthreads);
+    fail |= accuracy_f32(3, S3, 60, 1e-5, 1, nthreads);
+    for (int i = 0; i < 3 * 60; i++) kz[i] = urand() - 0.5;
+    int64_t p = nfftjlf_plan_create(3, S3, 60, kz, 1e-7, nthreads);
+    nfftjl_last_error(msg, sizeof msg);
+    printf("float plan at 1e-7: %lld, \"%s\"\n", p, msg);
+    fail |= p != -1 || !strstr(msg, "W ≤ 8");
+  }
   int64_t T1[] = {262144}, T2[] = {512, 512}, T3[] = {64, 64, 64};
   timing(1, T1, 262144, 1e-4, nthreads);   /* warm-up: the threads of FFTW start on first use */
   for (int i = 0; i < 2; i++) {
