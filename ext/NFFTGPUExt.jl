@@ -165,7 +165,14 @@ function subproblems(storage, B, nb, binptr)
   Subproblems(B, nb, col_strides(nb), storage(start), storage(count), storage(bin))
 end
 
-@inline node_weights(K, ss, q, ::Val{D}) where {D} = ntuple(d -> weights(K, @inbounds(ss[d, q])), Val(D))
+# Written out per dimension: through ntuple's closure the weights become a device function that
+# receives the kernel by pointer, and every work-item copies its coefficients to local memory.
+@generated function node_weights(K, ss, q, ::Val{D}) where {D}
+  quote
+    $(Expr(:meta, :inline))
+    ($([:(weights(K, @inbounds(ss[$d, q]))) for d in 1:D]...),)
+  end
+end
 @inline node_offset(offs, q, ::Val{D}) where {D} = ntuple(d -> Int(@inbounds(offs[d, q])), Val(D))
 # the first D indices
 @inline front(I, ::Val{D}) where {D} = ntuple(d -> I[d], Val(D))
