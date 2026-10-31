@@ -2,25 +2,35 @@
 #
 #   julia benchmark/bench.jl report [machine]
 #
-# writes docs/src/assets/benchmarks/*.svg and data.js (all measurements, for the explorer).
+# writes docs/src/assets/benchmarks/*.svg and data.js (all measurements, for the explorer). The
+# machine given is the reference machine of the CPU figures; the CPU figures of every other machine in
+# CPU_MACHINES get its name as a suffix (accuracy-amd-epyc-7763.svg). The figures across platforms
+# (CPU, CUDA, Metal) are in report_platforms.jl.
 
 include(joinpath(@__DIR__, "Benchmarks.jl"))
 using .Benchmarks: read_csv, ok, best_of, ROOT, REPO
 using CairoMakie
 
 const MACHINE = ARGS[1]
-const SRC = joinpath(ROOT, "results", MACHINE)
+const RESULTS = joinpath(ROOT, "results")
 const OUT = joinpath(REPO, "docs", "src", "assets", "benchmarks")
 mkpath(OUT)
 
+# One colour per library family on every device (cuFINUFFT as FINUFFT, NonuniformFFTs.jl on CUDA as
+# on the CPU)
 const COLORS = Dict("NFFT" => "#1f4e9c", "FINUFFT" => "#d9822b", "ducc" => "#3a9e5f",
-                    "NonuniformFFTs" => "#8e5bb5", "NFFT 0.14" => "#9a9a9a")
+                    "NonuniformFFTs" => "#8e5bb5", "NFFT 0.14" => "#9a9a9a", "mlx-nufft" => "#c0395a")
 const LIBORDER = ["NFFT", "FINUFFT", "ducc", "NonuniformFFTs", "NFFT 0.14"]
-color(lib) = get(COLORS, lib, "#555555")
+family(lib) = lib == "cuFINUFFT" ? "FINUFFT" : replace(lib, r" (CUDA|Metal)$" => "")
+color(lib) = get(COLORS, family(lib), "#555555")
+
+# Machine currently drawn by the CPU figures and the suffix of their file names
+const CUR = Ref(MACHINE)
+suffix() = CUR[] == MACHINE ? "" : "-" * CUR[]
 
 # rows of a suite, the rounds of a run (--rounds) merged into their fastest times
-function load(suite)
-  file = joinpath(SRC, "$suite.csv")
+function load(suite; machine=CUR[])
+  file = joinpath(RESULTS, machine, "$suite.csv")
   isfile(file) || return Dict{String,String}(), Dict{String,Any}[]
   meta, rows = read_csv(file)
   meta, best_of([[merge(r, Dict("round" => "")) for r in rows]])
@@ -60,6 +70,7 @@ function legend_below!(fig, row, libs; extra=[])
 end
 
 save_fig(name, fig) = (save(joinpath(OUT, name * ".svg"), fig); println("  ", name, ".svg"))
+save_cpu(name, fig) = save_fig(name * suffix(), fig)
 
 # Speed of the other libraries relative to NFFT.jl at equal measured error: time of a library over
 # the time of NFFT.jl at the error that library delivers, interpolated log-log between NFFT.jl's
@@ -108,7 +119,7 @@ function ratio_figure(name, rows; case, x, xlabel, xaxis=LOGX_EXP, xreversed=fal
   end
   linkyaxes!(axes...)
   legend_below!(fig, 3, others; extra)
-  save_fig(name, fig)
+  save_cpu(name, fig)
 end
 
 const PRECISION_STYLES = [LineElement(color=:black, linestyle=:solid) => "Float64",
@@ -151,7 +162,7 @@ function threads()
   end
   legend_below!(fig, 2, libs_in(rows); extra=[LineElement(color=:black, linestyle=:solid) => "direct",
                                                LineElement(color=:black, linestyle=:dash) => "adjoint"])
-  save_fig("threads", fig)
+  save_cpu("threads", fig)
 end
 
 function batch()
@@ -173,7 +184,7 @@ function batch()
   end
   legend_below!(fig, 2, libs_in(rows); extra=[LineElement(color=:black, linestyle=:solid) => "direct",
                                                LineElement(color=:black, linestyle=:dash) => "adjoint"])
-  save_fig("batch", fig)
+  save_cpu("batch", fig)
 end
 
 function real()
@@ -198,7 +209,7 @@ function real()
   end
   Legend(fig[2, :], [PolyElement(color=:gray40), PolyElement(color=(:gray40, 0.5))], ["direct", "adjoint/transposed"];
          orientation=:horizontal, framevisible=false)
-  save_fig("real", fig)
+  save_cpu("real", fig)
 end
 
 # all measurements for the explorer of the documentation
@@ -206,18 +217,23 @@ jsonval(v::AbstractString) = "\"" * replace(v, "\\" => "\\\\", "\"" => "\\\"") *
 jsonval(v::AbstractVector) = "[" * join(jsonval.(v), ",") * "]"
 jsonval(v::Real) = isfinite(v) ? string(v) : "null"
 jsonval(v) = jsonval(string(v))
-const FIELDS = ["suite", "lib", "transform", "D", "N", "J", "L", "nodes", "T", "threads", "tol", "err_trafo",
+const FIELDS = ["machine", "suite", "lib", "transform", "D", "N", "J", "L", "nodes", "T", "threads", "tol", "err_trafo",
                 "err_adj", "t_plan", "t_trafo", "t_adj", "W", "sigma"]
+# every machine's results except the suite contract (a figure of its own); meta keyed "machine/file"
 function data()
   rows = Dict{String,Any}[]; metas = String[]
-  for f in sort(filter(endswith(".csv"), readdir(SRC)))
-    meta, rs = read_csv(joinpath(SRC, f))
-    append!(rows, filter(ok, rs))
-    push!(metas, jsonval(first(f, length(f) - 4)) * ":{" *
-                 join([jsonval(k) * ":" * jsonval(v) for (k, v) in meta if k != "command"], ",") * "}")
+  for m in sort(filter(d -> isdir(joinpath(RESULTS, d)), readdir(RESULTS)); by=m -> m != MACHINE)
+    for f in sort(filter(endswith(".csv"), readdir(joinpath(RESULTS, m))))
+      f == "contract.csv" && continue
+      meta, rs = read_csv(joinpath(RESULTS, m, f))
+      startswith(f, "cufinufft") || append!(rows, [merge(r, Dict("machine" => m)) for r in rs if ok(r)])
+      push!(metas, jsonval(m * "/" * first(f, length(f) - 4)) * ":{" *
+                   join([jsonval(k) * ":" * jsonval(v) for (k, v) in meta if k != "command"], ",") * "}")
+    end
+    append!(rows, [merge(r, Dict("machine" => m)) for r in load_cufinufft(m)])
   end
   open(joinpath(OUT, "data.js"), "w") do io
-    print(io, "window.NFFT_BENCH = {meta:{", join(metas, ","), "},\nrows:[\n")
+    print(io, "window.NFFT_BENCH = {reference:", jsonval(MACHINE), ",\nmeta:{", join(metas, ","), "},\nrows:[\n")
     for (i, r) in enumerate(rows)
       print(io, "{", join([jsonval(c) * ":" * jsonval(get(r, c, "")) for c in FIELDS], ","), "}",
             i < length(rows) ? ",\n" : "\n")
@@ -227,6 +243,15 @@ function data()
   println("  data.js ($(length(rows)) measurements)")
 end
 
-println("report from $SRC:")
-accuracy(); density(); sizes(); threads(); batch(); real(); accuracy(; suite="nnfft", name="nnfft")
+include("report_platforms.jl")
+
+println("report from $(joinpath(RESULTS, MACHINE)):")
+overview(); contract(); gpus(); devices()
+for m in CPU_MACHINES
+  isdir(joinpath(RESULTS, m)) || continue
+  CUR[] = m
+  println("CPU figures of $m:")
+  accuracy(); density(); sizes(); threads(); batch(); real(); accuracy(; suite="nnfft", name="nnfft")
+end
+CUR[] = MACHINE
 data()
