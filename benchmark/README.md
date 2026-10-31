@@ -47,11 +47,24 @@ revision, checked out as a worktree in `.cache/`.
   up as an error of order one.
 - `src/Benchmarks.jl`: orchestration, CSV files, `compare` and `ab`.
 - `src/report.jl`: figures (`docs/src/assets/benchmarks/*.svg`) and `data.js` for the explorer on
-  the performance page.
+  the performance page; the CPU figures for the reference machine (`report [machine]`, default the
+  current one) and with the machine as suffix for the others. `src/report_platforms.jl`: the
+  figures across platforms (overview of the ratios, CUDA and Metal, NFFT.jl on four devices,
+  delivered error).
 
 Results go to `out/<time>-<suite>.csv` (not versioned); `--save` also writes
 `results/<machine>/<suite>.csv`, the data of the documentation. The CSV header records machine,
 Julia version, NFFT.jl commit and command; each row the version and library file of the library.
+
+Results that were not written by `--save` on their machine, with their origin:
+
+| File | Origin |
+|---|---|
+| `apple-m1-max/metal.csv` | `out/2026-10-29_081023-metal.csv` (`run metal`, NFFT.jl 676d13e with changes committed as 7105dea) |
+| `apple-m1-max/contract.csv` | `out/2026-10-31_023233-contract.csv` (`run contract`, NFFT.jl 00b3c45) |
+| `amd-epyc-7763/*.csv` | `run lite` (2 rounds) on a shared AMD EPYC 7763 server, 8 threads, 2026-10-31, NFFT.jl 4e0df8a; FINUFFT 2.5.1 from its JLL, ducc0 0.42 built with `-march=native`. The run overlapped with GPU runs in the same clone; its rows were sorted back by suite and library. Header lines added by hand. Provisional. |
+| `rtx-a6000/cuda.csv` | `run cuda` and `run cuda --sizes big` on GPU 5 of the same server, 2026-10-31: the rows of NFFT CUDA from a run with the unrolled interpolation kernel and inlined window weights (on top of 4e0df8a, before 3588e7a), the rows of NonuniformFFTs CUDA from the first runs (two rounds at the default sizes, one at the big sizes). Header lines added by hand. Provisional. |
+| `rtx-a6000/cufinufft*.csv` | `python benchmark/cufinufft.py [big]` on the same GPU, cuFINUFFT 2.5.1 with CuPy 14.2; header lines added by hand. |
 
 Every library uses its defaults apart from the tolerance and the number of threads; FFTW plans use
 `ESTIMATE`. The libraries interpret the tolerance differently, so compare time against the
