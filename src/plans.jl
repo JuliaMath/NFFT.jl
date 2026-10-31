@@ -95,7 +95,7 @@ the rest of the session. Returns a `Dict` from the dimension to the coefficients
 [`NFFT.set_cost_model!`](@ref) in a later session.
 
 The built-in models are fitted on an Apple M1 Max (CPU with 8 threads, GPU with Metal and
-`Float32`). Other machines, thread counts and GPUs have other ratios of resampling, FFT and fixed
+`Float32`) and, for GPUs with `Float64`, on an Nvidia RTX A6000 (CUDA). Other machines, thread counts and GPUs have other ratios of resampling, FFT and fixed
 costs. The default sweep takes a few minutes; fewer densities, widths and sizes keep it short.
 """
 function calibrate_cost(S=Array; eltype::Type{T}=Float64, densities=CALIBRATION_DENSITIES, W=4:2:14,
