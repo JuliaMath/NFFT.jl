@@ -70,7 +70,7 @@ using FFTW
     end
     # the most accurate kernel is reachable, anything below it an error
     best = minimum(NFFT.predicted_error(e, N, Float64) for e in NFFT.kernel_candidates(:auto, nothing, nothing, Float64))
-    @test best < 1e-13
+    @test best < 2e-13   # 2D: the window as evaluated reaches ≈ 7e-14 per dimension (est_sup, W ≥ 14)
     @test accuracy(plan_nfft(k, N; reltol=best)) == best
     @test_throws ArgumentError plan_nfft(k, N; reltol=best / 2)
     @test_throws ArgumentError plan_nfft(Float32.(k), N; reltol=1e-9)
