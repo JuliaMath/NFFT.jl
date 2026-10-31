@@ -54,7 +54,9 @@ Julia version, NFFT.jl commit and command; each row the version and library file
 
 Every library uses its defaults apart from the tolerance and the number of threads; FFTW plans use
 `ESTIMATE`. The libraries interpret the tolerance differently, so compare time against the
-measured error (`pareto`), not against the tolerance. NonuniformFFTs.jl has no tolerance
+measured error (`pareto`), not against the tolerance. In `sizes` and `density` the others run at
+the tolerance and NFFT.jl on half decades around it; the report compares at equal error by
+interpolating NFFT.jl's time at the error each library delivers. NonuniformFFTs.jl has no tolerance
 parameter; its half support comes from the tolerance as in NFFT.jl 0.14. ducc has no batched
 transform; batches loop over the slices.
 

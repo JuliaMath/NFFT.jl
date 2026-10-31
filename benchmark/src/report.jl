@@ -60,27 +60,74 @@ end
 
 save_fig(name, fig) = (save(joinpath(OUT, name * ".svg"), fig); println("  ", name, ".svg"))
 
-# time against the measured error
-function pareto(T; suite="pareto", name="pareto_" * lowercase(T))
-  meta, rows = load(suite)
-  rows = filter(r -> r["T"] == T, rows)
+# Speed of the other libraries relative to NFFT.jl at equal measured error: time of a library over
+# the time of NFFT.jl at the error that library delivers, interpolated log-log between NFFT.jl's
+# measurements of the same case (none outside their range). Rows direct and adjoint, columns D,
+# the y axes linked; > 1: NFFT.jl faster.
+const OPS = (("direct", "err_trafo", "t_trafo"), ("adjoint", "err_adj", "t_adj"))
+
+function time_at(own, e, err, t)
+  pts = sort([(r[err], r[t]) for r in own if r[err] > 0]; by=first)
+  for k in 1:length(pts) - 1
+    (e1, t1), (e2, t2) = pts[k], pts[k + 1]
+    e1 <= e <= e2 || continue
+    a = e1 == e2 ? 0.0 : log(e / e1) / log(e2 / e1)
+    return exp((1 - a) * log(t1) + a * log(t2))
+  end
+  nothing
+end
+
+# case(r): rows with equal case(r) are the same problem; x(r, err): position on the x axis; series(r):
+# line style of the series a row belongs to (one line per library and series)
+function ratio_figure(name, rows; case, x, xlabel, xaxis=LOGX_EXP, xreversed=false, series=r -> :solid,
+                      title=dimlabel, extra=[])
   isempty(rows) && return
-  fig = Figure(size=(900, 560))
+  others = filter(!=("NFFT"), libs_in(rows))
+  fig = Figure(size=(900, 560)); axes = Axis[]
   for (j, D) in enumerate(sort(unique(r["D"] for r in rows)))
     rd = filter(r -> r["D"] == D, rows)
-    for (i, (op, err, t)) in enumerate((("direct", "err_trafo", "t_trafo"), ("adjoint", "err_adj", "t_adj")))
-      ax = Axis(fig[i, j]; LOGX_EXP..., LOGY_VAL..., xreversed=true,
-                title=i == 1 ? dimlabel(rd[1]) : "", xlabel=i == 2 ? "relative error" : "",
-                ylabel=j == 1 ? "$op time / ms" : "")
-      for lib in libs_in(rd)
-        rl = sort(filter(r -> r["lib"] == lib, rd); by=r -> r[err], rev=true)
-        scatterlines!(ax, [r[err] for r in rl], [ms(r[t]) for r in rl]; color=color(lib), markersize=6)
+    for (i, (op, err, t)) in enumerate(OPS)
+      ax = Axis(fig[i, j]; xaxis..., yscale=log10, yticks=val_ticks, ytickformat=val_format, xreversed,
+                title=i == 1 ? title(rd[1]) : "", xlabel=i == 2 ? xlabel : "",
+                ylabel=j == 1 ? "$op: time / time of NFFT.jl" : "")
+      push!(axes, ax)
+      hlines!(ax, [1]; color=(:black, 0.4), linewidth=1)
+      for lib in others, s in unique(series(r) for r in rd)
+        pts = Tuple{Float64,Float64}[]
+        for r in rd
+          r["lib"] == lib && series(r) == s || continue
+          tn = time_at(filter(o -> o["lib"] == "NFFT" && case(o) == case(r), rd), r[err], err, t)
+          tn === nothing || push!(pts, (x(r, err), r[t] / tn))
+        end
+        isempty(pts) && continue
+        sort!(pts)
+        scatterlines!(ax, first.(pts), last.(pts); color=color(lib), linestyle=s, markersize=6)
       end
     end
   end
-  legend_below!(fig, 3, libs_in(rows))
+  linkyaxes!(axes...)
+  legend_below!(fig, 3, others; extra)
   save_fig(name, fig)
 end
+
+const PRECISION_STYLES = [LineElement(color=:black, linestyle=:solid) => "Float64",
+                          LineElement(color=:black, linestyle=:dash) => "Float32"]
+precision_style(r) = r["T"] == "Float32" ? :dash : :solid
+
+# speed against accuracy (tolerance sweep), both precisions
+accuracy(; suite="pareto", name="accuracy") =
+  ratio_figure(name, load(suite)[2]; case=r -> (r["T"],), x=(r, err) -> r[err],
+               xlabel="relative error", xreversed=true, series=precision_style, extra=PRECISION_STYLES)
+
+# speed against the node density J/|N|
+density() =
+  ratio_figure("density", load("density")[2]; case=r -> (r["N"], r["J"]), x=(r, _) -> r["J"] / prod(r["N"]),
+               xlabel="nodes per mode J/|N|", title=r -> "$(r["D"])D, tol 1e-8")
+
+# speed against the problem size, J = |N|
+sizes() =
+  ratio_figure("sizes", load("sizes")[2]; case=r -> (r["N"],), x=(r, _) -> prod(r["N"]), xlabel="|N| = J",
+               title=r -> "$(r["D"])D, tol 1e-8")
 
 # strong scaling
 function threads()
@@ -104,57 +151,6 @@ function threads()
   legend_below!(fig, 2, libs_in(rows); extra=[LineElement(color=:black, linestyle=:solid) => "direct",
                                                LineElement(color=:black, linestyle=:dash) => "adjoint"])
   save_fig("threads", fig)
-end
-
-# time per node over the problem size
-function sizes()
-  _, rows = load("sizes")
-  isempty(rows) && return
-  fig = Figure(size=(900, 330))
-  for (j, D) in enumerate(sort(unique(r["D"] for r in rows)))
-    rd = filter(r -> r["D"] == D, rows)
-    ax = Axis(fig[1, j]; LOGX_EXP..., LOGY_VAL..., title="$(D)D, J = |N|, tol 1e-8", xlabel="|N|",
-              ylabel=j == 1 ? "time per node / ns" : "")
-    for lib in libs_in(rd), (t, ls) in (("t_trafo", :solid), ("t_adj", :dash))
-      rl = sort(filter(r -> r["lib"] == lib, rd); by=r -> r["J"])
-      scatterlines!(ax, [prod(r["N"]) for r in rl], [1e9r[t] / r["J"] for r in rl]; color=color(lib), linestyle=ls, markersize=6)
-    end
-  end
-  legend_below!(fig, 2, libs_in(rows); extra=[LineElement(color=:black, linestyle=:solid) => "direct",
-                                               LineElement(color=:black, linestyle=:dash) => "adjoint"])
-  save_fig("sizes", fig)
-end
-
-# grouped bars: groups × libraries, each a pair of direct (solid) and adjoint (light) time
-function bars!(ax, groups, libs, value)
-  n = length(libs); w = 0.84 / n
-  for (gi, g) in enumerate(groups), (li, lib) in enumerate(libs)
-    v = value(g, lib)
-    v === nothing && continue
-    x = gi + (li - (n + 1) / 2) * w
-    barplot!(ax, [x - w / 4, x + w / 4], [v[1], v[2]]; width=w / 2 * 0.92, color=[color(lib), (color(lib), 0.45)])
-  end
-  ax.xticks = (1:length(groups), string.(groups))
-end
-
-function nodes()
-  _, rows = load("nodes")
-  isempty(rows) && return
-  rows = filter(r -> r["tol"] == 1e-8, rows)
-  fig = Figure(size=(900, 330))
-  dists = ["uniform", "radial", "clustered"]
-  for (j, D) in enumerate(sort(unique(r["D"] for r in rows)))
-    rd = filter(r -> r["D"] == D, rows)
-    ax = Axis(fig[1, j]; title=dimlabel(rd[1]) * ", tol 1e-8", ylabel=j == 1 ? "time / ms" : "")
-    bars!(ax, dists, libs_in(rd), (g, lib) -> begin
-      r = filter(r -> r["lib"] == lib && r["nodes"] == g, rd)
-      isempty(r) ? nothing : (ms(r[1]["t_trafo"]), ms(r[1]["t_adj"]))
-    end)
-  end
-  Legend(fig[2, :], [[PolyElement(color=color(l))] for l in libs_in(rows)] ∪
-         [[PolyElement(color=:gray40)], [PolyElement(color=(:gray40, 0.45))]],
-         [libs_in(rows); "direct"; "adjoint"]; orientation=:horizontal, framevisible=false)
-  save_fig("nodes", fig)
 end
 
 function batch()
@@ -204,30 +200,6 @@ function real()
   save_fig("real", fig)
 end
 
-function history()
-  _, rows = load("history")
-  isempty(rows) && return
-  fig = Figure(size=(900, 330))
-  old = Dict((r["D"], r["tol"], r["threads"]) => r for r in rows if r["lib"] == "NFFT 0.14")
-  for (j, (t, op)) in enumerate((("t_trafo", "direct"), ("t_adj", "adjoint")))
-    ax = Axis(fig[1, j]; LOGX_EXP..., xreversed=true, title=op, xlabel="tolerance",
-              ylabel=j == 1 ? "speedup over NFFT.jl 0.14" : "")
-    hlines!(ax, [1]; color=(:black, 0.25), linestyle=:dot)
-    for D in 1:3, (th, ls) in ((1, :dash), (maximum(r["threads"] for r in rows), :solid))
-      rn = sort(filter(r -> r["lib"] == "NFFT" && r["D"] == D && r["threads"] == th &&
-                            haskey(old, (D, r["tol"], th)), rows); by=r -> r["tol"])
-      isempty(rn) && continue
-      scatterlines!(ax, [r["tol"] for r in rn], [old[(D, r["tol"], th)][t] / r[t] for r in rn];
-                    color=Makie.wong_colors()[D], linestyle=ls, markersize=6)
-    end
-  end
-  th = maximum(r["threads"] for r in rows)
-  Legend(fig[1, 3], [[LineElement(color=Makie.wong_colors()[D])] for D in 1:3] ∪
-         [[LineElement(color=:black, linestyle=:solid)], [LineElement(color=:black, linestyle=:dash)]],
-         ["1D", "2D", "3D", "$th threads", "1 thread"]; framevisible=false)
-  save_fig("history", fig)
-end
-
 # all measurements for the explorer of the documentation
 jsonval(v::AbstractString) = "\"" * replace(v, "\\" => "\\\\", "\"" => "\\\"") * "\""
 jsonval(v::AbstractVector) = "[" * join(jsonval.(v), ",") * "]"
@@ -255,6 +227,5 @@ function data()
 end
 
 println("report from $SRC:")
-pareto("Float64"); pareto("Float32"); threads(); sizes(); nodes(); batch(); real(); history()
-pareto("Float64"; suite="nnfft", name="nnfft_float64"); pareto("Float32"; suite="nnfft", name="nnfft_float32")
+accuracy(); density(); sizes(); threads(); batch(); real(); accuracy(; suite="nnfft", name="nnfft")
 data()

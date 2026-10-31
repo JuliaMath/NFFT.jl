@@ -61,12 +61,25 @@ end
   for D in opt(o, :dims, [1, 2, 3]) for tol in opt(o, :tols, [1e-4, 1e-8])
   for lib in opt(o, :libs, COMPETITORS)]
 
+# Comparisons at equal measured error: the other libraries run at `tol`, NFFT.jl on half decades
+# around it, so that its time can be interpolated at the error each of them delivers.
+own_tols(lib, tol) = lib == "NFFT" ? [tol * 10.0^(e / 2) for e in -4:4] : [tol]
+
 const SWEEP_SIZES = Dict(1 => [[2^e] for e in 10:2:22], 2 => [[n, n] for n in (32, 64, 128, 256, 512, 1024, 2048)],
                          3 => [[n, n, n] for n in (16, 24, 32, 48, 64, 96, 128)])
 @suite "sizes" "problem size sweep with J = |N| nodes, tol 1e-8" o -> [
-  task(; lib, N, tol, threads=opt(o, :threads, [default_threads()])[1], budget=opt(o, :budget, 0.1), suite="sizes")
+  task(; lib, N, tol=t, threads=opt(o, :threads, [default_threads()])[1], budget=opt(o, :budget, 0.1), suite="sizes")
   for D in opt(o, :dims, [1, 2, 3]) for N in SWEEP_SIZES[D] for tol in opt(o, :tols, [1e-8])
-  for lib in opt(o, :libs, COMPETITORS)]
+  for lib in opt(o, :libs, COMPETITORS) for t in own_tols(lib, tol)]
+
+# Node density J/|N|: N as in the suite sigma (the larger N below J/|N| = 1, so that the sparse cases
+# take more than ≈ 2 ms).
+const DENSITIES = [0.01, 0.03, 0.1, 0.3, 1, 3, 10, 30, 100]
+@suite "density" "node density J/|N| = 0.01…100, tol 1e-8, D = 1…3" o -> [
+  task(; lib, N, J=round(Int, ρ * prod(N)), tol=t, threads=opt(o, :threads, [default_threads()])[1],
+       budget=opt(o, :budget, 0.1), plans=1, suite="density")
+  for D in opt(o, :dims, [1, 2, 3]) for ρ in DENSITIES for N in [ρ < 1 ? SIGMA_SIZES_SPARSE[D] : SIGMA_SIZES[D]]
+  for tol in opt(o, :tols, [1e-8]) for lib in opt(o, :libs, COMPETITORS) for t in own_tols(lib, tol)]
 
 @suite "nodes" "node distributions (uniform, radial, clustered), D = 2, 3" o -> [
   task(; lib, N=SIZES[D], nodes, tol, threads=opt(o, :threads, [default_threads()])[1], budget=opt(o, :budget, 0.1), suite="nodes")
@@ -186,6 +199,6 @@ const FLAG_LIBS = Dict("FINUFFT" => ["ESTIMATE", "MEASURE"], "FINUFFT 2.5" => ["
   for (T, tol) in [("Float64", 1e-8), ("Float32", 1e-5)] if T in opt(o, :T, ["Float64", "Float32"])
   for lib in filter(in(keys(FLAG_LIBS)), opt(o, :libs, DECOMP_LIBS)) for fft_flag in FLAG_LIBS[lib]]
 
-const HOMEPAGE = ["pareto", "threads", "sizes", "nodes", "batch", "real", "nnfft", "history"]
+const HOMEPAGE = ["pareto", "density", "sizes", "threads", "batch", "real", "nnfft", "nodes", "history"]
 @suite "all" "all suites of the documentation (" * join(HOMEPAGE, ", ") * ")" o ->
   reduce(vcat, [SUITES[s](o) for s in HOMEPAGE])
