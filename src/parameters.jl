@@ -218,9 +218,13 @@ with_σ(e::KernelEntry, σ) = e.W in EXTENDED_W ? extended_entry(e.W, σ) :
 # A reltol out of reach throws (only checked unless the user fixed both W and σ): the predicted error
 # bounds the measured one, so a plan whose prediction is at most reltol keeps error ≤ reltol, and
 # none other is taken.
+# repr(window) without `show`, which juliac --trim cannot compile for a Symbol.
+window_label(w::Symbol) = ":" * String(w)
+window_label(w::AbstractWindow) = String(nameof(typeof(w))) * "()"
+window_label(w) = string(w)
 function check_reach(reach, reltol, size, ::Type{T}, window, W, σ) where {T}
   reach > reltol || return nothing
-  restricted = window === :auto && W === nothing && σ === nothing ? "" : ", window = $(repr(window)), W = $W, σ = $σ"
+  restricted = window === :auto && W === nothing && σ === nothing ? "" : ", window = $(window_label(window)), W = $W, σ = $σ"
   throw(ArgumentError("reltol = $reltol is out of reach for eltype $T, $size$restricted: the most accurate " *
                       "parameters give ≈ $(round(reach; sigdigits=2))"))
 end

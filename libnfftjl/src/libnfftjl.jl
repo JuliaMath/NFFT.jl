@@ -475,7 +475,7 @@ function create_nnfft(::Type{T}, ::Val{D}, J::Int, kp::Ptr{Float64}, N::Int, yp:
   all(isfinite, kc) && all(isfinite, yc) || throw(ArgumentError("nodes must be finite"))
   y0, Y = NFFT.centre(Val(D), yc)
   k0, K = NFFT.centre(Val(D), kc)
-  outer, e2, n, _ = NFFT.choose_nnfft(reltol, Y, K, N, J, T)
+  outer, e2, n, _ = NFFT.choose_nnfft(reltol, Y, K, N, J, T; Wmax=last(widths(T)))
   φ = TableWindow(outer.window isa KaiserBessel, outer.W, outer.β, outer.e0)
   ys, xs, pre, post = NFFT.nnfft_nodes(Val(D), kc, yc, y0, k0, K, outer, n, φ, nthreads)
   with_width(outer.W, T) do w

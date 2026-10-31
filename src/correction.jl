@@ -14,10 +14,13 @@ function unkept_runs(N::NTuple{D,Int}, Ñ::NTuple{D,Int}, h, sz, nthreads) where
   for d in D:-1:1
     mid = h[1] .+ (N[d]-N[d]÷2+1:Ñ[d]-N[d]÷2)
     isempty(mid) && continue
-    lo = ntuple(e -> e < d ? 1 : first(mid), d); hi = ntuple(e -> e < d ? sz[e] : last(mid), d)
-    for kept in Iterators.product((filter(!isempty, collect(keptranges(N[e], Ñ[e]))) for e in d+1:D)...),
-        J in CartesianIndices(map(r -> h[1] .+ r, kept))
-      push!(runs, LI[lo..., Tuple(J)...]:LI[hi..., Tuple(J)...])
+    # boxes of kept ranges along the dimensions after d; the dimensions up to d get a placeholder
+    # range whose index is not used (D-tuples throughout keep this type-stable for juliac --trim)
+    sets = ntuple(e -> e > d ? UnitRange{Int}[r for r in keptranges(N[e], Ñ[e]) if !isempty(r)] : UnitRange{Int}[1:1], Val(D))
+    for kept in Iterators.product(sets...), J in CartesianIndices(map(r -> h[1] .+ r, kept))
+      lo = ntuple(e -> e < d ? 1 : e == d ? first(mid) : J[e], Val(D))
+      hi = ntuple(e -> e < d ? sz[e] : e == d ? last(mid) : J[e], Val(D))
+      push!(runs, LI[lo...]:LI[hi...])
     end
   end
   sort!(runs; by=first)

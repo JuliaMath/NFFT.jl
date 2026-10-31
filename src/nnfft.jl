@@ -170,20 +170,22 @@ end
 # Outer window e₁ (spreading) and inner NFFT kernel e₂ at the lowest predicted cost: e₁ with error
 # ε₁ fixes the grid n ≈ 4σ₁·Y·K and leaves (reltol − ε₁)/A₁ for the inner NFFT. Cost:
 # the spreading term of the cost model for the N sources plus the cost of the inner NFFT (both
-# directions). `window`, `W`, `σ` restrict the inner kernel, `fft` is the backend of the inner NFFT.
+# directions). `window`, `W`, `σ` restrict the inner kernel, `fft` is the backend of the inner NFFT,
+# `Wmax` bounds the widths of both windows (the C library compiles a fixed range of widths).
 function choose_nnfft(reltol, Y::NTuple{D}, K::NTuple{D}, N, J, ::Type{T}; window=:auto, W=nothing, σ=nothing,
-                      fft=nothing) where {D,T}
+                      fft=nothing, Wmax=typemax(Int)) where {D,T}
   check_window_options(W, σ)
   window === :auto || window isa Union{KaiserBessel,ExpSemicircle} ||
     throw(ArgumentError("window must be :auto, KaiserBessel() or ExpSemicircle(), got $window"))
   a, a1, b, c = COST_COEF[min(D, 3)]
   grid(e1) = ntuple(d -> smooth_size(ceil(Int, 4 * e1.σ * Y[d] * K[d]) + e1.W + 2), Val(D))
-  inner = kernel_candidates(window, W, σ, T)
+  inner = filter(e -> e.W <= Wmax, kernel_candidates(window, W, σ, T))
+  isempty(inner) && throw(ArgumentError("no kernel for window = $window, W = $W, σ = $σ with W ≤ $Wmax"))
   # Only kernels on the Pareto front matter: an inner kernel is dropped if another one is at least as
   # accurate with no larger W and σ, an outer one if another one also has no larger amplification.
   ε(e) = window_error(e, D) + 10 * Float64(eps(T)) * e.amp
   inner = pareto_front(inner, e -> (ε(e), e.W, e.σ))
-  outer = pareto_front(eps(T) < eps(Float64) ? vcat(KERNEL_TABLE, EXTENDED_KERNELS) : KERNEL_TABLE,
+  outer = pareto_front(filter(e -> e.W <= Wmax, eps(T) < eps(Float64) ? vcat(KERNEL_TABLE, EXTENDED_KERNELS) : KERNEL_TABLE),
                        e -> (ε(e), e.W, e.σ, e.amp))
   # inner error without the floor (which depends on n), and the n-independent cost per kernel
   ε2 = [ε(e) for e in inner]
