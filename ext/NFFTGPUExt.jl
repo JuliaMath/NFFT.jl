@@ -144,31 +144,57 @@ use_tiles(backend) = true
 # Nodes k (CPU) on a periodic grid of Ñ points per dimension (`gridpos`), padded grid of size P.
 function Nodes(storage, k::Matrix, Ñ::NTuple{D,Int}, P::NTuple{D,Int}, W, φ, ::Type{T}) where {D,T}
   K = NFFT.make_kernel(φ, W, T)
-  J = size(k, 2)
-  offs = Matrix{Int32}(undef, D, J)
-  ss = Matrix{T}(undef, D, J)
-  Threads.@threads for j in 1:J
-    for d in 1:D
-      offs[d, j], ss[d, j] = NFFT.support_offset(k[d, j], Ñ[d], W, T)
-    end
-  end
   # binned order: work-items with neighbouring indices touch neighbouring parts of the grid
-  gpu = use_tiles(KA.get_backend(storage(offs)))
+  gpu = use_tiles(KA.get_backend(storage(Int32[])))
   Bs = gpu ? sub_edges(D, W, T) : nothing
   Bt = gpu && Bs === nothing ? tile_edges(D, W, T) : nothing
   B = something(Bs, Bt, ntuple(_ -> D == 1 ? 1024 : 16, D))
   nt = cld.(P, B)
+  offs, ss, perm, tileptr = bin_nodes(k, Ñ, W, T, B, nt)
+  tiles = Bt === nothing ? nothing : Tiles(B, nt, col_strides(nt), col_strides(B), storage(Int32.(tileptr)))
+  subs = Bs === nothing ? nothing : subproblems(storage, B, nt, tileptr)
+  Nodes(W, K, storage(offs), storage(ss), storage(perm), tiles, subs)
+end
+
+# Support offsets and fractional positions of the nodes, sorted (stably, by counting) by the bin of
+# edges B, nt bins per dimension, that holds the start of their support; the permutation and the
+# start of each bin's nodes.
+function bin_nodes(k, Ñ::NTuple{D,Int}, W, ::Type{T}, B::NTuple{D,Int}, nt::NTuple{D,Int}) where {D,T}
+  J = size(k, 2)
   tstr = col_strides(nt)
-  tile = [1 + sum(ntuple(d -> (offs[d, j] ÷ B[d]) * tstr[d], D)) for j in 1:J]
-  perm = sortperm(tile; alg=Base.Sort.DEFAULT_STABLE)
+  offs = Matrix{Int32}(undef, D, J)
+  ss = Matrix{T}(undef, D, J)
+  bin = Vector{Int32}(undef, J)
+  Threads.@threads for j in 1:J
+    t = 1
+    for d in 1:D
+      o, x = NFFT.support_offset(k[d, j], Ñ[d], W, T)
+      offs[d, j] = o; ss[d, j] = x
+      t += (o ÷ B[d]) * tstr[d]
+    end
+    bin[j] = t
+  end
   counts = zeros(Int, prod(nt))
-  for t in tile
+  for t in bin
     counts[t] += 1
   end
-  tileptr = cumsum([1; counts])
-  tiles = Bt === nothing ? nothing : Tiles(B, nt, tstr, col_strides(B), storage(Int32.(tileptr)))
-  subs = Bs === nothing ? nothing : subproblems(storage, B, nt, tileptr)
-  Nodes(W, K, storage(offs[:, perm]), storage(ss[:, perm]), storage(Int32.(perm)), tiles, subs)
+  binptr = cumsum([1; counts])
+  next = binptr[1:end-1]
+  perm = Vector{Int32}(undef, J)
+  for j in 1:J
+    t = bin[j]
+    perm[next[t]] = j
+    next[t] += 1
+  end
+  offs_s = Matrix{Int32}(undef, D, J)
+  ss_s = Matrix{T}(undef, D, J)
+  Threads.@threads for i in 1:J
+    j = perm[i]
+    for d in 1:D
+      offs_s[d, i] = offs[d, j]; ss_s[d, i] = ss[d, j]
+    end
+  end
+  offs_s, ss_s, perm, binptr
 end
 
 function subproblems(storage, B, nb, binptr)
@@ -726,8 +752,8 @@ function NFFT.device_core(storage::Type{<:AbstractGPUArray}, k::Matrix, N::NTupl
                           ::Type{T}, nthreads, L1, L3; fft=true) where {D,T}
   invphi = fft ? NFFT.inv_kernel_ft(φ, W, N, Ñ, T, nthreads) : ntuple(_ -> T[], D)
   nd = Nodes(storage, k, Ñ, Ñ .+ W, W, φ, T)
-  gf = storage(zeros(Complex{T}, (fft ? Ñ : map(zero, Ñ))..., L1 * L3))
-  backend = KA.get_backend(gf)
+  backend = KA.get_backend(nd.offs)
+  gf = KA.zeros(backend, Complex{T}, (fft ? Ñ : map(zero, Ñ))..., L1 * L3)
   gp = KA.zeros(backend, Complex{T}, (Ñ .+ W)..., L1 * L3)
   GPUCore(N, Ñ, L1, L3, W, nd, map(storage, invphi), gp, gf, fft_plans(gf, Val(D), fft)..., backend)
 end
