@@ -67,7 +67,7 @@ end
 # σ = 1.25 and 2, Float64 and Float32, 1 and 8 threads (0.2–1.0× the resampling time; above it up to
 # 1.6× slower where the strides conflict). With uniform nodes this is the low density end (2D, W = 8,
 # σ = 2: ρ < 0.3; 3D, W = 16, σ = 1.25: ρ < 0.04).
-direct_below(::SymKernel{W}, bufs::Vector{<:AbstractArray{<:Any,D}}) where {W,D} = 4 * length(bufs[1]) ÷ W^D
+direct_below(::SymKernel{W}, bufs::AbstractVector{<:AbstractArray{<:Any,D}}) where {W,D} = 4 * length(bufs[1]) ÷ W^D
 
 function resample!(out, gp, K::SymKernel{W}, b::Binned{D}, Ñ, bufs, cp=tile_copy!; direct=direct_below(K, bufs)) where {W,D}
   ntile = length(b.tileptr) - 1

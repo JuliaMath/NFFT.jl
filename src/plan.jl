@@ -1,3 +1,22 @@
+const StageTasks = NamedTuple{(:zero, :correction, :fft, :halo, :resampling),NTuple{5,Int}}
+
+# Tasks per stage of a transform. Starting and waking a task costs 10–40 µs, as much as a whole
+# small transform on one thread. Transforms below SMALL_WORK of estimated single-threaded work run
+# each stage on as many tasks as give each about TASK_WORK, at most nthreads; larger ones run every
+# stage on nthreads tasks (a stage on one task lets the other threads fall asleep, and waking them
+# for the next stage costs more than the stage saves). Work per element with one thread on an M1
+# Max (ns): zeroing 0.1 per grid point, correction 0.9 per mode (3D: 1.8), FFT 0.3 per Ñ·log2(Ñ),
+# halo 0.8 per halo point, resampling per tap 1.3 (1D), 0.45 (2D), 0.3 (3D).
+const TASK_WORK = 10e3    # ns
+const SMALL_WORK = 300e3  # ns
+function stage_tasks(N::NTuple{D,Int}, Ñ, W, J, gpsize, nthreads) where {D}
+  M = prod(Ñ)
+  w = (0.1 * prod(gpsize), (D == 3 ? 1.8 : 0.9) * prod(N), 0.3 * M * log2(M), 0.8 * (prod(gpsize) - M),
+       (D == 1 ? 1.3 : D == 2 ? 0.45 : 0.3) * J * W^D)
+  sum(w) > SMALL_WORK && return StageTasks(ntuple(_ -> nthreads, 5))
+  StageTasks(map(x -> clamp(round(Int, x / TASK_WORK), 1, nthreads), w))
+end
+
 # The engine of one transform over the D NFFT dimensions (batch dimensions are handled by the
 # plan). Its type depends on the kernel (width W is a compile-time constant of the hot loops); the
 # plan holds it in an untyped field, so plan types stay inferable and every transform crosses one
@@ -19,6 +38,7 @@ struct NFFTCore{D,K<:SymKernel,T,Tk,PF<:PassFFT,PB<:PassFFT,FB<:Union{Nothing,Ab
   bufs::Vector{Array{Complex{T},D}} # tile buffers of edge B+W+1
   fft::FB                           # the backend, for copies
   nthreads::Int
+  nt::StageTasks                    # tasks per stage, see stage_tasks
 end
 
 # With fft = nothing a core for the resampling stages only (the spreading of the NNFFT): no FFT
@@ -32,29 +52,33 @@ function NFFTCore(k::AbstractMatrix, N::NTuple{D,Int}, Ñ::NTuple{D,Int}, W, φ:
   gp = Array{Complex{T}}(undef, padded_size(Ñ, W))   # zeroed by every transform
   g = interior(gp, h, Ñ)
   binned = @stage :sort Binned(k, Ñ, B, nthreads)
+  nt = stage_tasks(N, Ñ, W, size(k, 2), size(gp), nthreads)
   NFFTCore(N, Ñ, W, B, K, invphi, binned, gp, unkept_runs(N, Ñ, h, size(gp), nthreads),
-           PassFFT(fft, g, N, Val(:fwd); nthreads), PassFFT(fft, g, N, Val(:bwd); nthreads),
+           PassFFT(fft, g, N, Val(:fwd); nthreads=nt.fft), PassFFT(fft, g, N, Val(:bwd); nthreads=nt.fft),
            TileLocks(size(gp), B), task_buffers(Complex{T}, ntuple(_ -> B + W + 1, D), nthreads),
-           fft, nthreads)
+           fft, nthreads, nt)
 end
+
+# the buffers of the resampling tasks (one per task)
+resampling_bufs(c::NFFTCore) = view(c.bufs, 1:c.nt.resampling)
 
 function trafo_core!(out, c::NFFTCore, f)
   h = halo(c.W); g = interior(c.gp, h, c.Ñ)
-  @stage :zero zero_runs!(c.gp, c.zruns, c.nthreads)
-  @stage :correction resampling_correction_core!(g, f, c.invphi, c.N, c.Ñ, c.nthreads)
+  @stage :zero zero_runs!(c.gp, c.zruns, c.nt.zero)
+  @stage :correction resampling_correction_core!(g, f, c.invphi, c.N, c.Ñ, c.nt.correction)
   @stage :fft apply!(c.fwd, g)
-  @stage :halo fill_halo!(c.gp, h, c.nthreads; Ñs=c.Ñ)
-  @stage :resampling resample!(out, c.gp, c.kernel, c.binned, c.Ñ, c.bufs)
+  @stage :halo fill_halo!(c.gp, h, c.nt.halo; Ñs=c.Ñ)
+  @stage :resampling resample!(out, c.gp, c.kernel, c.binned, c.Ñ, resampling_bufs(c))
   out
 end
 
 function adjoint_core!(f, c::NFFTCore, vals)
   h = halo(c.W); g = interior(c.gp, h, c.Ñ)
-  @stage :zero threaded_fill!(c.gp, 0, c.nthreads)
-  @stage :resampling resample_adjoint!(c.gp, c.kernel, c.binned, vals, c.Ñ, c.locks, c.bufs)
-  @stage :halo fold_halo!(c.gp, h, c.nthreads; Ñs=c.Ñ)
+  @stage :zero threaded_fill!(c.gp, 0, c.nt.zero)
+  @stage :resampling resample_adjoint!(c.gp, c.kernel, c.binned, vals, c.Ñ, c.locks, resampling_bufs(c))
+  @stage :halo fold_halo!(c.gp, h, c.nt.halo; Ñs=c.Ñ)
   @stage :fft apply!(c.bwd, g)
-  @stage :correction resampling_correction_adjoint_core!(f, g, c.invphi, c.N, c.Ñ, c.nthreads)
+  @stage :correction resampling_correction_adjoint_core!(f, g, c.invphi, c.N, c.Ñ, c.nt.correction)
   f
 end
 
@@ -155,9 +179,10 @@ Base.copy(t::TrailCore) = TrailCore(copy(t.core), similar(t.fbuf), similar(t.gbu
 function copy_core(c::NFFTCore{D,K,T}, nthreads) where {D,K,T}
   gp = similar(c.gp)
   g = interior(gp, halo(c.W), c.Ñ)
+  nt = stage_tasks(c.N, c.Ñ, c.W, length(c.binned.perm), size(gp), nthreads)
   NFFTCore(c.N, c.Ñ, c.W, c.B, c.kernel, c.invphi, c.binned, gp, unkept_runs(c.N, c.Ñ, halo(c.W), size(gp), nthreads),
-           PassFFT(c.fft, g, c.N, Val(:fwd); nthreads), PassFFT(c.fft, g, c.N, Val(:bwd); nthreads),
-           TileLocks(size(gp), c.B), task_buffers(Complex{T}, size(c.bufs[1]), nthreads), c.fft, nthreads)
+           PassFFT(c.fft, g, c.N, Val(:fwd); nthreads=nt.fft), PassFFT(c.fft, g, c.N, Val(:bwd); nthreads=nt.fft),
+           TileLocks(size(gp), c.B), task_buffers(Complex{T}, size(c.bufs[1]), nthreads), c.fft, nthreads, nt)
 end
 
 transform!(::Val{:lead}, p, c, fHat, f) = trafo_batch!(reshape(fHat, c.L, :), c, reshape(f, c.L, c.N...))

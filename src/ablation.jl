@@ -73,7 +73,7 @@ function ablated_core(c::NFFTCore{D,KS,T}, k, a=ABLATION[]) where {D,KS,T}
     g = interior(c.gp, halo(c.W), c.Ñ)
     c = NFFTCore(c.N, c.Ñ, c.W, c.B, c.kernel, c.invphi, c.binned, c.gp, c.zruns,
                  ablated_fft(a.fft, c.fft, g, c.N, Val(:fwd), c.nthreads),
-                 ablated_fft(a.fft, c.fft, g, c.N, Val(:bwd), c.nthreads), c.locks, c.bufs, c.fft, c.nthreads)
+                 ablated_fft(a.fft, c.fft, g, c.N, Val(:bwd), c.nthreads), c.locks, c.bufs, c.fft, c.nthreads, c.nt)
   end
   K = a.window === :fullhorner ? FullKernel(c.kernel) : c.kernel
   xs = a.coords === :permutation ? PermutedNodes{D}(k, c.binned.perm) : c.binned.xs
@@ -191,25 +191,26 @@ end
 function trafo_core!(out, a::AblatedCore, f)
   c = a.core; s = a.switches
   h = halo(c.W); g = interior(c.gp, h, c.Ñ)
-  @stage :zero zero_runs!(c.gp, c.zruns, c.nthreads)
-  @stage :correction resampling_correction_core!(g, f, c.invphi, c.N, c.Ñ, c.nthreads)
+  @stage :zero zero_runs!(c.gp, c.zruns, c.nt.zero)
+  @stage :correction resampling_correction_core!(g, f, c.invphi, c.N, c.Ñ, c.nt.correction)
   @stage :fft apply!(c.fwd, g)
   if s.halo
-    @stage :halo fill_halo!(c.gp, h, c.nthreads; Ñs=c.Ñ)
+    @stage :halo fill_halo!(c.gp, h, c.nt.halo; Ñs=c.Ñ)
   else
     STAGE_TIMES[findfirst(==(:halo), STAGES)] = 0
   end
   @stage :resampling begin
+    rb = resampling_bufs(c)
     sched = Val(s.schedule)
     node = s.rowdot2 ? resample_node : resample_node1
     if s.wrap === :index
-      ab_resample_wrap!(out, c.gp, a.kernel, a.xs, c.binned, c.Ñ, h[1], length(c.bufs), node, sched)
+      ab_resample_wrap!(out, c.gp, a.kernel, a.xs, c.binned, c.Ñ, h[1], length(rb), node, sched)
     elseif s.interp === :global
-      ab_resample_global!(out, c.gp, a.kernel, a.xs, c.binned, c.Ñ, length(c.bufs), node, sched)
+      ab_resample_global!(out, c.gp, a.kernel, a.xs, c.binned, c.Ñ, length(rb), node, sched)
     else
       cp = s.halo ? tile_copy! : WrapCopy(h[1], c.Ñ)
-      direct = s.interp === :auto && s.halo ? direct_below(c.kernel, c.bufs) : 0
-      ab_resample!(out, c.gp, a.kernel, a.xs, c.binned, c.Ñ, c.bufs, a.tilebufs, cp, node, sched, direct)
+      direct = s.interp === :auto && s.halo ? direct_below(c.kernel, rb) : 0
+      ab_resample!(out, c.gp, a.kernel, a.xs, c.binned, c.Ñ, rb, a.tilebufs, cp, node, sched, direct)
     end
   end
   out
@@ -218,26 +219,26 @@ end
 function adjoint_core!(f, a::AblatedCore, vals)
   c = a.core; s = a.switches
   h = halo(c.W); g = interior(c.gp, h, c.Ñ)
-  @stage :zero threaded_fill!(c.gp, 0, c.nthreads)
+  @stage :zero threaded_fill!(c.gp, 0, c.nt.zero)
   @stage :resampling begin
     fl = s.flush === :globallock ? flush_global! : s.flush === :atomic ? flush_atomic! :
          s.flush === :reentrant ? flush_nolock! : flush!
     s.halo || (fl = WrapFlush(fl, h[1], c.Ñ))
     s.flush === :reentrant && (fl = LockedFlush(a.lock, fl))
-    sched = Val(s.schedule); pf = Val(s.prefetch)
+    sched = Val(s.schedule); pf = Val(s.prefetch); rb = resampling_bufs(c)
     if length(c.N) >= 3 && s.slide
-      ab_resample_adjoint_slide!(c.gp, a.kernel, a.xs, c.binned, vals, c.Ñ, c.locks, c.bufs, a.tilebufs, fl, pf, sched)
+      ab_resample_adjoint_slide!(c.gp, a.kernel, a.xs, c.binned, vals, c.Ñ, c.locks, rb, a.tilebufs, fl, pf, sched)
     else
-      ab_resample_adjoint_tiles!(c.gp, a.kernel, a.xs, c.binned, vals, c.Ñ, c.locks, c.bufs, a.tilebufs, fl, pf, sched)
+      ab_resample_adjoint_tiles!(c.gp, a.kernel, a.xs, c.binned, vals, c.Ñ, c.locks, rb, a.tilebufs, fl, pf, sched)
     end
   end
   if s.halo
-    @stage :halo fold_halo!(c.gp, h, c.nthreads; Ñs=c.Ñ)
+    @stage :halo fold_halo!(c.gp, h, c.nt.halo; Ñs=c.Ñ)
   else
     STAGE_TIMES[findfirst(==(:halo), STAGES)] = 0
   end
   @stage :fft apply!(c.bwd, g)
-  @stage :correction resampling_correction_adjoint_core!(f, g, c.invphi, c.N, c.Ñ, c.nthreads)
+  @stage :correction resampling_correction_adjoint_core!(f, g, c.invphi, c.N, c.Ñ, c.nt.correction)
   f
 end
 
