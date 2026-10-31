@@ -49,11 +49,15 @@ end
   for D in opt(o, :dims, [1, 2, 3]) for T in opt(o, :T, ["Float64"])
   for tol in opt(o, :tols, [1e-4, 1e-8, 1e-12]) for lib in opt(o, :libs, COMPETITORS)]
 
+# NFFT.jl also half a decade below each tolerance but the last: the others are compared with it at
+# their measured errors, and its time is interpolated between neighbouring points, which on decades
+# alone miss choices in between (on Zen 3 W = 10 on a 120³ instead of a 128³ grid at 64³ modes).
+pareto_tols(lib, tol, T) = lib == "NFFT" && tol > last(tolsweep(T)) ? [tol, tol / sqrt(10)] : [tol]
 @suite "pareto" "time against measured error, tolerance sweep, Float64 and Float32, D = 1…3" o -> [
-  task(; lib, N=SIZES[D], tol, T, threads, budget=opt(o, :budget, 0.1), suite="pareto")
+  task(; lib, N=SIZES[D], tol=t, T, threads, budget=opt(o, :budget, 0.1), suite="pareto")
   for threads in opt(o, :threads, [default_threads()]) for D in opt(o, :dims, [1, 2, 3])
   for T in opt(o, :T, ["Float64", "Float32"]) for tol in opt(o, :tols, tolsweep(T))
-  for lib in opt(o, :libs, [COMPETITORS; "NonuniformFFTs"])]
+  for lib in opt(o, :libs, [COMPETITORS; "NonuniformFFTs"]) for t in pareto_tols(lib, tol, T)]
 
 @suite "threads" "strong scaling over the number of threads, tol 1e-4 and 1e-8" o -> [
   task(; lib, N=SIZES[D], tol, threads, budget=opt(o, :budget, 0.1), suite="threads")
