@@ -755,15 +755,56 @@ function NFFT.device_core(storage::Type{<:AbstractGPUArray}, k::Matrix, N::NTupl
   backend = KA.get_backend(nd.offs)
   gf = KA.zeros(backend, Complex{T}, (fft ? Ñ : map(zero, Ñ))..., L1 * L3)
   gp = KA.zeros(backend, Complex{T}, (Ñ .+ W)..., L1 * L3)
-  GPUCore(N, Ñ, L1, L3, W, nd, map(storage, invphi), gp, gf, fft_plans(gf, Val(D), fft)..., backend)
+  GPUCore(N, Ñ, L1, L3, W, nd, map(storage, invphi), gp, gf, fft_plans(gf, N, Val(D), fft)..., backend)
 end
 
-fft_plans(gf, ::Val{D}, fft) where {D} = fft ? (plan_fft!(gf, 1:D), plan_bfft!(gf, 1:D)) : (nothing, nothing)
+function fft_plans(gf, N, ::Val{D}, fft) where {D}
+  fft || return nothing, nothing
+  if D >= 3 && size(gf, D + 1) == 1 && N[D] >= 2
+    try
+      return pruned_plans(gf, N, Val(D))
+    catch e
+      e isa ArgumentError || e isa MethodError || rethrow()
+    end
+  end
+  plan_fft!(gf, 1:D), plan_bfft!(gf, 1:D)
+end
+
+# FFTs of one grid with the modes N, pruned as on the CPU: along dimensions 1…D−1 only the two slabs
+# of dimension D that hold modes are transformed, before the FFT along D (direct) or after it
+# (adjoint); the other slabs are zero there, and the adjoint's correction does not read them. For
+# backends whose FFTs do not accept the slabs `fft_plans` falls back to the full FFT. 3D only: on an
+# RTX A6000 cuFFT's 2D FFT of the whole grid is faster in Float32 than the pruned passes (2048²:
+# 0.85 against 1.35 ms), in 3D the pruned FFT takes 0.6–0.7 of the time.
+struct PrunedFFT{P,Q,S,G,A}
+  slab::P                    # plans of the two slabs along 1…D−1
+  last::Q                    # plan along D
+  slabs::S
+  grid::G                    # the grid without its batch dimension
+  parent::A
+  forward::Bool
+end
+function pruned_plans(gf, N, ::Val{D}) where {D}
+  Ñ = size(gf)[1:D]
+  g = reshape(gf, Ñ)
+  n = N[D]; m = Ñ[D]
+  front = ntuple(_ -> Colon(), Val(D - 1))
+  slabs = (view(g, front..., 1:n-n÷2), view(g, front..., m-n÷2+1:m))
+  PrunedFFT(map(x -> plan_fft!(x, 1:D-1), slabs), plan_fft!(g, D), slabs, g, gf, true),
+    PrunedFFT(map(x -> plan_bfft!(x, 1:D-1), slabs), plan_bfft!(g, D), slabs, g, gf, false)
+end
+function Base.:*(p::PrunedFFT, x)
+  x === p.parent || throw(ArgumentError("a pruned FFT plan applies to the array it was made for"))
+  p.forward || p.last * p.grid
+  foreach((q, y) -> q * y, p.slab, p.slabs)
+  p.forward && p.last * p.grid
+  x
+end
 
 # A copy has its own grids and FFT plans and shares the rest.
 function Base.copy(c::GPUCore{D}) where {D}
   gp = similar(c.gp); gf = similar(c.gf)
-  GPUCore(c.N, c.Ñ, c.L1, c.L3, c.W, c.nodes, c.invphi, gp, gf, fft_plans(gf, Val(D), c.pf !== nothing)..., c.backend)
+  GPUCore(c.N, c.Ñ, c.L1, c.L3, c.W, c.nodes, c.invphi, gp, gf, fft_plans(gf, c.N, Val(D), c.pf !== nothing)..., c.backend)
 end
 
 # Resampling correction between the modes f, (L1, N..., L3), and the grids gf, (Ñ..., L): one
