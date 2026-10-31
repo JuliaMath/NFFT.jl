@@ -36,7 +36,8 @@ Absolute times are in the [Explorer](@ref).
 Each cell is the median of the speed ratios over the tolerance sweep (``10^{-2}`` to ``10^{-14}``
 in double, ``10^{-2}`` to ``10^{-6}`` in single precision) for one library, platform, dimension and
 transform; the small numbers are the smallest and the largest ratio. Only the Pareto front of each
-library counts: the fastest time for each error it reaches, over all its tolerances. Blue: NFFT.jl
+library counts: the fastest time for each error it reaches, over all its tolerances; errors within
+15 % of each other count as equal, and the faster point stays. Blue: NFFT.jl
 faster; red: the other library faster. "No overlap": the errors the two libraries reach do not
 overlap, so no ratio exists; "1 point": only one measurement lies in the common error range (the
 lite runs have three single-precision tolerances for the other libraries). mlx-nufft computes in
@@ -198,8 +199,9 @@ call.
 
 ### CUDA
 
-Time against measured error on the RTX A6000, the Pareto front of each library; solid: double,
-dashed: single precision. The A6000 has 1/32 of its single-precision throughput in double
+Time against measured error on the RTX A6000, the Pareto front of each library (errors within
+15 % of each other count as equal, the faster point stays; the same for the ratios below and for
+Metal); solid: double, dashed: single precision. The A6000 has 1/32 of its single-precision throughput in double
 precision. NFFT.jl ran at a revision with the unrolled interpolation kernel, before the subproblem
 adjoint in double precision. cuFINUFFT runs from Python and is timed with CuPy, the others through
 the Julia benchmark worker.
@@ -243,18 +245,6 @@ mlx-nufft uses the same subproblem scheme for the adjoint (see
 At equal error NFFT.jl's direct transform is 1.0–1.2× faster in 1D and 2D, mlx-nufft's up to 1.18×
 in 3D (ratios 0.85–1.0); mlx-nufft's adjoint is 1.1–1.45× faster in 1D and 2D (ratios 0.69–0.89),
 in 3D the adjoints are within 10 %.
-
-Apple M1 Max (Metal, single precision, ``2^{18}`` nodes, tolerance ``10^{-4}``) against the CPU
-with 8 threads, ms (direct / adjoint; fastest of repeated runs into preallocated outputs, the GPU
-synchronised after each):
-
-| | CPU | GPU |
-|:--|--:|--:|
-| NFFT, 1D ``2^{18}`` | 0.9 / 0.8 | 0.5 / 0.7 |
-| NFFT, 2D ``512^2`` | 1.3 / 1.3 | 0.7 / 0.9 |
-| NFFT, 3D ``64^3`` | 3.1 / 3.6 | 1.0 / 1.6 |
-| RNFFT, 3D | 2.9 / 2.6 | 1.0 / 1.3 |
-| NFFT, OCT ``2048 \times 512`` | 2.4 / 2.4 | 1.0 / 1.5 |
 
 Measurements on AMD GPUs are still missing.
 
