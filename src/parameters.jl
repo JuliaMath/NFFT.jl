@@ -176,9 +176,11 @@ end
 # σ is replaced by the user's σ when given. `Ncost` is the size whose oversampled grid the cost
 # model sees (NFCT/NFST: the error is that of an NFFT of twice the size on half its grid), `storage`
 # selects the cost model, `fft` the FFT backend (its rounding error).
+# `Wmax` bounds the window width (the C library compiles a fixed range of widths).
 function choose_kernels(reltol, N::NTuple{D,Int}, J, ::Type{T}; window=:auto, W=nothing, σ=nothing, Ncost=N,
-                        n=1, storage=Array, fft=nothing) where {D,T}
-  cands = kernel_candidates(window, W, σ, T)
+                        n=1, storage=Array, fft=nothing, Wmax=typemax(Int)) where {D,T}
+  cands = filter(e -> e.W <= Wmax, kernel_candidates(window, W, σ, T))
+  isempty(cands) && throw(ArgumentError("no kernel for window = $window, W = $W, σ = $σ with W ≤ $Wmax"))
   err = [predicted_error(e, N, T, fft) for e in cands]
   emin = minimum(err)
   (W === nothing || σ === nothing) && check_reach(emin, reltol, "N = $N", T, window, W, σ)

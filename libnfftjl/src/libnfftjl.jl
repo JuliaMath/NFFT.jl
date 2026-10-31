@@ -237,7 +237,7 @@ function create(::Val{X}, ::Type{T}, ::Val{D}, Np::Ptr{Int64}, J::Int, kp::Ptr{F
   N = ntuple(d -> Int(unsafe_load(Np, d)), Val(D))
   k = copy(unsafe_wrap(Array, kp, (D, J)))
   NFFT.check_nodes(plan_type(X), k)
-  e = first(choose_kernels(reltol, NFFT.error_size(plan_type(X), N), J, T; Ncost=N)[1])
+  e = first(choose_kernels(reltol, NFFT.error_size(plan_type(X), N), J, T; Ncost=N, Wmax=last(widths(T)))[1])
   create_plan(Val(X), T, N, k, e, nthreads, L1, L3)
 end
 

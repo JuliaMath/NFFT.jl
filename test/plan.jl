@@ -84,6 +84,10 @@
     e = first(NFFT.choose_kernels(1e-6, N, J, Float64))[1]
     NFFT.set_cost_model!(Array, Float64, nothing)
     @test e.σ <= 1.25   # the smallest grid (σ = 1.2 and 1.25 round to the same size)
+    # Wmax (the C library's compiled widths): a narrower window that still reaches reltol
+    @test first(NFFT.choose_kernels(1e-4, (12, 9, 6), 60, Float32))[1].W > 8
+    e, err = first(NFFT.choose_kernels(1e-4, (12, 9, 6), 60, Float32; Wmax=8))
+    @test e.W <= 8 && err <= 1e-4
     @test NFFT.cost_model(Array, Float64) === NFFT.COST_COEF
     # a custom window with explicit width and oversampling
     gauss = CustomWindow((z, W) -> abs(z) < W / 2 ? exp(-(2z / W)^2 * 9) : 0.0)
