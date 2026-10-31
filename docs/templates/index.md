@@ -56,7 +56,7 @@ as the Julia package. Its interface is experimental and covers the core transfor
 | | Julia | Python | C |
 |:--|:--|:--|:--|
 | NFFT and adjoint, `reltol` chooses the parameters | ✓ | ✓ | ✓ |
-| dimensions | any | 1–3 | 1–3 |
+| dimensions | any (tested for 1–5) | 1–3 | 1–3 |
 | precision | Float32, Float64 | complex64, complex128 | float, double |
 | multi-threaded | ✓ | ✓ | ✓ |
 | transforms along dimensions (batches) | ✓ | ✓ | ✓ |
