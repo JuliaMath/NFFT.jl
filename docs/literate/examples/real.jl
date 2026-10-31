@@ -44,4 +44,4 @@ size(pc * F)
 
 # How NFFT.jl computes the transforms, as NFFTs of the even or odd extension with a mirrored halo,
 # is explained in [How NFFT.jl Works](@ref "Real-valued transforms"); they cost about as much as a
-# complex NFFT of the same size (see [Performance](@ref)).
+# complex NFFT of the same size (see [Benchmark details](@ref "Real data")).
