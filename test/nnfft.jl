@@ -21,9 +21,11 @@
   @test p * [1.0 + 0im] ≈ fill(cispi(-2 * 0.3 * -2.0), 5)
   @test_throws ArgumentError plan_nnfft(rand(2, 4), rand(1, 4))
   @test_throws ArgumentError plan_nnfft(rand(2, 4), rand(2, 4); σ=0.9)
-  # a copy computes the same; new targets are planned from the sources in full precision
+  # a copy computes the same; new targets are planned from the sources in full precision. The second
+  # extent is small: at the Float32 default reltol the inner grid has 17280 × 2700 points (27000
+  # instead of 2700 with both extents 50, ≈ 3.7 GB per plan).
   rng = Xoshiro(2)
-  y = 50 .* randn(rng, 2, 300); k = 3 .* randn(rng, 2, 200)
+  y = [50.0, 5.0] .* randn(rng, 2, 300); k = 3 .* randn(rng, 2, 200)
   p = plan_nnfft(k, y; eltype=Float32)
   f = randn(rng, ComplexF32, 300)
   @test copy(p) * f == p * f
