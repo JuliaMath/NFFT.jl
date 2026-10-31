@@ -239,7 +239,7 @@ julia benchmark/bench.jl run lite --save           # the figures with every othe
 julia benchmark/bench.jl report                    # figures and explorer data
 julia benchmark/bench.jl run contract              # delivered error against the tolerance
 julia benchmark/bench.jl run metal                 # Apple GPU, with mlx-nufft
-julia benchmark/bench.jl run cuda                  # Nvidia GPU; cuFINUFFT: benchmark/cufinufft.py
+julia benchmark/bench.jl run cuda                  # Nvidia GPU; cuFINUFFT: benchmark/cufinufft_bench.py
 julia benchmark/bench.jl run decomposition         # parameter and implementation factors
 julia benchmark/bench.jl run fftflags              # the other libraries with ESTIMATE and MEASURE
 julia benchmark/bench.jl ab v1.0.0                 # the working tree against a release
