@@ -216,7 +216,7 @@ function lite_keep(t)
   s == "density" ? decade(t["J"] / prod(t["N"])) && decade(t["tol"]) :
   s == "sizes" ? decade(t["tol"]) && isodd(findfirst(==(t["N"]), SWEEP_SIZES[length(t["N"])])) :
   s == "threads" ? t["tol"] == 1e-8 && t["threads"] in (1, default_threads()) :
-  s == "batch" ? t["tol"] == 1e-8 && t["L"] in (1, last(only(c for c in BATCH_CASES if "batch:" * c[1] == t["suite"]))) :
+  s == "batch" ? t["tol"] == 1e-8 && t["L"] in (1, last(only(c[4] for c in BATCH_CASES if "batch:" * c[1] == t["suite"]))) :
   s == "real" ? t["tol"] == 1e-8 : true
 end
 @suite "lite" "the figures of the documentation in less time (" * join(LITE, ", ") * "), ≈ 10 min" o ->
