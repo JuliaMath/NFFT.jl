@@ -14,7 +14,7 @@
 module NFFTGPUExt
 
 using NFFT, NFFT.AbstractNFFTs
-using NFFT: halo, gridpos, weights, resample_node, mirror
+using NFFT: halo, gridpos, weights, mirror
 using NFFT.FFTW: plan_fft!, plan_bfft!, plan_rfft, plan_brfft
 using LinearAlgebra: mul!
 using GPUArrays: AbstractGPUArray
@@ -167,19 +167,36 @@ end
 
 @inline node_weights(K, ss, q, ::Val{D}) where {D} = ntuple(d -> weights(K, @inbounds(ss[d, q])), Val(D))
 @inline node_offset(offs, q, ::Val{D}) where {D} = ntuple(d -> Int(@inbounds(offs[d, q])), Val(D))
-# the first D indices, and grid l of an array of grids
+# the first D indices
 @inline front(I, ::Val{D}) where {D} = ntuple(d -> I[d], Val(D))
-@inline grid(g, l, ::Val{D}) where {D} = view(g, ntuple(_ -> Colon(), Val(D))..., l)
 # batch index l = a + (b − 1)·L1
 @inline batch(l, L1) = ((l - 1) % L1 + 1, (l - 1) ÷ L1 + 1)
 
-# One work-item per node and transform; `out` is (L1, J, L3).
-@kernel function resample_kernel!(out, @Const(gp), K, @Const(offs), @Const(ss), @Const(perm), L1, ::Val{D}) where {D}
-  q, l = @index(Global, NTuple)
+# One work-item per node and transform, the nodes of transform 1 first; `out` is (L1, J, L3), `g`
+# the padded grids (P points each, strides `str`) as one vector.
+@kernel function resample_kernel!(out, @Const(g), K, @Const(offs), @Const(ss), @Const(perm), J, L1, str, ng,
+                                  ::Val{D}, ::Val{W}) where {D,W}
+  r, l = split_batch(@index(Global, Linear), J)
+  q = Int(r) + 1
   ws = node_weights(K, ss, q, Val(D))
-  off = node_offset(offs, q, Val(D))
+  base = sum(ntuple(d -> @inbounds(offs[d, q]) * str[d], Val(D)))
   a, b = batch(l, L1)
-  @inbounds out[a, perm[q], b] = resample_node(grid(gp, l, Val(D)), off, ws)
+  @inbounds out[a, perm[q], b] = gather(g, (l - 1) * ng, base, ws, str, Val(D), Val(W))
+end
+
+# Σ weights × grid values over the support whose first point has the 0-based index `base` in the
+# grid starting after `o`. Fully unrolled: with loops the weights are indexed at run time and go to
+# local memory (on CUDA 2–3× slower in Float64 from W = 10).
+# Accumulated term by term: a sum over a tuple of the terms keeps all of them live.
+@generated function gather(g, o, base, ws, str, ::Val{D}, ::Val{W}) where {D,W}
+  term = D == 1 ? :(@inbounds(ws[1][i]) * @inbounds(g[o + Int(base + Int32(i))])) :
+    :(@inbounds(ws[D][i]) * gather(g, o, base + Int32(i - 1) * str[D], ws, str, Val(D - 1), Val(W)))
+  quote
+    $(Expr(:meta, :inline))
+    s = zero(eltype(g))
+    Base.Cartesian.@nexprs $W i -> (s += $term)
+    s
+  end
 end
 
 # `gr` is the padded grid as real numbers with a leading dimension (re, im) for complex grids, of
@@ -530,9 +547,11 @@ end
 launch(backend, k, args...; ndrange) = prod(ndrange) == 0 || k(backend, WORKGROUP)(args...; ndrange)
 
 # values (L1, J, L3) at the nodes from the padded grids gp
-resample!(backend, nd::Nodes, vals, gp, L1, ::Val{D}) where {D} =
-  launch(backend, resample_kernel!, vals, gp, nd.kernel, nd.offs, nd.ss, nd.perm, L1, Val(D);
-         ndrange=(length(nd.perm), size(gp, D + 1)))
+function resample!(backend, nd::Nodes, vals, gp, L1, ::Val{D}) where {D}
+  P = size(gp)[1:D]; J = length(nd.perm)
+  launch(backend, resample_kernel!, vals, vec(gp), nd.kernel, nd.offs, nd.ss, nd.perm, J, L1,
+         strides_of(map(Int32, P), Val(D)), prod(P), Val(D), Val(nd.W); ndrange=J * size(gp, D + 1))
+end
 
 # values from the grids g (periodic): by subproblems directly from g, else from the padded grids gp
 function resample_periodic!(backend, nd::Nodes, vals, g, gp, W, L1, ::Val{D}) where {D}
