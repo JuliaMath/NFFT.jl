@@ -1,99 +1,134 @@
-
 # Mathematical Background
 
-On this page we give a brief overview of the mathematical background of the NFFT. For a full background including a derivation of the NFFT we refer to the [NFFT.jl paper](https://arxiv.org/pdf/2208.00049.pdf).
+This page defines the transforms that NFFT.jl computes and the three stages of the algorithm. The
+derivation and the error analysis are in the [NFFT.jl paper](https://arxiv.org/abs/2208.00049),
+whose notation we follow.
+
+![The transforms of NFFT.jl](./assets/nfft_transforms.svg)
+
+The NFFT maps an array on an equidistant grid to values at non-equidistant nodes, its adjoint maps
+back. The other transforms are built on it: the RNFFT restricts it to real values at the nodes, the
+NFCT and NFST apply it to the even or odd extension of real data, and the NNFFT wraps it into a
+spreading and a division to reach non-equidistant points on both sides
+(see [Other transforms](@ref)).
 
 !!! note
-    In the literature the NFFT has different names. Often it is called NUFFT, and in the MRI context gridding.
+    The NFFT is also called NUFFT, and in MRI gridding. FINUFFT and others classify the transforms
+    into types: type 2 is the NFFT, type 1 its adjoint, type 3 the NNFFT with non-equidistant
+    points on both sides.
 
 ## NDFT
 
-We first define the non-equidistant discrete Fourier transform (NDFT) that corresponds to the ordinary DFT. Let ``\bm{N} \in \mathbb{N}^D`` with ``D \in \mathbb{N}`` be the size of the ``D``-dimensional  equidistantly sampled signal ``\bm{f} = (f_{\bm{n}})_{\bm{n} \in I_{\bm{N}}}``. ``\bm{f}`` can for instance be a time or spatial domain signal. The signal is indexed using the multi-index set
+Let ``\bm{N} \in \mathbb{N}^D`` be the size of a ``D``-dimensional array
+``\bm{f} = (f_{\bm{n}})_{\bm{n} \in I_{\bm{N}}}`` sampled on a grid, indexed by the centred
+multi-index set
 ```math
-I_{\bm{N}} := \mathbb{Z}^D \cap \prod_{d=1}^D \left[-\frac{N_d}{2},\frac{N_d}{2}\right)
+I_{\bm{N}} := \mathbb{Z}^D \cap \prod_{d=1}^D \left[-\frac{N_d}{2},\frac{N_d}{2}\right).
 ```
-and thus represents a regular sampling that would also be considered when applying an ordinary DFT. The NDFT now maps from the equidistant domain to the non-equidistant domain and is defined as
+The non-equidistant discrete Fourier transform (NDFT) evaluates the trigonometric polynomial with
+coefficients ``f_{\bm{n}}`` at ``J`` nodes ``\bm{k}_j \in \mathbb{T}^D``, where
+``\mathbb{T} := [-1/2, 1/2)`` is the torus:
 ```math
-  	\hat{f}_j := \sum_{ \bm{n} \in I_{\bm{N}}} f_{\bm{n}} \, \mathrm{e}^{-2\pi\mathrm{i}\,\bm{n}\cdot\bm{k}_j}, \quad j=1,\dots, J \qquad \textit{(equidistant to non-equidistant)}
+\hat{f}_j := \sum_{\bm{n} \in I_{\bm{N}}} f_{\bm{n}} \, \mathrm{e}^{-2\pi\mathrm{i}\,\bm{n}\cdot\bm{k}_j},
+\quad j = 1,\dots,J \qquad \textit{(equidistant to non-equidistant)}.
 ```
-where the ``\bm{k}_j \in \mathbb{T}^D, j=1,\dots, J`` with ``J \in \mathbb{N}`` are the nonequidistant sampling nodes, ``\mathbb{T} := [1/2,1/2)`` is the torus and ``\hat{\bm{f}}`` is the ``D``-dimensional frequency domain signal.
-
-The direct NDFT has an associated adjoint that can be formulated as
+Its adjoint maps values at the nodes back to the grid,
 ```math
-	y_{\bm{n}} = \sum_{j = 1}^{J} \hat{f}_j \, \mathrm{e}^{2 \pi \mathrm{i} \, \bm{n} \cdot \bm{k}_j}, \bm{n} \in I_{\bm{N}} \qquad \textit{(non-equidistant to equidistant)}.
+y_{\bm{n}} = \sum_{j=1}^{J} \hat{f}_j \, \mathrm{e}^{2\pi\mathrm{i}\,\bm{n}\cdot\bm{k}_j},
+\quad \bm{n} \in I_{\bm{N}} \qquad \textit{(non-equidistant to equidistant)}.
 ```
-We note that in general the adjoint NDFT is not the inverse NDFT. 
+In general the adjoint is not the inverse; see [Density Compensation and Toeplitz Kernels](@ref).
 
 !!! note
-    The indices in the index set ``I_{\bm{N}}`` are centered around zero, which is the common definition of the NDFT. In contrast the indices of the DFT usually run from ``0,\dots,N_d-1``. This means that an `fftshift` needs to be applied to change from one representation to the other.
+    The indices in ``I_{\bm{N}}`` are centred around zero, while an ordinary DFT runs over
+    ``0,\dots,N_d-1``. An `fftshift` converts one representation into the other.
 
-!!! note
-     Instead of the direct/adjoint NDFT terminology, there is an alternative classification that consists of three types. Type 1 corresponds to the adjoint NDFT, type 2 corresponds to the direct NDFT and type 3 corresponds to the NNDFT which has non-equidistant samples in both domains. Further information on this alternative formulation can be found [here](https://finufft.readthedocs.io/en/latest/math.html). 
+## Matrix notation
 
-## Matrix-Vector Notation
-
-The NDFT can be written as
+With ``|\bm{N}| := \prod_{d=1}^D N_d`` the NDFT is the matrix–vector product
+``\hat{\bm{f}} = \bm{A} \bm{f}`` with
 ```math
- \hat{\bm{f}} = \bm{A} \bm{f}
+\bm{A} := \left( \mathrm{e}^{-2\pi\mathrm{i}\,\bm{n}\cdot\bm{k}_j} \right)_{j=1,\dots,J;\; \bm{n} \in I_{\bm{N}}}
+\in \mathbb{C}^{J \times |\bm{N}|},
 ```
-where
-```math
-\begin{aligned}
- \hat{\bm{f}} &:= \left( \hat{f}_j \right)_{j=1}^{J} \in \mathbb{C}^J \\
- \bm{f} &:= \left( f_{\bm{n}} \right)_{\bm{n} \in I_\mathbf{N}} \in \mathbb{C}^{|\bm{N}|}\\
-  \bm{A} &:=  \left( \mathrm{e}^{-2 \pi \mathrm{i} \, \bm{n} \cdot \bm{k}_j} \right)_{j=1,\dots,J; \bm{n} \in I_{\mathbf{N}}} \in \mathbb{C}^{J \times |\bm{N}|}
-\end{aligned}
-```
-and where ``|\bm{N}| := \text{prod}(\bm{N})``.
-The adjoint can then be written as
-```math
- \bm{y} = \bm{A}^{\mathsf{H}}  \hat{\bm{f}}
-```
-where ``\bm{y} \in \mathbb{C}^{|\bm{N}|}``.
-
+and the adjoint is ``\bm{y} = \bm{A}^{\mathsf{H}} \hat{\bm{f}}``. A plan in NFFT.jl behaves like
+this matrix: `p * f`, `adjoint(p) * fHat`, `size(p) == (J, prod(N))`.
 
 ## NFFT
 
-The NFFT is an approximative algorithm that realizes the NDFT in just ``{\mathcal O}(|\bm{N}| \log |\bm{N}| + J)`` steps. This is at the same level as the ordinary FFT with the exception of the additional linear term ``J``, which is unavoidable since all nodes need to be touched as least once.
-
-The NFFT has two important parameters that influence its accuracy:
-* the window size parameter ``m \in \mathbb{N}``
-* the oversampling factor ``\sigma \in \mathbb{R}`` with ``\sigma > 1``
-From the latter we can derive ``\tilde{\bm{N}} = \sigma \bm{N} \in (2\mathbb{N})^D``. As the definition indicates, the oversampling factor ``\sigma`` is usually adjusted such that ``\tilde{\bm{N}}`` consists of even integers.
-
-The NFFT now approximates ``\bm{A}`` by the product of three matrices
+The direct evaluation costs ``\mathcal{O}(J |\bm{N}|)`` operations. The NFFT approximates
+``\bm{A}`` by a product of three matrices,
 ```math
-\bm{A} \approx \bm{B} \bm{F} \bm{D}
+\bm{A} \approx \bm{B} \bm{F} \bm{D},
 ```
-where 
-* ``\bm{F} \in \mathbb{C}^{|\tilde{\mathbf{N}}| \times |\tilde{\mathbf{N}}|}`` is the regular DFT matrix.
-* ``\bm{D} \in \mathbb{C}^{|\tilde{\mathbf{N}}| \times |\mathbf{N}|}`` is a diagonal matrix that additionally includes zero filling and the fftshift. We call this the *deconvolution* matrix.
-* ``\bm{B} \in \mathbb{C}^{M \times |\tilde{\mathbf{N}}|}`` is a sparse matrix implementing the discrete convolution with a window function ``\hat{\varphi}``. We call this the *convolution* matrix.
+which costs ``\mathcal{O}(|\tilde{\bm{N}}| \log |\tilde{\bm{N}}| + J W^D)``. Here
+``\tilde{\bm{N}} \approx \sigma \bm{N}`` is the size of an oversampled grid with oversampling
+factor ``\sigma > 1``, and ``W`` is the width of the window function in grid points. Each matrix is
+one stage of the algorithm:
 
-The NFFT is based on the convolution theorem. It applies a convolution in the non-equidistant domain, which is evaluated at equidistant sampling nodes. This convolution is then corrected in the equidistant domain by division with the inverse Fourier transform ``\hat{\varphi}``. 
+1. **Resampling correction** ``\bm{D} \in \mathbb{C}^{|\tilde{\bm{N}}| \times |\bm{N}|}``: divides
+   ``\bm{f}`` by the Fourier transform ``\hat{\varphi}`` of the window function and places the result
+   in the zero-padded oversampled array (including the `fftshift`).
+2. **FFT** ``\bm{F} \in \mathbb{C}^{|\tilde{\bm{N}}| \times |\tilde{\bm{N}}|}`` on the oversampled
+   grid.
+3. **Resampling** ``\bm{B} \in \mathbb{C}^{J \times |\tilde{\bm{N}}|}``: a sparse matrix that
+   interpolates the oversampled grid at each node with the window function ``\varphi``, i.e. it
+   combines the ``W^D`` grid points around the node.
 
-The adjoint NFFT matrix approximates ``\bm{A}^{\mathsf{H}}`` by
+![The three stages of the NFFT](./assets/nfft_stages.svg)
 
+The adjoint NFFT applies the adjoint stages in reverse order,
 ```math
-\bm{A}^{\mathsf{H}} \approx \bm{D}^{\mathsf{H}} \bm{F}^{\mathsf{H}}  \bm{B}^{\mathsf{H}} 
+\bm{A}^{\mathsf{H}} \approx \bm{D}^{\mathsf{H}} \bm{F}^{\mathsf{H}} \bm{B}^{\mathsf{H}}.
 ```
+The first of them, ``\bm{B}^{\mathsf{H}}``, adds the weighted value of each node to the grid points
+around it; this is the costly and hard-to-parallelise part of the adjoint.
 
-Implementation-wise, the matrix-vector notation illustrates that the NFFT consists of three independent steps that are performed successively. 
-* The multiplication with ``\bm{D}`` is a scalar multiplication with the input-vector plus the shifting of data, which can be done inplace.
-* The FFT can be done with a high-performance FFT library such as the FFTW.
-* The multiplication with ``\bm{B}`` needs to run only over a subset of the indices and is the most challenging step.
-Since in practice the multiplication with ``\bm{B}`` is also the most expensive step, an NFFT library needs to pay special attention to optimizing it appropriately.
+!!! note "Why resampling and not convolution"
+    The matrix ``\bm{B}`` is often called convolution and ``\bm{D}`` deconvolution. Since ``\bm{B}``
+    evaluates the window at node-dependent offsets, it is not shift-invariant and therefore not a
+    convolution. We use the terms resampling and resampling correction, as in the paper.
 
-## Directional NFFT
+## Window, width and oversampling
 
-In many cases one not just needs to apply a single NFFT but needs to apply many on different data. This leads us to the directional NFFT. The directional NFFT is defined as
+The accuracy of the approximation depends on three choices: the window function ``\varphi``, its
+width ``W`` and the oversampling factor ``\sigma``. A larger ``W`` or ``\sigma`` reduces the
+error, at a higher cost in the resampling (``W^D`` per node) or in the FFT (``\sigma^D``). In the
+notation of the paper the window has the half width ``m``, so ``W = 2m``; NFFT.jl also allows odd
+widths.
 
+NFFT.jl chooses all three from the requested relative error, see [Accuracy and Parameters](@ref).
+
+## Other transforms
+
+**Real values at the nodes (RNFFT).** If the values at the nodes are real, the coefficients are
+Hermitian, ``f_{-\bm{n}} = \overline{f_{\bm{n}}}``, and the half ``\bm{h}`` with
+``n_1 = 0, \dots, \lfloor N_1/2 \rfloor`` determines them. The RNFFT is the counterpart of FFTW's
+`brfft`/`rfft`:
 ```math
-  	f_{\bm{l},j,\bm{r}} := \sum_{ \bm{n} \in I_{\bm{N}_\text{sub}}} \hat{f}_{\bm{l},\bm{n},\bm{r}} \, \mathrm{e}^{-2\pi\mathrm{i}\,\bm{n}\cdot\bm{k}_j}
+\hat{f}_j = \operatorname{Re} \sum_{\bm{n}} h_{\bm{n}} \, \mathrm{e}^{-2\pi\mathrm{i}\,\bm{n}\cdot\bm{k}_j},
+\qquad
+h_{\bm{n}} = \sum_{j=1}^J y_j \, \mathrm{e}^{2\pi\mathrm{i}\,\bm{n}\cdot\bm{k}_j} \quad \text{(adjoint)},
 ```
+adjoint to each other with respect to the real inner product. It computes on a real oversampled
+grid, which saves about half of the FFT and of the adjoint resampling; see [Real Data](@ref).
 
-where now $(\bm{l}, \bm{k}, \bm{r}) \in I_\mathbf{N}$ and $I_{\bm{N}_\text{sub}}$ is a subset of $I_{\bm{N}}$. The transform thus maps a $D$-dimensional tensor $\hat{f}_{\bm{l},\bm{n},\bm{r}}$ to an $R$-dimensional tensor $f_{\bm{l},j,\bm{r}}$. $\bm{N}_\text{sub}$ is thus a vector of length $D-R+1$. The indices $\bm{l}$ and $\bm{r}$ can also have length zero. Thus, for $R=1$, the conventional NFFT arises as a special case of the directional NFFT.
+**Cosine and sine transforms (NFCT, NFST).** The non-equidistant fast cosine and sine transforms
+of NFFT3 use real data and nodes in ``[0, 1/2]^D``:
+```math
+\hat{f}_j = \sum_{\bm{n}} f_{\bm{n}} \prod_{d=1}^D \cos(2\pi n_d k_{d,j}),
+\qquad
+\hat{f}_j = \sum_{\bm{n}} f_{\bm{n}} \prod_{d=1}^D \sin(2\pi n_d k_{d,j}),
+```
+with ``n_d = 0,\dots,N_d-1`` (cosine) and ``n_d = 1,\dots,N_d`` (sine) for an array of size ``\bm{N}``. Their transposes take
+the role of the adjoint. NFFT.jl computes them as NFFTs of the even and odd extension of the data,
+see [Cosine and Sine Transforms](@ref).
 
-!!! note
-    The directional NFFT can also be considered to be a slicing of a tensor with subsequent application of a regular NFFT. But the aforementioned formulation can be used to implement a much more efficient algorithm than can be achieved with slicing.
-
+**Non-equidistant on both sides (NNFFT).** For arbitrary real sources ``\bm{y}_l`` and targets
+``\bm{k}_j``,
+```math
+\hat{f}_j = \sum_{l} f_l \, \mathrm{e}^{-2\pi\mathrm{i}\,\bm{k}_j\cdot\bm{y}_l}.
+```
+The sources are spread with a window onto an equidistant grid, an NFFT evaluates that grid at the
+scaled targets, and a division by the Fourier transform of the window undoes the spreading; see
+[Non-equidistant in Both Domains](@ref).

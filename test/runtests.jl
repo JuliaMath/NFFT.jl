@@ -2,31 +2,40 @@ using Test
 using NFFT
 using Random
 using LinearAlgebra
-using FFTW
-using NFFTTools
 using Zygote
-using JLArrays
+using NFFTTools
+using SparseArrays
+using FFTA
 
-Random.seed!(123)
-areTypesDefined = @isdefined arrayTypes
-arrayTypes = areTypesDefined ? arrayTypes : [JLArray]
+# Contract tests of the AbstractNFFTs interface (implementation-independent), then NFFT.jl's own
+# behaviour, then NFFTTools, the GPU code on the CPU and Aqua. The tests on GPU devices run
+# separately (test/gpu/run.jl, on Buildkite).
+include("contract.jl")
+
+nfft_plan(k, N; kwargs...) = plan_nfft(NFFT.backend(), k, N; kwargs...)
 
 @testset "NFFT" begin
-  # If types were not defined we run everything
-  if !areTypesDefined
-    include("issues.jl")
-    include("accuracy.jl")
-    include("constructors.jl")
-    include("convolve.jl")
-    include("performance.jl")
-    include("testToeplitz.jl")
-    include("samplingDensity.jl")
-    include("gpu.jl")
-    include("chainrules.jl")
-    # Need to run after the other tests since they overload plan_*
-    #include("wrappers.jl")
-  # If types were defined we only run GPU related tests
-  else
-    include("gpu.jl")
-  end
+  @testset "contract Float64" begin contract_tests(nfft_plan; T=Float64) end
+  @testset "contract Float32" begin contract_tests(nfft_plan; T=Float32) end
+  include("interface.jl")
+  include("plan.jl")
+  include("batch.jl")
+  include("real.jl")
+  include("rnfft.jl")
+  include("nnfft.jl")
+  include("highdim.jl")
+  include("stages.jl")
+  include("ablation.jl")
+  include("stability.jl")
+  include("fftbackend.jl")
+  include("precision.jl")
+  include("issues.jl")
+  include("chainrules.jl")
+  include("enzyme.jl")
+  include("samplingDensity.jl")
+  include("testToeplitz.jl")
 end
+
+# the GPU code on the CPU (JLArrays); the GPU devices run in test/gpu/run.jl
+include("gpu/jlarrays.jl")
+include("aqua.jl")

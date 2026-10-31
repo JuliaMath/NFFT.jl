@@ -1,37 +1,67 @@
-using Documenter, NFFT, NFFTTools
+using Documenter, Literate, NFFT, NFFTTools, SparseArrays
 
-# Updating doctests:
-# 
-# julia> using Documenter, NFFT, NFFTTools
-# julia> DocMeta.setdocmeta!(NFFT, :DocTestSetup, :(using NFFT, NFFTTools); recursive=true)
-# julia> doctest(NFFT, fix=true)
+# Examples are Literate scripts in literate/<section>/, rendered to src/generated/<section>/
+# and run when the documentation is built.
+const LITERATE = joinpath(@__DIR__, "literate")
+const GENERATED = joinpath(@__DIR__, "src", "generated")
+for dir in readdir(LITERATE), file in filter(endswith(".jl"), readdir(joinpath(LITERATE, dir)))
+  Literate.markdown(joinpath(LITERATE, dir, file), joinpath(GENERATED, dir); documenter=true)
+end
 
-DocMeta.setdocmeta!(NFFT, :DocTestSetup, :(using NFFT, NFFTTools); recursive=true)
-DocMeta.setdocmeta!(NFFTTools, :DocTestSetup, :(using NFFT, NFFTTools); recursive=true)
+# Pages in templates/ with the examples of the other languages included verbatim, written to src/
+# (not versioned): the examples are files in the repository that the CI job libnfftjl compiles and
+# runs.
+const ROOT = dirname(@__DIR__)
+for file in readdir(joinpath(@__DIR__, "templates"))
+  text = replace(read(joinpath(@__DIR__, "templates", file), String),
+                 r"\{\{include ([^}]+)\}\}" => m -> rstrip(read(joinpath(ROOT, m[11:end-2]), String)))
+  write(joinpath(@__DIR__, "src", file), text)
+end
+
+DocMeta.setdocmeta!(NFFT, :DocTestSetup, :(using NFFT); recursive=true)
 
 makedocs(;
-    #strict = :doctest,
-    modules = [NFFT,NFFTTools],
-    sitename = "NFFT",
-    authors = "Tobias Knopp and contributors",
-    repo="https://github.com/JuliaMath/NFFT.jl/blob/{commit}{path}#{line}",
-    format=Documenter.HTML(;
-        prettyurls=get(ENV, "CI", "false") == "true",
-        canonical="https://tknopp.github.io/NFFT.jl",
-        assets=String[],
-    ),
-    pages = [
-        "Home" => "index.md",
-        "Background" => "background.md",
-        "Overview" => "overview.md",
-        "Performance" => "performance.md",
-        "Tools" => "tools.md",
-        #"Implementation" => "implementation.md",
-        "AbstractNFFTs" => "abstract.md",
-        "API" => "api.md",
+  modules=[NFFT, AbstractNFFTs, NFFTTools, Base.get_extension(NFFT, :NFFTSparseArraysExt)],
+  sitename="NFFT.jl",
+  authors="Tobias Knopp and contributors",
+  repo=Remotes.GitHub("JuliaMath", "NFFT.jl"),
+  format=Documenter.HTML(;
+    prettyurls=get(ENV, "CI", "false") == "true",
+    canonical="https://JuliaMath.github.io/NFFT.jl",
+    assets=["assets/benchmarks/explorer.js", "assets/benchmarks/explorer.css"],
+    size_threshold=500_000,
+  ),
+  # Diátaxis: a tutorial to learn, how-to guides for tasks, explanation for understanding,
+  # reference for looking things up
+  pages=[
+    "Home" => "index.md",
+    "Getting Started" => [
+      "Julia" => "generated/examples/getting_started.md",
+      "Python" => "python.md",
+      "C" => "c.md",
     ],
-    doctestfilters = [r"(\d*)\.(\d{1})\d*" => s"\1.\2***"],
-    doctest = false
+    "How-to Guides (Julia)" => [
+      "Transforms along Dimensions" => "generated/examples/directional.md",
+      "Real Data" => "generated/examples/rnfft.md",
+      "Cosine and Sine Transforms" => "generated/examples/real.md",
+      "Non-equidistant in Both Domains" => "generated/examples/nnfft.md",
+      "GPU" => "gpu.md",
+      "Density Compensation and Toeplitz" => "generated/examples/tools.md",
+      "Choosing Parameters" => "generated/examples/parameters.md",
+      "Stages of the NFFT" => "generated/examples/stages.md",
+      "Migrating from NFFT.jl 0.x" => "migration.md",
+    ],
+    "Explanation" => [
+      "Mathematical Background" => "background.md",
+      "Accuracy and Parameters" => "generated/examples/accuracy.md",
+      "How NFFT.jl Works" => "internals.md",
+      "Performance" => "performance.md",
+    ],
+    "Reference" => [
+      "API (Julia)" => "api.md",
+      "Abstract Interface" => "abstract.md",
+    ],
+  ],
 )
 
-deploydocs(repo   = "github.com/JuliaMath/NFFT.jl.git")
+deploydocs(repo="github.com/JuliaMath/NFFT.jl.git", devbranch="main", push_preview=true)

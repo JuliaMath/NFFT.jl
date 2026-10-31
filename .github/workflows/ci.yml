@@ -2,10 +2,10 @@ name: CI
 on:
   pull_request:
     branches:
-      - master
+      - main
   push:
     branches:
-      - master
+      - main
     tags: '*'
 jobs:
   test:
@@ -45,8 +45,8 @@ jobs:
         shell: julia --color=yes --project=. {0}
         run: |
           using Pkg
-          Pkg.add(PackageSpec(path=pwd(), subdir="AbstractNFFTs"))
-          Pkg.add(PackageSpec(path=pwd(), subdir="NFFTTools"))
+          Pkg.add(PackageSpec(path=pwd(), subdir="lib/AbstractNFFTs"))
+          Pkg.add(PackageSpec(path=pwd(), subdir="lib/NFFTTools"))
       - uses: julia-actions/julia-buildpkg@e3eb439fad4f9aba7da2667e7510e4a46ebc46e1 # v1.7.0
       - uses: julia-actions/julia-runtest@d60b785c6f2bdf4ebfb18b2b6f7d93b7dfb0efe3 # v1.11.4
         env:
@@ -54,7 +54,8 @@ jobs:
       - uses: julia-actions/julia-processcoverage@03114f09f119417c3242a9fb6e0b722676aedf38 # v1.2.2
       - uses: codecov/codecov-action@e79a6962e0d4c0c17b229090214935d2e33f8354 # v6.0.1
         with:
-          file: lcov.info
+          files: lcov.info
+          token: ${{ secrets.CODECOV_TOKEN }}
   docs:
     name: Documentation
     runs-on: ubuntu-latest
@@ -63,14 +64,8 @@ jobs:
       - uses: julia-actions/setup-julia@fa02766e078afaaf09b14210362cee14137e6a32 # v3.0.2
         with:
           version: '1'
-      - run: |
-          julia --project=docs -e '
-            using Pkg
-            Pkg.add(PackageSpec(path=pwd()))
-            Pkg.add(PackageSpec(path=pwd(), subdir="AbstractNFFTs"))
-            Pkg.add(PackageSpec(path=pwd(), subdir="NFFTTools"))
-            Pkg.instantiate()'
-      - run: julia --project=docs docs/make.jl
+      - run: julia --project=docs -e 'using Pkg; Pkg.instantiate()'
+      - run: julia -t auto --project=docs docs/make.jl
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           DOCUMENTER_KEY: ${{ secrets.DOCUMENTER_KEY }}
