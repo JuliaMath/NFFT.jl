@@ -118,3 +118,25 @@ over the nodes.
   1D transform runs its FFT in one piece per thread, so a thread on an efficiency core or on a
   core busy with other work holds it up (up to 2× slower with all 10 threads of an M1 Max); on a
   busy machine fewer threads than cores are faster.
+
+## MATLAB and Octave
+
+`bindings/matlab/` wraps the library for MATLAB (R2018a or later) and Octave: a MEX gateway
+`nfftjl_mex.c` and a handle class `nfftjl.Plan` for all transforms of the library, in single and
+double precision. Arrays are column major as in C, so data and nodes are passed as they are: nodes
+`k` as a ``D \times J`` matrix in ``[-1/2, 1/2)`` (NFCT, NFST: ``[0, 1/2]``), coefficients of
+size `N`.
+
+```matlab
+build_nfftjl                                  % once: compiles nfftjl_mex against libnfftjl/build/lib
+p = nfftjl.Plan(rand(2, 1e4) - 0.5, [256 256], 'reltol', 1e-8);
+fhat = p.trafo(randn(256) + 1i * randn(256));
+f = p.adjoint(fhat);
+q = nfftjl.Plan(k, [64 64], 'kind', 'nfct', 'single', true);   % 'rnfft', 'nfct', 'nfst', 'nnfft'
+```
+
+The options are `'kind'`, `'reltol'` (default ``10^{-8}``), `'single'` and `'nthreads'`; the
+NNFFT takes the sources instead of the size, `nfftjl.Plan(k, y, 'kind', 'nnfft')`. Inputs are
+converted to the plan's precision. `test_nfftjl.m` compares all transforms with the direct sums
+(`octave --eval "run('bindings/matlab/test_nfftjl.m')"`). Tested with Octave 11.3 on macOS.
+

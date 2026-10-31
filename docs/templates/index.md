@@ -49,22 +49,22 @@ nfftjl_plan_destroy(p);
 
 ## What is available in which language
 
-The Julia package is the full library. Python and C use `libnfftjl`, a library compiled from the
+The Julia package is the full library. Python, C and MATLAB/Octave use `libnfftjl`, a library compiled from the
 same Julia code with `juliac --trim`: no Julia installation is needed to use it, and it is as fast
 as the Julia package. Its interface is experimental and covers the core transform so far.
 
-| | Julia | Python | C |
-|:--|:--|:--|:--|
-| NFFT and adjoint, `reltol` chooses the parameters | ✓ | ✓ | ✓ |
-| dimensions | any (tested for 1–5) | 1–3 | 1–3 |
-| precision | Float32, Float64 | complex64, complex128 | float, double |
-| multi-threaded | ✓ | ✓ | ✓ |
-| transforms along dimensions (batches) | ✓ | ✓ | ✓ |
-| RNFFT, NFCT, NFST | ✓ | ✓ | ✓ |
-| NNFFT | ✓ | ✓ | ✓ |
-| GPUs | ✓ | – | – |
-| stages, density compensation, Toeplitz | ✓ | – | – |
-| status | 1.0 (in development) | experimental | experimental |
+| | Julia | Python | C | MATLAB/Octave |
+|:--|:--|:--|:--|:--|
+| NFFT and adjoint, `reltol` chooses the parameters | ✓ | ✓ | ✓ | ✓ |
+| dimensions | any (tested for 1–5) | 1–3 | 1–3 | 1–3 |
+| precision | Float32, Float64 | complex64, complex128 | float, double | single, double |
+| multi-threaded | ✓ | ✓ | ✓ | ✓ |
+| transforms along dimensions (batches) | ✓ | ✓ | ✓ | – |
+| RNFFT, NFCT, NFST | ✓ | ✓ | ✓ | ✓ |
+| NNFFT | ✓ | ✓ | ✓ | ✓ |
+| GPUs | ✓ | – | – | – |
+| stages, density compensation, Toeplitz | ✓ | – | – | – |
+| status | 1.0 (in development) | experimental | experimental | experimental |
 
 ## What NFFT.jl offers
 
