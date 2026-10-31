@@ -30,6 +30,8 @@ const TILE_WORKGROUP = 64
 const TILE_CHUNK = 32
 tile_edge(D) = D == 2 ? 32 : 8
 const LOCAL_BYTES = 32 * 1024
+# Float64 does not run on Metal: up to CUDA's 48 KB (AMD has 64 KB).
+local_bytes(T) = T === Float64 ? 48 * 1024 : LOCAL_BYTES
 
 # Resampling by subproblems (`adjoint_sub_kernel!`, `resample_sub_kernel!`, Float32): workgroup
 # size, nodes per subproblem and per chunk, largest bin edge. The edges in 1D and 2D are below what
@@ -83,7 +85,7 @@ function tile_edges(D, W, T)
   D in (2, 3) || return nothing
   B = ntuple(_ -> max(tile_edge(D), W - 1), D)
   bytes = 2sizeof(T) * prod(B) + TILE_CHUNK * D * (W * sizeof(T) + 4) + 2TILE_CHUNK * sizeof(T)
-  bytes <= LOCAL_BYTES ? B : nothing
+  bytes <= local_bytes(T) ? B : nothing
 end
 
 # Bin edges for the resampling by subproblems: the largest up to `sub_edge` for which the padded

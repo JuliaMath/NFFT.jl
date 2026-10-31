@@ -15,7 +15,7 @@ const DISPLAY = Dict("NFFT" => "NFFT.jl", "NonuniformFFTs" => "NonuniformFFTs.jl
 display_name(lib) = lib == "cuFINUFFT" ? lib : get(DISPLAY, family(lib), family(lib))
 isref(r) = family(r["lib"]) == "NFFT" && r["lib"] != "NFFT 0.14"
 
-# cuFINUFFT writes its own CSV (benchmark/cufinufft.py); its rows get the fields of the suite `cuda`
+# cuFINUFFT writes its own CSV (benchmark/cufinufft_bench.py); its rows get the fields of the suite `cuda`
 function load_cufinufft(machine)
   rows = Dict{String,Any}[]
   for f in ("cufinufft.csv", "cufinufft-big.csv")
