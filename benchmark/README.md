@@ -75,6 +75,20 @@ MLX_NUFFT_PYTHON=$PWD/.venv-mlx/bin/python julia benchmark/bench.jl run metal
 Without `MLX_NUFFT_PYTHON` its tasks are skipped. GPU timings include a synchronisation after
 every call.
 
+## Nvidia GPUs
+
+`run cuda` compares NFFT.jl on CUDA (`storage = CuArray`) with NonuniformFFTs.jl on CUDA, data on
+the GPU, Float64 and Float32, tolerance sweep, J = |N|; `--sizes big` for 2^22, 2048², 160³ instead
+of 2^18, 512², 64³. cuFINUFFT runs the same problems from Python (`pip install cufinufft cupy-cuda12x`)
+and writes its own CSV:
+
+```
+CUDA_VISIBLE_DEVICES=5 julia benchmark/bench.jl run cuda --sizes big
+CUDA_VISIBLE_DEVICES=5 python benchmark/cufinufft.py big > cufinufft-big.csv
+```
+
+The cuFINUFFT reference uses the nodes rounded to the precision the library receives them in.
+
 ## Native builds of the competitors
 
 By default FINUFFT and ducc come from their release binaries (JLL packages). To benchmark builds

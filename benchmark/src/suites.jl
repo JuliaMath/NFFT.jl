@@ -135,6 +135,14 @@ const NNFFT_SIZES = Dict(1 => [2^16], 2 => [256, 256], 3 => [32, 32, 32])
   for D in opt(o, :dims, [1, 2, 3]) for tol in opt(o, :tols, [1e-2, 1e-3, 1e-4, 1e-5])
   for lib in opt(o, :libs, ["NFFT Metal", "mlx-nufft"])]
 
+# Nvidia GPU: NFFT.jl and NonuniformFFTs.jl on CUDA, data on the device; `--sizes big` for J = |N| ≈ 2^22
+const BIG_SIZES = Dict(1 => [2^22], 2 => [2048, 2048], 3 => [160, 160, 160])
+@suite "cuda" "Nvidia GPU: NFFT.jl against NonuniformFFTs.jl on CUDA, tolerance sweep, Float64 and Float32, D = 1…3" o -> [
+  task(; lib, N=(get(o, :sizes, ["default"])[1] == "big" ? BIG_SIZES : SIZES)[D], tol, T,
+       threads=opt(o, :threads, [default_threads()])[1], budget=opt(o, :budget, 0.1), suite="cuda")
+  for D in opt(o, :dims, [1, 2, 3]) for T in opt(o, :T, ["Float64", "Float32"]) for tol in opt(o, :tols, tolsweep(T))
+  for lib in opt(o, :libs, ["NFFT CUDA", "NonuniformFFTs CUDA"])]
+
 # The optimal σ against the node density J/N: for every σ of the kernel table the smallest W that
 # reaches tol (for each of `libs` but revisions NFFT@<rev>), and the planner's choice of every lib
 # (an NFFT@<rev> with another cost model, "NFFT Metal" with `--T Float32`). N such that J = 100·N stays

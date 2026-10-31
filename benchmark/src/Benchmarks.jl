@@ -23,6 +23,8 @@ const LIBS = Dict(
   "ducc" => (env=joinpath(ROOT, "envs", "ducc"), adapter="ducc.jl"),
   "NonuniformFFTs" => (env=joinpath(ROOT, "envs", "nonuniformffts"), adapter="nonuniformffts.jl"),
   "NFFT Metal" => (env=joinpath(ROOT, "envs", "nfftmetal"), adapter="nfft_metal.jl"),
+  "NFFT CUDA" => (env=joinpath(ROOT, "envs", "nfftcuda"), adapter="nfft_cuda.jl"),
+  "NonuniformFFTs CUDA" => (env=joinpath(ROOT, "envs", "nonuniformfftscuda"), adapter="nonuniformffts_cuda.jl"),
   "mlx-nufft" => (env=joinpath(ROOT, "envs", "mlxnufft"), adapter="mlxnufft.jl"),
   "FINUFFT 2.5" => (env=joinpath(ROOT, "envs", "finufft25"), adapter="finufft.jl"),
 )
