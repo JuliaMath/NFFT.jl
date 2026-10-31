@@ -27,7 +27,7 @@ function NFFTCore(k::AbstractMatrix, N::NTuple{D,Int}, Ñ::NTuple{D,Int}, W, φ:
                   kernel=make_kernel(φ, W, T)) where {D,F,T}
   K = kernel
   invphi = fft === nothing ? ntuple(_ -> T[], D) : inv_kernel_ft(φ, W, N, Ñ, T, nthreads)
-  B = B === nothing ? default_tile(D, W) : B
+  B = B === nothing ? default_tile(D, W, size(k, 2) / prod(Ñ)) : B
   h = halo(W)
   gp = Array{Complex{T}}(undef, padded_size(Ñ, W))   # zeroed by every transform
   g = interior(gp, h, Ñ)

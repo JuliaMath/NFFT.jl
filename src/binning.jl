@@ -59,10 +59,19 @@ function Binned(k::AbstractMatrix{T}, Ñ::NTuple{D,Int}, B::Int, nthreads) where
   Binned{D,T}(xs, perm, tileptr, ntiles, origins, order1)
 end
 
-# Tile edge (grid points). The resampling wants small tiles (buffers in L1/L2), the adjoint
-# resampling large ones (zeroing and flushing (B+W+1)^D buffer points per tile); measured best
-# compromise on an M1 Max with 8 threads.
-default_tile(D, W) = D == 1 ? 1024 : D == 2 ? 64 : W <= 6 ? 16 : W <= 10 ? 12 : 10
+# Tile edge (grid points) for ν nodes per grid point. The resampling wants small tiles (buffers in
+# L1/L2), the adjoint resampling large ones (zeroing and flushing (B+W+1)^D buffer points per tile).
+# In 3D the balance shifts with ν: few nodes per tile leave the per-tile cost dominant, many nodes
+# per tile the per-node cost. Measured best sum of trafo and adjoint on an M1 Max, 1 and 8 threads.
+function default_tile(D, W, ν=0.1)
+  D == 1 && return 1024
+  D == 2 && return 64
+  ν < 0.02 && return W <= 12 ? 16 : 12
+  W <= 6 && return ν >= 1 ? 10 : 16
+  W <= 8 && return 12
+  B = W <= 10 ? 12 : 10
+  ν >= 0.2 ? B - 2 : B
+end
 
 # One lock per tile of edge B of the padded grid, for flushing the private buffers of the adjoint resampling.
 struct TileLocks{D}
