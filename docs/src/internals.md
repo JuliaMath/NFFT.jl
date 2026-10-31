@@ -73,6 +73,23 @@ processes the grid tile by tile, and every task takes the next tile from a share
 Each node is handled exactly once, by one task, and no two tasks write to the same memory at the
 same time.
 
+The tile edge ``B`` balances the two: the resampling wants small tiles (buffers in the cache), the
+adjoint resampling large ones (zeroing and adding back ``(B + W + 1)^D`` buffer points per tile).
+In 3D the best edge also depends on how many nodes fall into a tile, so the plan chooses it from
+``W`` and the nodes per grid point ``J/|\tilde{\bm{N}}|``: smaller tiles for dense nodes, larger ones
+for sparse nodes (measured on an M1 Max; `tilesize` overrides it).
+
+## Tasks per stage
+
+Starting a task and waking a sleeping thread costs 10–40 µs, as much as a whole small transform on
+one thread. A plan therefore estimates the work of each stage (zeroing, correction, FFT, halo,
+resampling) from the sizes. If the whole transform is small (below about 0.3 ms on one thread),
+each stage runs on only as many tasks as give each about 10 µs of work; larger transforms use all
+threads in every stage, since a stage on a single task lets the other threads fall asleep and
+waking them for the next stage costs more than it saves. With 8 threads this makes 1D transforms
+of ``10^3`` points and 2D transforms of ``32^2`` 3–4 times faster than with all threads in every
+stage.
+
 ## The FFT
 
 ![Pruned FFT](./assets/nfft_pruned_fft.svg)
@@ -87,8 +104,9 @@ lines, in 3D the first two passes a quarter and a half; the adjoint saves the sa
 passes. Each pass is split into boxes of lines that run in parallel, each with a single-threaded
 batched FFTW plan: with `ESTIMATE`, FFTW's own threading produces plans up to 17 times slower than
 `MEASURE` plans, while single-threaded batched `ESTIMATE` plans come within 10–20 % of `MEASURE`.
-A pass uses at most as many tasks as the plan has threads. In 1D, FFTW's threading is used. The grid sizes are even products of 2, 3 and 5 (as in FINUFFT),
-not powers of two, so that ``\sigma`` can be chosen freely.
+A pass uses at most as many tasks as the plan has threads (see [Tasks per stage](@ref)). In 1D, FFTW's
+threading is used. The grid sizes are even products of 2, 3 and 5 (as in FINUFFT), not powers of
+two, so that ``\sigma`` can be chosen freely.
 
 ## Batch strategies
 
