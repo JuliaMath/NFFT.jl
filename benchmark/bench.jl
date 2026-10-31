@@ -43,8 +43,9 @@ function save(results, suite, args, o)
     for s in unique(first(split(r["suite"], ":")) for r in results)
       rs = filter(r -> first(split(r["suite"], ":")) == s, results)
       file = joinpath(ROOT, "results", machine(), "$s.csv")
-      # measurements of an earlier run that this run does not repeat are kept
-      if isfile(file)
+      # measurements of an earlier run that this run does not repeat are kept (not for lite: its
+      # files hold one run, so that a figure never mixes two runs)
+      if isfile(file) && suite != "lite"
         new = Set(Benchmarks.key.(rs))
         _, old = read_csv(file)
         rs = [filter(r -> Benchmarks.key(r) ∉ new, old); rs]
