@@ -12,7 +12,7 @@ julia benchmark/bench.jl run quick --libs NFFT --dims 2 --tols 1e-8
 julia benchmark/bench.jl ab HEAD~1                  # working tree against a revision (suite fast), ≈ 1 min
 julia benchmark/bench.jl compare out/a.csv out/b.csv
 julia benchmark/bench.jl run all --save             # all suites of the documentation, ≈ 15 min
-julia benchmark/bench.jl run lite --save            # the figures with every other point, ≈ 5–10 min
+julia benchmark/bench.jl run lite --save            # the figures with every other point, 2 rounds, ≈ 10 min
 julia benchmark/bench.jl report                     # figures and explorer data for the docs
 julia benchmark/bench.jl check                      # worker's FFTW threads against a fresh process
 ```

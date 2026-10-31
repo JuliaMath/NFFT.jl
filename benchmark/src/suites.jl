@@ -203,21 +203,22 @@ const HOMEPAGE = ["pareto", "density", "sizes", "threads", "batch", "real", "nnf
 @suite "all" "all suites of the documentation (" * join(HOMEPAGE, ", ") * ")" o ->
   reduce(vcat, [SUITES[s](o) for s in HOMEPAGE])
 
-# The figures of the documentation in a fraction of the time: every other point of each sweep, only
-# the tolerance a figure shows, one plan, half the time budget; without nodes and history (only in
-# the explorer).
+# The figures of the documentation in a fraction of the time: every other point of each sweep
+# (NFFT.jl keeps all tolerances, since it is interpolated at the others' errors), only the tolerance
+# a figure shows, one plan, half the time budget, two rounds (the report takes the fastest); without
+# nodes and history (only in the explorer).
 const LITE = ["pareto", "density", "sizes", "threads", "batch", "real", "nnfft"]
-decade(x) = isapprox(log10(x), round(log10(x)); atol=1e-6)
+decade(x) = isapprox(log10(x), round(log10(x)); atol=1e-3)   # J = round(ρ|N|)
 function lite_keep(t)
   s = first(split(t["suite"], ":")); e = round(Int, -log10(t["tol"]))
-  s == "pareto" ? iseven(e) :
-  s == "nnfft" ? t["T"] == "Float32" || e % 4 == 0 :
+  s == "pareto" ? t["lib"] == "NFFT" || iseven(e) :   # NFFT.jl on the full sweep: interpolated
+  s == "nnfft" ? t["lib"] == "NFFT" || t["T"] == "Float32" || e % 4 == 0 :
   s == "density" ? decade(t["J"] / prod(t["N"])) && decade(t["tol"]) :
   s == "sizes" ? decade(t["tol"]) && isodd(findfirst(==(t["N"]), SWEEP_SIZES[length(t["N"])])) :
   s == "threads" ? t["tol"] == 1e-8 && t["threads"] in (1, default_threads()) :
   s == "batch" ? t["tol"] == 1e-8 && t["L"] in (1, last(only(c for c in BATCH_CASES if "batch:" * c[1] == t["suite"]))) :
   s == "real" ? t["tol"] == 1e-8 : true
 end
-@suite "lite" "the figures of the documentation in less time (" * join(LITE, ", ") * "), ≈ 5–10 min" o ->
+@suite "lite" "the figures of the documentation in less time (" * join(LITE, ", ") * "), ≈ 10 min" o ->
   [merge(t, Dict("budget" => opt(o, :budget, 0.05), "plans" => 1))
    for s in LITE for t in SUITES[s](o) if lite_keep(t)]

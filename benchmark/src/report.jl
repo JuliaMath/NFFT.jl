@@ -5,7 +5,7 @@
 # writes docs/src/assets/benchmarks/*.svg and data.js (all measurements, for the explorer).
 
 include(joinpath(@__DIR__, "Benchmarks.jl"))
-using .Benchmarks: read_csv, ok, ROOT, REPO
+using .Benchmarks: read_csv, ok, best_of, ROOT, REPO
 using CairoMakie
 
 const MACHINE = ARGS[1]
@@ -18,11 +18,12 @@ const COLORS = Dict("NFFT" => "#1f4e9c", "FINUFFT" => "#d9822b", "ducc" => "#3a9
 const LIBORDER = ["NFFT", "FINUFFT", "ducc", "NonuniformFFTs", "NFFT 0.14"]
 color(lib) = get(COLORS, lib, "#555555")
 
+# rows of a suite, the rounds of a run (--rounds) merged into their fastest times
 function load(suite)
   file = joinpath(SRC, "$suite.csv")
   isfile(file) || return Dict{String,String}(), Dict{String,Any}[]
   meta, rows = read_csv(file)
-  meta, filter(ok, rows)
+  meta, best_of([[merge(r, Dict("round" => "")) for r in rows]])
 end
 
 dimlabel(r) = r["transform"] == "nnfft" ? "$(r["D"])D, $(r["J"]) sources and targets" :

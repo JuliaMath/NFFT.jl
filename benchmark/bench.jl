@@ -69,7 +69,7 @@ function main(args)
     println("libraries: ", join(sort(collect(keys(LIBS))), ", "), ", NFFT@<git revision>")
   elseif cmd == "run"
     suite = get(pos, 2, "quick")
-    rounds = get(o, :rounds, [1])[1]
+    rounds = get(o, :rounds, [suite == "lite" ? 2 : 1])[1]
     t = @elapsed res = rounds == 1 ? run_tasks(SUITES[suite](o)) : Benchmarks.run_rounds(SUITES[suite](o), rounds)
     save(res, suite, args, o)
     println("time: ", round(t, digits=1), " s")
