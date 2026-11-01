@@ -34,8 +34,18 @@ and NNFFT plans. Slower than FFTW; its plans work out of place, so every pass ke
 """
 struct FFTABackend <: AbstractFFTBackend end
 
+"""
+    FFTLBackend()
+
+[FFTL.jl](https://github.com/JuliaMath/FFTL.jl), an FFT in pure Julia with batched in-place
+transforms along one dimension of strided views; needs `using FFTL`. For NFFT and NNFFT plans
+(the real transforms go through complex FFTs of the same length). The first plan of a length
+compiles its kernels.
+"""
+struct FFTLBackend <: AbstractFFTBackend end
+
 pass_plan(fft::AbstractFFTBackend, args...) =
-  throw(ArgumentError("the FFT backend $(nameof(typeof(fft))) is not available; for FFTABackend load FFTA"))
+  throw(ArgumentError("the FFT backend $(nameof(typeof(fft))) is not available; load FFTA for FFTABackend, FFTL for FFTLBackend"))
 apply_pass!(plan, v) = (plan * v; nothing)
 planning(f, ::AbstractFFTBackend, nthreads) = f()
 
@@ -68,6 +78,11 @@ struct PassFFT{D,P}
   plans::Vector{Vector{P}}
   boxes::Vector{Vector{NTuple{D,UnitRange{Int}}}}
   nthreads::Int                     # tasks per pass at most
+end
+# Plans whose type depends on the dimension (FFTL): their common supertype, one dynamic call per box.
+function PassFFT(plans::Vector{<:Vector}, boxes::Vector{Vector{NTuple{D,UnitRange{Int}}}}, nthreads) where {D}
+  P = mapreduce(eltype, typejoin, plans)
+  PassFFT{D,P}([convert(Vector{P}, p) for p in plans], boxes, nthreads)
 end
 
 # `Val(dir)` selects the transform (:fwd forward, :bwd unnormalised backward; a type, so that the

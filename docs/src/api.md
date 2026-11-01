@@ -19,7 +19,7 @@ size given as third argument, and its `window`, `W` and `σ` apply to its inner 
 | `nthreads` | number of threads, default `Threads.nthreads()` |
 | `window` | `:auto`, `KaiserBessel()`, `ExpSemicircle()`, `CustomWindow(φ)` |
 | `W`, `σ` | window width and oversampling factor |
-| `fft` | FFT backend: `FFTWBackend()` (default) or `FFTABackend()` (pure Julia, `using FFTA`; NFFT and NNFFT) |
+| `fft` | FFT backend: `FFTWBackend()` (default), `FFTABackend()` or `FFTLBackend()` (pure Julia, `using FFTA` or `using FFTL`; NFFT and NNFFT) |
 | `tilesize` | edge length of the tiles the nodes are sorted into (expert option) |
 | `gridsize` | size Ñ of the oversampled grid, an integer or one per transformed dimension, at least σN and W; any size, not only the 2,3,5-smooth ones the planner takes (expert option, `plan_nfft` only) |
 | `measure` | `true`: time the four parameter sets of lowest predicted cost at plan time and keep the fastest |
@@ -71,6 +71,7 @@ CustomWindow
 AbstractFFTBackend
 FFTWBackend
 FFTABackend
+FFTLBackend
 ```
 
 ## Stages
