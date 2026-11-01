@@ -56,6 +56,7 @@ makedocs(;
       "Accuracy and Parameters" => "generated/examples/accuracy.md",
       "How NFFT.jl Works" => "internals.md",
       "Performance" => "performance.md",
+      "Benchmark details" => "benchmarks.md",
     ],
     "Reference" => [
       "API (Julia)" => "api.md",

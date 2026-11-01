@@ -246,7 +246,7 @@ end
 include("report_platforms.jl")
 
 println("report from $(joinpath(RESULTS, MACHINE)):")
-overview(); contract(); gpus(); devices()
+overview("overview", ["Float64"]); overview("overview-float32", ["Float32"]); headline(); contract(); gpus(); devices()
 for m in CPU_MACHINES
   isdir(joinpath(RESULTS, m)) || continue
   CUR[] = m

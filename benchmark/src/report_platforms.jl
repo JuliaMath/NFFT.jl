@@ -73,13 +73,13 @@ const OVERVIEW_ROWS = [("ducc", :m1), ("ducc", :zen3), ("FINUFFT", :m1), ("FINUF
                        ("NonuniformFFTs", :m1), ("NonuniformFFTs", :zen3), ("NonuniformFFTs", :cuda),
                        ("cuFINUFFT", :cuda), ("mlx-nufft", :metal)]
 
-function overview()
+function overview(name, precisions)
   data = Dict(p => filter(r -> r["N"] == STANDARD[r["D"]] && r["J"] == prod(r["N"]), platform_rows(p))
               for p in keys(PLATFORMS))
   libmatch(r, lib) = lib == "cuFINUFFT" ? r["lib"] == lib : family(r["lib"]) == lib && r["lib"] != "cuFINUFFT"
   cols = [(D, op...) for D in 1:3 for op in OPS]
   panels = []
-  for T in ("Float64", "Float32")
+  for T in precisions
     rows = []
     for (lib, p) in OVERVIEW_ROWS
       rd = filter(r -> r["T"] == T, data[p])
@@ -99,7 +99,7 @@ function overview()
   cmap = cgrad(:RdBu); lim = 2.0                 # colours saturate at 1/4 and 4
   hatch = Makie.LinePattern(direction=Vec2f(1, 1), width=1.2, tilesize=(7, 7), linecolor=:gray55, backgroundcolor=:gray96)
   rowh = 38
-  fig = Figure(size=(900, 120 + sum(rowh * length(p[2]) + 70 for p in panels)))
+  fig = Figure(size=(900, 100 + sum(rowh * length(p[2]) + 70 for p in panels)))
   println("  overview (median, min, max of time / time of NFFT.jl):")
   for (k, (T, rows)) in enumerate(panels)
     n = length(rows)
@@ -133,11 +133,45 @@ function overview()
   Colorbar(fig[length(panels) + 1, 1]; colormap=cmap, limits=(-lim, lim), vertical=false, flipaxis=false,
            ticks=(-2:2, ["≤ ¼", "½", "1", "2", "≥ 4"]), width=Relative(0.5),
            label="time of the library / time of NFFT.jl at equal error (> 1: NFFT.jl faster)")
-  save_fig("overview", fig)
+  save_fig(name, fig)
 end
 median(x) = (s = sort(x); n = length(s); isodd(n) ? s[(n + 1) ÷ 2] : (s[n ÷ 2] + s[n ÷ 2 + 1]) / 2)
 pow10s(v) = string(round(v; sigdigits=2))
 fmt_ratio(v) = v >= 10 ? string(round(Int, v)) : string(round(v; digits=v >= 1 ? 1 : 2))
+
+# Headline: 3D 64³, J = |N|, double precision, time against measured error (Pareto fronts) of every
+# library on the M1 Max CPU (dashed, crosses) and the A6000 (solid, circles). With Zen 3 as a third
+# device (cpus=[:m1, :zen3], dotted, triangles) the 11 curves per panel are no longer readable.
+function headline(; cpus=[:m1])
+  devs = [(p, (p == :m1 ? :dash : :dot), (p == :m1 ? :xcross : :utriangle), PLATFORMS[p].label) for p in cpus]
+  push!(devs, (:cuda, :solid, :circle, PLATFORMS[:cuda].label))
+  data = Dict(p => filter(r -> r["D"] == 3 && r["N"] == STANDARD[3] && r["T"] == "Float64", platform_rows(p))
+              for (p, _) in devs)
+  all(isempty, values(data)) && return
+  fams = ["NFFT", "FINUFFT", "ducc", "NonuniformFFTs"]
+  fig = Figure(size=(900, 480))
+  for (j, (op, err, t)) in enumerate(OPS)
+    ax = Axis(fig[1, j]; LOGX_EXP..., yscale=log10, yticks=time_ticks, ytickformat=val_format, xreversed=true,
+              title=op == "direct" ? "direct transform" : "adjoint transform", xlabel="relative error",
+              ylabel=j == 1 ? "time / ms" : "")
+    for (p, ls, mk, _) in devs, lib in unique(r["lib"] for r in data[p])
+      f = front(filter(r -> r["lib"] == lib, data[p]), err, t)
+      isempty(f) && continue
+      scatterlines!(ax, [r[err] for r in f], [ms(r[t]) for r in f]; color=color(lib), linestyle=ls, marker=mk,
+                    markersize=p == :cuda ? 7 : 9, linewidth=1.5)
+    end
+  end
+  libs = [[LineElement(color=color(l), linewidth=3)] for l in fams]
+  names = ["NFFT.jl", "FINUFFT / cuFINUFFT", "ducc", "NonuniformFFTs.jl"]
+  styles = [[LineElement(color=:gray30, linestyle=ls), MarkerElement(color=:gray30, marker=mk)] for (_, ls, mk, _) in devs]
+  gl = fig[2, 1:2] = GridLayout()
+  Legend(gl[1, 1], libs, names; orientation=:horizontal, framevisible=false, padding=(0, 0, 0, 0))
+  Legend(gl[2, 1], styles, [d[4] * (d[1] == :cuda ? "" : ", 8 threads") for d in devs];
+         orientation=:horizontal, framevisible=false, padding=(0, 0, 0, 0))
+  rowgap!(gl, 4)
+  Label(fig[0, :], "3D, N = 64³, J = |N|, double precision"; fontsize=14, halign=:left, tellwidth=false)
+  save_fig("headline", fig)
+end
 
 # B. Time against measured error on the GPU: the Pareto front of each library, standard or big sizes
 function pareto_time(name, rows, sizes; libs, title)
