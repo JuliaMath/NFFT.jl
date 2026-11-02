@@ -1,0 +1,16 @@
+[build-system]
+requires = ["setuptools>=64", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "nfftjl"
+version = "0.1.0"
+description = "The NFFT of NFFT.jl as a Python package, compiled with juliac --trim"
+requires-python = ">=3.9"
+dependencies = ["numpy"]
+
+[tool.setuptools.packages.find]
+where = ["src"]
+
+[tool.setuptools.package-data]
+nfftjl = ["_lib/**/*"]

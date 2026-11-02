@@ -5,14 +5,7 @@ docs/build/*
 *.log
 *.gz
 test/*.png
-benchmark/*.png
-benchmark/*.csv
-benchmark/paper/data/*.csv
-benchmark/paper/img/*.pdf
-benchmark/data/*.csv
-benchmark/data/*.dat
-benchmark/img/*.pdf
-benchmark/img/*.svg
-benchmark/data/
-benchmark/img/
 Manifest.toml
+benchmark/.cache/
+benchmark/envs/*/LocalPreferences.toml
+benchmark/out/

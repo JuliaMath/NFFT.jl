@@ -1,0 +1,23 @@
+name = "AbstractNFFTs"
+uuid = "7f219486-4aa7-41d6-80a7-e08ef20ceed7"
+authors = ["Tobias Knopp <tobias@knoppweb.de>"]
+version = "1.0.0-DEV"
+
+[deps]
+LinearAlgebra = "37e2e46d-f89d-539d-b4ee-838fcccc9c8e"
+ScopedValues = "7e506255-f358-4e82-b7e4-beb19740aa63"
+
+[weakdeps]
+ChainRulesCore = "d360d2e6-b24c-11e9-a2a3-2a2ae2dbcce4"
+EnzymeCore = "f151be2c-9106-41f4-ab19-57ee4f262869"
+
+[extensions]
+AbstractNFFTsChainRulesCoreExt = "ChainRulesCore"
+AbstractNFFTsEnzymeCoreExt = "EnzymeCore"
+
+[compat]
+julia = "1.10"
+ChainRulesCore = "1"
+EnzymeCore = "0.8"
+LinearAlgebra = "1"
+ScopedValues = "1"
