@@ -4,26 +4,27 @@ This package provides a Julia implementation of the Non-equidistant Fast Fourier
 that runs multi-threaded on the CPU and on GPUs (CUDA, AMD, Apple) from the same code base.
 
 [![](https://img.shields.io/badge/docs-stable%20(0.14)-blue.svg)](https://JuliaMath.github.io/NFFT.jl/stable)
-[![](https://img.shields.io/badge/docs-dev%20(1.0)-blue.svg)](https://JuliaMath.github.io/NFFT.jl/dev)
+[![](https://img.shields.io/badge/docs-dev%20(1.0)-blue.svg)](https://JuliaMath.github.io/NFFT.jl/previews/PR177/)
 [![Build status](https://github.com/JuliaMath/NFFT.jl/workflows/CI/badge.svg)](https://github.com/JuliaMath/NFFT.jl/actions)
 [![codecov.io](http://codecov.io/github/JuliaMath/NFFT.jl/coverage.svg?branch=main)](http://codecov.io/github/JuliaMath/NFFT.jl?branch=main)
 
 > [!IMPORTANT]
-> **The main branch is the development version of NFFT.jl 1.0**, a new implementation with a
-> new interface (AbstractNFFTs 1.0). It is not released yet and its interface may still change.
+> **The branch `refactoring` ([PR #177](https://github.com/JuliaMath/NFFT.jl/pull/177)) is the
+> development version of NFFT.jl 1.0**, a new implementation with a new interface (AbstractNFFTs 1.0).
+> It is not released yet and its interface may still change.
 > Feedback and discussion: [issues](https://github.com/JuliaMath/NFFT.jl/issues).
 >
 > - `Pkg.add("NFFT")` installs the released version 0.14. Its documentation is
 >   [stable](https://JuliaMath.github.io/NFFT.jl/stable), its code on the branch
 >   [`release-0.14`](https://github.com/JuliaMath/NFFT.jl/tree/release-0.14).
-> - The [dev documentation](https://JuliaMath.github.io/NFFT.jl/dev) describes the new version,
->   including a [migration guide](https://JuliaMath.github.io/NFFT.jl/dev/migration/) and
->   [benchmarks](https://JuliaMath.github.io/NFFT.jl/dev/performance/) against FINUFFT and ducc.
+> - The [preview documentation](https://JuliaMath.github.io/NFFT.jl/previews/PR177/) describes the
+>   new version, including a [migration guide](https://JuliaMath.github.io/NFFT.jl/previews/PR177/migration/)
+>   and [benchmarks](https://JuliaMath.github.io/NFFT.jl/previews/PR177/performance/) against FINUFFT and ducc.
 >
 > To try the development version (AbstractNFFTs 1.0 is not registered yet, so it comes first):
 > ```
-> pkg> add https://github.com/JuliaMath/NFFT.jl:lib/AbstractNFFTs#main
-> pkg> add NFFT#main
+> pkg> add https://github.com/JuliaMath/NFFT.jl:lib/AbstractNFFTs#refactoring
+> pkg> add https://github.com/JuliaMath/NFFT.jl#refactoring
 > ```
 
 ## What is new in 1.0

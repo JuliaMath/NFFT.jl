@@ -4,8 +4,9 @@
 for Python and C compiled from the same code.*
 
 !!! warning "Development version"
-    This documentation describes NFFT.jl 1.0, which is under development on the main branch
-    and not released yet. `Pkg.add("NFFT")` installs version 0.14, documented
+    This documentation describes NFFT.jl 1.0, which is under development on the branch
+    `refactoring` ([PR #177](https://github.com/JuliaMath/NFFT.jl/pull/177)) and not released yet.
+    `Pkg.add("NFFT")` installs version 0.14, documented
     [here](https://JuliaMath.github.io/NFFT.jl/stable). See [Migrating from NFFT.jl 0.x](@ref).
 
 NFFT.jl computes the non-equidistant fast Fourier transform (NFFT, also called NUFFT, or gridding in
