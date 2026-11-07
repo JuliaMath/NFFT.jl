@@ -5,6 +5,11 @@
 const SIZES = Dict(1 => [2^18], 2 => [512, 512], 3 => [64, 64, 64])
 const COMPETITORS = ["NFFT", "FINUFFT", "ducc"]
 
+# NFFT.jl libraries that are interpolated at the others' errors (NFFT.jl with another FFT backend,
+# e.g. FFTL, is compared like NFFT.jl itself)
+const NFFT_LIBS = ["NFFT", "NFFT FFTL"]
+isnfft(lib) = lib in NFFT_LIBS
+
 # sigma_req: a fixed oversampling factor (NFFT.jl: the smallest W that reaches tol at it) instead of
 # the library's own choice
 function task(; lib, N, J=prod(N), transform="nfft", L=1, nodes="uniform", T="Float64", tol=1e-8,
@@ -52,7 +57,7 @@ end
 # NFFT.jl also half a decade below each tolerance but the last: the others are compared with it at
 # their measured errors, and its time is interpolated between neighbouring points, which on decades
 # alone miss choices in between (on Zen 3 W = 10 on a 120³ instead of a 128³ grid at 64³ modes).
-pareto_tols(lib, tol, T) = lib == "NFFT" && tol > last(tolsweep(T)) ? [tol, tol / sqrt(10)] : [tol]
+pareto_tols(lib, tol, T) = isnfft(lib) && tol > last(tolsweep(T)) ? [tol, tol / sqrt(10)] : [tol]
 @suite "pareto" "time against measured error, tolerance sweep, Float64 and Float32, D = 1…3" o -> [
   task(; lib, N=SIZES[D], tol=t, T, threads, budget=opt(o, :budget, 0.1), suite="pareto")
   for threads in opt(o, :threads, [default_threads()]) for D in opt(o, :dims, [1, 2, 3])
@@ -67,7 +72,7 @@ pareto_tols(lib, tol, T) = lib == "NFFT" && tol > last(tolsweep(T)) ? [tol, tol 
 
 # Comparisons at equal measured error: the other libraries run at `tol`, NFFT.jl on half decades
 # around it, so that its time can be interpolated at the error each of them delivers.
-own_tols(lib, tol) = lib == "NFFT" ? [tol * 10.0^(e / 2) for e in -4:4] : [tol]
+own_tols(lib, tol) = isnfft(lib) ? [tol * 10.0^(e / 2) for e in -4:4] : [tol]
 
 const SWEEP_SIZES = Dict(1 => [[2^e] for e in 10:2:22], 2 => [[n, n] for n in (32, 64, 128, 256, 512, 1024, 2048)],
                          3 => [[n, n, n] for n in (16, 24, 32, 48, 64, 96, 128)])
@@ -110,12 +115,14 @@ const BATCH_CASES = [("oct", [2048], 2048, [1, 8, 64, 512]), ("mri", [256, 256],
   for lib in opt(o, :libs, COMPETITORS)]
 
 @suite "real" "real data: RNFFT, NFCT, NFST against the complex NFFT of the same size" o -> [
-  [task(; lib="NFFT", N=SIZES[D], transform, tol, threads=opt(o, :threads, [default_threads()])[1],
+  [task(; lib, N=SIZES[D], transform, tol, threads=opt(o, :threads, [default_threads()])[1],
         budget=opt(o, :budget, 0.1), suite="real")
+   for lib in opt(o, :libs, NFFT_LIBS) if isnfft(lib)
    for D in opt(o, :dims, [1, 2, 3]) for tol in opt(o, :tols, [1e-4, 1e-8])
    for transform in ["nfft", "rnfft", "nfct", "nfst"]];
   [task(; lib, N=SIZES[D], tol, threads=opt(o, :threads, [default_threads()])[1], budget=opt(o, :budget, 0.1), suite="real")
-   for D in opt(o, :dims, [1, 2, 3]) for tol in opt(o, :tols, [1e-4, 1e-8]) for lib in ["FINUFFT", "ducc"]];
+   for lib in opt(o, :libs, ["FINUFFT", "ducc"]) if !isnfft(lib)
+   for D in opt(o, :dims, [1, 2, 3]) for tol in opt(o, :tols, [1e-4, 1e-8])];
   [task(; lib="NFFT", N=[2048], J=2048, L=512, transform, tol, threads=opt(o, :threads, [default_threads()])[1],
         budget=opt(o, :budget, 0.1), suite="real:oct")
    for tol in opt(o, :tols, [1e-4, 1e-8]) for transform in ["nfft", "rnfft"]]]
@@ -224,7 +231,7 @@ const LITE = ["pareto", "density", "sizes", "threads", "batch", "real", "nnfft"]
 decade(x) = isapprox(log10(x), round(log10(x)); atol=1e-3)   # J = round(ρ|N|)
 function lite_keep(t)
   s = first(split(t["suite"], ":")); e = round(Int, -log10(t["tol"]))
-  s == "pareto" ? t["lib"] == "NFFT" || iseven(e) :   # NFFT.jl on the full sweep: interpolated
+  s == "pareto" ? isnfft(t["lib"]) || iseven(e) :   # NFFT.jl on the full sweep: interpolated
   s == "nnfft" ? t["lib"] == "NFFT" || t["T"] == "Float32" || e % 4 == 0 :
   s == "density" ? decade(t["J"] / prod(t["N"])) && decade(t["tol"]) :
   s == "sizes" ? decade(t["tol"]) && isodd(findfirst(==(t["N"]), SWEEP_SIZES[length(t["N"])])) :

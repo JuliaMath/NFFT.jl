@@ -8,15 +8,19 @@ const KIND_PLANS = Dict("nfft" => :plan_nfft, "rnfft" => :plan_rnfft, "nfct" => 
 supports(task) = isdefined(AbstractNFFTs, KIND_PLANS[task["transform"]]) ? nothing :
                  "no $(task["transform"]) in this revision"
 
+# the plan keywords of the FFT backend (adapters for an ablation with another backend override
+# this, e.g. `(; fft = NFFT.FFTLBackend())`)
+fft_kw() = (;)
+
 function plan(prob, tol)
-  prob.task["transform"] == "nnfft" && return AbstractNFFTs.plan_nnfft(NFFT.backend(), prob.k, prob.src; reltol=tol)
+  prob.task["transform"] == "nnfft" && return AbstractNFFTs.plan_nnfft(NFFT.backend(), prob.k, prob.src; reltol=tol, fft_kw()...)
   D = length(prob.N); L = size(prob.y, 2)
   N = L == 1 ? prob.N : (prob.N..., L)
   f = getfield(AbstractNFFTs, KIND_PLANS[prob.task["transform"]])
   haskey(prob.task, "rule") && return rule_plan(f, prob, N, tol)
-  haskey(prob.task, "sigma_req") || return f(NFFT.backend(), prob.k, N; reltol=tol, dims=1:D)
+  haskey(prob.task, "sigma_req") || return f(NFFT.backend(), prob.k, N; reltol=tol, dims=1:D, fft_kw()...)
   e = smallest_width(prob.task["sigma_req"], tol, prob.N, eltype(prob.k))
-  f(NFFT.backend(), prob.k, N; reltol=tol, dims=1:D, window=e.window, W=e.W, σ=e.σ)
+  f(NFFT.backend(), prob.k, N; reltol=tol, dims=1:D, window=e.window, W=e.W, σ=e.σ, fft_kw()...)
 end
 
 # The parameters another library would choose (src/rules.jl): its window as a CustomWindow, its W, and
@@ -37,9 +41,9 @@ function rule_plan(f, prob, N, tol)
   window(ci) = NFFT.CustomWindow(Rules.window(ci))
   function mk(ci)
     has_gridsize() && return f(NFFT.backend(), prob.k, N; reltol=tol, dims=1:D, window=window(ci), W=ci.W,
-                               σ=minimum(ci.grid ./ collect(prob.N)), gridsize=Tuple(ci.grid))
+                               σ=minimum(ci.grid ./ collect(prob.N)), gridsize=Tuple(ci.grid), fft_kw()...)
     allequal(ci.grid ./ collect(prob.N)) || throw(Unsupported("the grid of the rule is not one σ for all dimensions"))
-    f(NFFT.backend(), prob.k, N; reltol=tol, dims=1:D, window=window(ci), W=ci.W, σ=(ci.grid[1] - 0.5) / prob.N[1])
+    f(NFFT.backend(), prob.k, N; reltol=tol, dims=1:D, window=window(ci), W=ci.W, σ=(ci.grid[1] - 0.5) / prob.N[1], fft_kw()...)
   end
   p = mk(c.trafo)
   RulePlan(p, c.trafo == c.adjoint ? p : mk(c.adjoint), c, collect(prob.N))

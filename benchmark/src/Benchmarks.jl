@@ -18,6 +18,7 @@ include("suites.jl")
 # Libraries: environment and adapter. "NFFT@<rev>" is NFFT.jl at a git revision (see `ref_lib`).
 const LIBS = Dict(
   "NFFT" => (env=joinpath(ROOT, "envs", "nfft"), adapter="nfft.jl"),
+  "NFFT FFTL" => (env=joinpath(ROOT, "envs", "nfftfftl"), adapter="nfft_fftl.jl"),
   "NFFT 0.14" => (env=joinpath(ROOT, "envs", "nfft014"), adapter="nfft014.jl"),
   "FINUFFT" => (env=joinpath(ROOT, "envs", "finufft"), adapter="finufft.jl"),
   "ducc" => (env=joinpath(ROOT, "envs", "ducc"), adapter="ducc.jl"),
