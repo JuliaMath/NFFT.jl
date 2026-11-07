@@ -80,8 +80,10 @@ struct PassFFT{D,P}
   nthreads::Int                     # tasks per pass at most
 end
 # Plans whose type depends on the dimension (FFTL): their common supertype, one dynamic call per box.
-function PassFFT(plans::Vector{<:Vector}, boxes::Vector{Vector{NTuple{D,UnitRange{Int}}}}, nthreads) where {D}
-  P = mapreduce(eltype, typejoin, plans)
+# `plans` is an untyped `Vector{Any}` when no pass remains (the real transforms in 1D) or the plan
+# type does not infer across dimensions.
+function PassFFT(plans::Vector, boxes::Vector{Vector{NTuple{D,UnitRange{Int}}}}, nthreads) where {D}
+  P = mapreduce(eltype, typejoin, plans; init=Union{})
   PassFFT{D,P}([convert(Vector{P}, p) for p in plans], boxes, nthreads)
 end
 
