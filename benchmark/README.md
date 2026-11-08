@@ -29,10 +29,10 @@ Each library runs in a worker process with its own environment (`envs/<lib>/Proj
 instantiated on first use): competitors never become dependencies of NFFT.jl, libraries with
 conflicting dependencies (NonuniformFFTs.jl needs AbstractNFFTs 0.9, NFFT.jl 0.14) can be compared,
 and each library gets exactly the requested number of threads. `NFFT@<rev>` is NFFT.jl at a git
-revision, checked out as a worktree in `.cache/`. `NFFT FFTL` is NFFT.jl with FFTL.jl as its FFT
-backend (the ablation against the default FFTW backend; the adapters `nfft.jl`/`nfft_fftl.jl` differ
-in the backend alone), and in the suites that interpolate NFFT.jl at the others' errors it is
-interpolated like `NFFT` itself.
+revision, checked out as a worktree in `.cache/`. `NFFT FFTL` is NFFT.jl with the FFTL backend made
+explicit (the default; the adapters `nfft.jl`/`nfft_fftl.jl` differ in the backend alone), for
+ad-hoc backend comparisons; the standard suites run `NFFT` with the default backend alone, and in
+the suites that interpolate NFFT.jl at the others' errors it is interpolated like `NFFT` itself.
 
 - `src/suites.jl`: the suites, each a list of tasks (library, transform, size, nodes, batch,
   precision, threads, tolerance).

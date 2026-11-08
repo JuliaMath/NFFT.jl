@@ -5,9 +5,8 @@
 const SIZES = Dict(1 => [2^18], 2 => [512, 512], 3 => [64, 64, 64])
 const COMPETITORS = ["NFFT", "FINUFFT", "ducc"]
 
-# NFFT.jl libraries that are interpolated at the others' errors (NFFT.jl with another FFT backend,
-# e.g. FFTL, is compared like NFFT.jl itself)
-const NFFT_LIBS = ["NFFT", "NFFT FFTL"]
+# NFFT.jl libraries that are interpolated at the others' errors
+const NFFT_LIBS = ["NFFT"]
 isnfft(lib) = lib in NFFT_LIBS
 
 # sigma_req: a fixed oversampling factor (NFFT.jl: the smallest W that reaches tol at it) instead of
