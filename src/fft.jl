@@ -10,65 +10,79 @@ dimension of an array view, in place as seen from NFFT.jl. A backend `B` impleme
 * optionally `NFFT.planning(f, ::B, nthreads)`: run the planning `f()` with `nthreads` threads per
   plan (default: `f()`)
 
-The RNFFT, NFCT and NFST use FFTW's real and real-to-real transforms and need [`FFTWBackend`](@ref).
+The real transforms (RNFFT, NFCT, NFST) run with every backend: FFTW has native real and
+real-to-real plans, the others through complex FFTs of the same length (`ComplexRealFFT`) and
+FFTL's real-to-real passes.
 """
 abstract type AbstractFFTBackend end
 
 """
-    FFTWBackend(; flags = FFTW.ESTIMATE)
+    FFTLBackend()
 
-FFTW on the CPU, the default. In D ≥ 2 NFFT.jl threads the per-dimension passes itself over
-single-threaded FFTW plans: FFTW's own threading with ESTIMATE produces plans up to 17× slower than
-MEASURE, while single-threaded batched ESTIMATE plans are within 10–20 % of MEASURE. A transform with
-one dimension uses FFTW's own threading.
+[FFTL.jl](https://github.com/JuliaMath/FFTL.jl), the default backend: an FFT in pure Julia with
+batched in-place transforms along one dimension of strided views, on the CPU through `plan_pass`
+and on GPU arrays through the KernelAbstractions extension. The first plan of a length compiles its
+kernels.
+"""
+struct FFTLBackend <: AbstractFFTBackend end
+
+"""
+    FFTWBackend(; flags = 1)
+
+FFTW on the CPU. In D ≥ 2 NFFT.jl threads the per-dimension passes itself over single-threaded FFTW
+plans: FFTW's own threading with ESTIMATE produces plans up to 17× slower than MEASURE, while
+single-threaded batched ESTIMATE plans are within 10–20 % of MEASURE. A transform with one dimension
+uses FFTW's own threading. `flags` is FFTW's planning flag, `1` is `FFTW.ESTIMATE`; needs
+`using FFTW` (the backend is a weak dependency).
 """
 Base.@kwdef struct FFTWBackend <: AbstractFFTBackend
-  flags::UInt32 = FFTW.ESTIMATE
+  flags::UInt32 = 1
 end
 
 """
     FFTABackend()
 
 [FFTA.jl](https://github.com/JuliaMath/FFTA.jl), an FFT in pure Julia; needs `using FFTA`. For NFFT
-and NNFFT plans. Slower than FFTW; its plans work out of place, so every pass keeps a buffer.
+and NNFFT plans. Slower than FFTL and FFTW; its plans work out of place, so every pass keeps a
+buffer.
 """
 struct FFTABackend <: AbstractFFTBackend end
 
-"""
-    FFTLBackend()
-
-[FFTL.jl](https://github.com/JuliaMath/FFTL.jl), an FFT in pure Julia with batched in-place
-transforms along one dimension of strided views; needs `using FFTL`. For NFFT and NNFFT plans
-(the real transforms go through complex FFTs of the same length). The first plan of a length
-compiles its kernels.
-"""
-struct FFTLBackend <: AbstractFFTBackend end
-
 pass_plan(fft::AbstractFFTBackend, args...) =
-  throw(ArgumentError("the FFT backend $(nameof(typeof(fft))) is not available; load FFTA for FFTABackend, FFTL for FFTLBackend"))
+  throw(ArgumentError("the FFT backend $(nameof(typeof(fft))) is not available; load FFTW for FFTWBackend, FFTA for FFTABackend"))
 apply_pass!(plan, v) = (plan * v; nothing)
 planning(f, ::AbstractFFTBackend, nthreads) = f()
 
-pass_plan(fft::FFTWBackend, ::Val{K}, v, d) where {K} =
-  K == FFTW.FORWARD ? FFTW.plan_fft!(v, d; flags=fft.flags) : FFTW.plan_bfft!(v, d; flags=fft.flags)
-planning(f, ::FFTWBackend, nthreads) = with_fftw_threads(f, nthreads)
+# FFTL (the default, a hard dependency): the pass interface. Task-local thread count, so that plans
+# made concurrently on other tasks keep their own.
+planning(f, ::FFTLBackend, nthreads) = task_local_storage(f, :nfft_fftl_threads, nthreads)
+pass_plan(::FFTLBackend, ::Val{K}, v, d) where {K} =
+  FFTL.plan_pass(v, d; sign=K, threads=get(task_local_storage(), :nfft_fftl_threads, 1))
+apply_pass!(p::FFTL.PassPlan, v) = (FFTL.apply!(p, v); nothing)
 
-# Threads for an FFTW plan threaded by FFTW itself (a single 1D pass) over n points. They pay off
-# from about 2^14 points (M1 Max, 10 threads: 8192 points twice as slow, 16384 1.2× and 32768 1.9×
-# faster) and make planning 5–10× slower (0.15–0.5 ms per plan).
-fft_nthreads(n, nthreads) = n >= 2^14 ? nthreads : 1
-
-# The thread count of FFTW's planner is global; planning restores it.
-function with_fftw_threads(f, n)
-  old = FFTW.get_num_threads()
-  FFTW.set_num_threads(n)
-  try
-    f()
-  finally
-    FFTW.set_num_threads(old)
-  end
+# the real transforms of the RNFFT as native r2c/c2r passes instead of the complex fallback of the
+# same length. FFTL has the passes only from the passes layer (branch, not released yet): against an
+# older FFTL the complex fallback stays. The passes must support the RNFFT's layout — the real grid
+# boxes are interior views of the padded grid, so the c2r output is not dense for D ≥ 2 (the
+# realpass of the current branches assumes a dense output and fails there; D = 1 is dense and runs).
+if isdefined(FFTL, :plan_r2c_pass)
+  rfft_plan(::FFTLBackend, x, X) =
+    FFTL.plan_r2c_pass(x, 1; threads=get(task_local_storage(), :nfft_fftl_threads, 1))
+  brfft_plan(::FFTLBackend, X, x) =
+    FFTL.plan_c2r_pass(X, 1; n=size(x, 1), threads=get(task_local_storage(), :nfft_fftl_threads, 1))
 end
 
+# The full-transform shortcuts of the RNFFT stage interface: one call instead of the pass machinery.
+# The generic backend has none; the backends with an AbstractFFTs interface do.
+full_brfft(fft::AbstractFFTBackend, X, n) = nothing
+full_brfft(fft::FFTLBackend, X, n) = FFTL.brfft(X, n)
+full_rfft(fft::AbstractFFTBackend, g, n) = nothing
+full_rfft(fft::FFTLBackend, g, n) = FFTL.rfft(g)
+
+# Threads for a 1D pass threaded by the backend itself over n points. They pay off from about 2^14
+# points (M1 Max, 10 threads: 8192 points twice as slow, 16384 1.2× and 32768 1.9× faster) and make
+# planning 5–10× slower (0.15–0.5 ms per plan).
+fft_nthreads(n, nthreads) = n >= 2^14 ? nthreads : 1
 # One pass per transformed dimension, each over a set of boxes (array views) with a batched 1D
 # plan. Forward (direct NFFT): the input is nonzero only in the corners of the kept modes, passes
 # run along the transformed dims in decreasing order, pass d only on lines whose transformed dims
@@ -157,12 +171,9 @@ function apply!(P::PassFFT, x)
 end
 
 # Real FFTs along dimension 1 of a real array x of length n there: r2c to the half spectrum
-# (n÷2 + 1 points) and its inverse c2r (unnormalised). FFTW has them as plans; other backends get
-# them from a complex FFT of the same length (twice the work), the c2r with the spectrum completed by
-# Hermitian symmetry. Applied with mul!(out, plan, in).
-rfft_plan(fft::FFTWBackend, x, X) = FFTW.rFFTWPlan{eltype(x),FFTW.FORWARD,false,ndims(x)}(x, X, (1,), fft.flags, FFTW.NO_TIMELIMIT)
-brfft_plan(fft::FFTWBackend, X, x) =
-  FFTW.rFFTWPlan{eltype(X),FFTW.BACKWARD,false,ndims(x)}(X, x, (1,), fft.flags, FFTW.NO_TIMELIMIT)
+# (n÷2 + 1 points) and its inverse c2r (unnormalised). FFTW has them as plans (the extension);
+# other backends get them from a complex FFT of the same length (twice the work), the c2r with the
+# spectrum completed by Hermitian symmetry. Applied with mul!(out, plan, in).
 
 struct ComplexRealFFT{K,P,C}
   plan::P

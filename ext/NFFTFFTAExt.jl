@@ -1,9 +1,8 @@
 # FFTABackend: the FFT passes of NFFT plans with FFTA.jl.
 module NFFTFFTAExt
 
-using NFFT, FFTA, LinearAlgebra
-using NFFT: FFTABackend, FFTW
-using NFFT.FFTW: AbstractFFTs
+using NFFT, FFTA, AbstractFFTs, LinearAlgebra
+using NFFT: FFTABackend
 
 # FFTA's plans work out of place: each plan keeps a buffer of its box.
 struct FFTAPass{P,B}

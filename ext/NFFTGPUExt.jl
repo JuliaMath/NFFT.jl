@@ -15,7 +15,7 @@ module NFFTGPUExt
 
 using NFFT, NFFT.AbstractNFFTs
 using NFFT: halo, gridpos, weights, mirror
-using NFFT.FFTW: plan_fft!, plan_bfft!, plan_rfft, plan_brfft
+using AbstractFFTs: plan_fft!, plan_bfft!, plan_rfft, plan_brfft
 using LinearAlgebra: mul!
 using GPUArrays: AbstractGPUArray
 using KernelAbstractions

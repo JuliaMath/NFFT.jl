@@ -1,7 +1,7 @@
 module NFFT
 
 using LinearAlgebra
-using FFTW
+using FFTL
 using StaticArrays
 using Reexport
 

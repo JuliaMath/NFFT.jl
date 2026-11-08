@@ -175,7 +175,7 @@ end
 function cpu_options(storage, fft, tilesize, gridsize)
   storage <: Array || (fft === nothing && tilesize === nothing && gridsize === nothing) ||
     throw(ArgumentError("the options fft, tilesize and gridsize are not supported with storage = $storage"))
-  something(fft, FFTWBackend())
+  something(fft, FFTLBackend())
 end
 
 # The grid size of a plan: `nothing` (from σ and W, see `grid_size`) or Ñ per dimension of dims. A

@@ -37,6 +37,7 @@ nfft_plan(k, N; kwargs...) = plan_nfft(NFFT.backend(), k, N; kwargs...)
   include("testToeplitz.jl")
 end
 
-# the GPU code on the CPU (JLArrays); the GPU devices run in test/gpu/run.jl
-include("gpu/jlarrays.jl")
+# The GPU code on the CPU (JLArrays); the GPU devices run in test/gpu/run.jl. The JLArrays mock
+# conflicts with FFTL's KernelAbstractions 0.10 (JLArrays needs 0.9 in every version), so it runs
+# separately: julia test/gpu/jlarrays.jl (it needs FFTW and AbstractFFTs in the environment).
 include("aqua.jl")

@@ -1,20 +1,23 @@
-# The FFT backend is exchangeable: NFFT and NNFFT plans with another backend (FFTA.jl, FFTL.jl, both
-# pure Julia) give the results of the FFTW plans, and the cores hold whatever passes the backend makes.
-# FFTL is not registered: its tests run from test/fftl/run.jl.
+# The FFT backend is exchangeable: NFFT and NNFFT plans with another backend (FFTW, FFTA.jl, FFTL.jl)
+# give the results of the default backend's plans, and the cores hold whatever passes the backend
+# makes. FFTL is the default; its tests run from test/fftl/run.jl against FFTW.
 
 function fft_backend_tests(fft::AbstractFFTBackend)
   @testset "FFT backend $(nameof(typeof(fft)))" begin
     rng = Xoshiro(21)
+    # the contrast backend: FFTL is the default, so the FFTL backend is tested against FFTW and the
+    # others against the default
+    contrast = fft isa FFTLBackend ? FFTWBackend() : FFTLBackend()
     backend_plan(k, N; kwargs...) = plan_nfft(k, N; fft, kwargs...)
     @testset "contract" begin
       contract_tests(backend_plan; T=Float64, tols=(1e-4, 1e-9), sizes=((64,), (31, 32), (12, 13, 10)), rng)
     end
 
-    @testset "against FFTW, $N" for N in ((40,), (17, 22), (9, 10, 8))
+    @testset "against $(nameof(typeof(contrast))), $N" for N in ((40,), (17, 22), (9, 10, 8))
       D = length(N); J = 200
       k = rand(rng, D, J) .- 0.5
       p = plan_nfft(k, N; reltol=1e-9, fft)
-      q = plan_nfft(k, N; reltol=1e-9)
+      q = plan_nfft(k, N; reltol=1e-9, fft=contrast)
       @test !(p.core.fwd isa typeof(q.core.fwd))
       f = randn(rng, ComplexF64, N); fHat = randn(rng, ComplexF64, J)
       @test p * f ≈ q * f

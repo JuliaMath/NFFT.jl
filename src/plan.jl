@@ -113,7 +113,7 @@ Generic options (every AbstractNFFTs implementation): `reltol` (default 1e-8), `
   `ExpSemicircle()` or a `CustomWindow` (needs `W` and `σ`)
 * `W`: window width (integer, odd allowed; W = 2m in the notation of Knopp et al. 2023)
 * `σ`: oversampling factor
-* `fft`: FFT backend, `FFTWBackend()` (default) or `FFTABackend()` (`using FFTA`), see
+* `fft`: FFT backend, `FFTLBackend()` (default) or `FFTWBackend()` (`using FFTW`), see
   [`AbstractFFTBackend`](@ref)
 * `tilesize`: expert option, tile edge of the node binning
 * `gridsize`: expert option, size Ñ of the oversampled grid (integer, or one per transformed

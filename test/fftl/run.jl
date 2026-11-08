@@ -8,9 +8,9 @@ Pkg.develop([PackageSpec(path=joinpath(root, "lib", "AbstractNFFTs")),
              PackageSpec(path=joinpath(root, "lib", "NFFTTools")),
              PackageSpec(path=root)])
 Pkg.add(isempty(ARGS) ? PackageSpec(url="https://github.com/JuliaMath/FFTL.jl", rev="main") : PackageSpec(path=only(ARGS)))
-Pkg.add(["Test", "Random", "LinearAlgebra"])
+Pkg.add(["Test", "Random", "LinearAlgebra", "FFTW"])
 
-using Test, Random, LinearAlgebra, NFFT, FFTL
+using Test, Random, LinearAlgebra, NFFT, FFTL, FFTW
 include(joinpath(root, "test", "contract.jl"))
 include(joinpath(root, "test", "fftbackend.jl"))
 fft_backend_tests(FFTLBackend())

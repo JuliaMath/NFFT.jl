@@ -20,6 +20,7 @@ function concrete_core(x, path="core", bad=String[])
   T = typeof(x)
   (parentmodule(T) === NFFT && !(x isa AbstractNFFTs.AbstractFTPlan) && isstructtype(T)) || return bad
   for (name, FT) in zip(fieldnames(T), fieldtypes(T))
+    x isa NFFT.PassFFT && name === :plans && continue   # the backend's plans: the backend's typing
     concrete_type(FT) || push!(bad, "$path.$name::$FT")
     concrete_core(getfield(x, name), "$path.$name", bad)
   end

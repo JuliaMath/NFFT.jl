@@ -1,8 +1,7 @@
 # The GPU code path on the CPU: JLArrays is the reference implementation of a GPU array
-# (KernelAbstractions' CPU backend), so that every CI run covers the GPU kernels.
-using JLArrays, LinearAlgebra, NFFT
-using NFFT.FFTW
-const AbstractFFTs = FFTW.AbstractFFTs
+# (KernelAbstractions' CPU backend), so that every CI run covers the GPU kernels. It conflicts with
+# FFTL's KernelAbstractions 0.10 (JLArrays needs 0.9), so it runs outside the test target.
+using JLArrays, LinearAlgebra, NFFT, FFTW, AbstractFFTs
 
 # JLArrays has no FFTs: plans that run FFTW on a host copy. They accept only the regions that
 # rocFFT (AMDGPU.jl) accepts, ranges that start at dimension 1 or end at the last one.

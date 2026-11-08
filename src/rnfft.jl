@@ -193,7 +193,8 @@ function AbstractNFFTs.oversampled_fft!(p::RNFFTPlan{T}, ĝ::AbstractArray, g::A
   c = check_rnfft_stage(p, nothing, ĝ, g, nothing)
   X = conj.(ĝ)
   selectdim(X, 1, 2:cld(c.Ñ[1], 2)) .*= T(0.5)
-  c.fft isa FFTWBackend && return copyto!(g, FFTW.brfft(X, c.Ñ[1]))
+  y = full_brfft(c.fft, X, c.Ñ[1])
+  y === nothing || return copyto!(g, y)
   for d in 2:ndims(X)
     apply_pass!(planning(() -> pass_plan(c.fft, Val(1), X, d), c.fft, 1), X)
   end
@@ -201,7 +202,8 @@ function AbstractNFFTs.oversampled_fft!(p::RNFFTPlan{T}, ĝ::AbstractArray, g::A
 end
 function AbstractNFFTs.oversampled_bfft!(p::RNFFTPlan, g::AbstractArray, ĝ::AbstractArray)
   c = check_rnfft_stage(p, nothing, ĝ, g, nothing)
-  c.fft isa FFTWBackend && return (ĝ .= conj.(FFTW.rfft(g)))
+  X = full_rfft(c.fft, g, c.Ñ[1])
+  X === nothing || return copyto!(ĝ, conj.(X))
   mul!(ĝ, rfft_plan(c.fft, g, ĝ), g)
   for d in 2:ndims(ĝ)
     apply_pass!(planning(() -> pass_plan(c.fft, Val(-1), ĝ, d), c.fft, 1), ĝ)
