@@ -5,10 +5,11 @@
 const PLATFORMS = (
   m1    = (machine="apple-m1-max", label="M1 Max CPU"),
   zen3  = (machine="amd-epyc-7763", label="Zen 3 CPU"),
+  zen2  = (machine="amd-epyc-7702-64-core-processor", label="Zen 2 CPU"),
   metal = (machine="apple-m1-max", label="M1 Max GPU (Metal)"),
   cuda  = (machine="rtx-a6000", label="RTX A6000 (CUDA)"),
 )
-const CPU_MACHINES = ["apple-m1-max", "amd-epyc-7763"]
+const CPU_MACHINES = ["apple-m1-max", "amd-epyc-7763", "amd-epyc-7702-64-core-processor"]
 const STANDARD = Dict(1 => [2^18], 2 => [512, 512], 3 => [64, 64, 64])
 const BIG = Dict(1 => [2^22], 2 => [2048, 2048], 3 => [160, 160, 160])
 const DISPLAY = Dict("NFFT" => "NFFT.jl", "NonuniformFFTs" => "NonuniformFFTs.jl", "NFFT 0.14" => "NFFT.jl 0.14")
@@ -69,9 +70,10 @@ ratio_ticks(lo, hi) = filter(v -> lo / 1.05 <= v <= hi * 1.05, [0.1, 0.2, 0.3, 0
 
 # A. Median speed ratio per competitor and platform (rows) and dimension and transform (columns),
 # Pareto fronts of both libraries, standard sizes (1D 2^18, 2D 512², 3D 64³, J = |N|).
-const OVERVIEW_ROWS = [("ducc", :m1), ("ducc", :zen3), ("FINUFFT", :m1), ("FINUFFT", :zen3),
-                       ("NonuniformFFTs", :m1), ("NonuniformFFTs", :zen3), ("NonuniformFFTs", :cuda),
-                       ("cuFINUFFT", :cuda), ("mlx-nufft", :metal)]
+const OVERVIEW_ROWS = [("ducc", :m1), ("ducc", :zen3), ("ducc", :zen2),
+                       ("FINUFFT", :m1), ("FINUFFT", :zen3), ("FINUFFT", :zen2),
+                       ("NonuniformFFTs", :m1), ("NonuniformFFTs", :zen3), ("NonuniformFFTs", :zen2),
+                       ("NonuniformFFTs", :cuda), ("cuFINUFFT", :cuda), ("mlx-nufft", :metal)]
 
 function overview(name, precisions)
   data = Dict(p => filter(r -> r["N"] == STANDARD[r["D"]] && r["J"] == prod(r["N"]), platform_rows(p))
