@@ -9,3 +9,4 @@ Manifest.toml
 benchmark/.cache/
 benchmark/envs/*/LocalPreferences.toml
 benchmark/out/
+.venv-mlx/
