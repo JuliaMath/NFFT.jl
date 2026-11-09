@@ -1,0 +1,6 @@
+/* Benchmark explorer: controls above a white plot (light in every documentation theme). */
+#nfft-explorer { margin: 1.5em 0; }
+.nfft-explorer-controls { display: flex; flex-wrap: wrap; gap: 0.6em 1.2em; margin-bottom: 0.6em; font-size: 0.9em; }
+.nfft-explorer-controls select { margin-left: 0.3em; padding: 0.15em 0.3em; border-radius: 4px; }
+.nfft-explorer-plot { background: white; border: 1px solid #ddd; border-radius: 6px; }
+.nfft-explorer-note { font-size: 0.8em; color: #777; margin-top: 0.4em; }

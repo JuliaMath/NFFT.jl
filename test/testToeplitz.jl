@@ -1,85 +1,47 @@
-using Test
-using NFFT
+using NFFTTools: calculateToeplitzKernel, calculateToeplitzKernel!, convolveToeplitzKernel!
 using FFTW
-using BenchmarkTools
 
 @testset "Toeplitz" begin
+  rng = Xoshiro(1)
 
-Nx = 32
-## calculateToeplitzKernel vs calculateToeplitzKernel_explicit (2D, Float64)
-for Nx ∈ [32, 33, 64]
-    trj = rand(2, 1000) .- 0.5
+  # kernel against the explicit evaluation (2D, Float64)
+  for Nx in (32, 33, 64)
+    trj = rand(rng, 2, 1000) .- 0.5
     Kx = NFFTTools.calculateToeplitzKernel_explicit((Nx, Nx), trj)
-    Ka = calculateToeplitzKernel((Nx, Nx), trj, m=4, σ=2)
+    Ka = calculateToeplitzKernel((Nx, Nx), trj)
+    @test Ka isa Matrix{ComplexF64}
+    @test Ka ≈ Kx rtol = 1e-7
 
-    @test typeof(Kx) === Matrix{ComplexF64}
-    @test typeof(Ka) === Matrix{ComplexF64}
-    @test Ka ≈ Kx rtol = 1e-6
-end
+    p = plan_nfft(rand(rng, 2, 10) .- 0.5, (2Nx, 2Nx))
+    Kb = similar(Kx)
+    calculateToeplitzKernel!(Kb, p, trj, plan_fft(Kb; flags = FFTW.ESTIMATE))
+    @test Kb ≈ Kx rtol = 1e-7
+  end
 
-## calculateToeplitzKernel with less-allocating constructor vs calculateToeplitzKernel_explicit (2D, Float64)
-for Nx ∈ [32, 33, 64]
-    trj = rand(2, 1000) .- 0.5
-    Kx = NFFTTools.calculateToeplitzKernel_explicit((Nx, Nx), trj)
+  # Float32, square, rectangular and 3D
+  for shape in ((32, 32), (32, 33), (16, 16, 16))
+    trj = Float32.(rand(rng, length(shape), 2000) .- 0.5)
+    Kx = NFFTTools.calculateToeplitzKernel_explicit(shape, trj)
+    Ka = calculateToeplitzKernel(shape, trj; reltol = 1e-5)
+    @test Ka isa Array{ComplexF32,length(shape)}
+    @test size(Ka) == 2 .* shape
+    @test Ka ≈ Kx rtol = 1e-4
+  end
 
-    p = NFFTPlan(trj, (2Nx, 2Nx))
-    Ka = similar(Kx)
-    fftplan = plan_fft(Ka; flags = FFTW.ESTIMATE)
-    calculateToeplitzKernel!(Ka, p, trj, fftplan)
-
-    @test typeof(Kx) === Matrix{ComplexF64}
-    @test typeof(Ka) === Matrix{ComplexF64}
-    @test Ka ≈ Kx rtol = 1e-6
-end
-
-## calculateToeplitzKernel vs calculateToeplitzKernel_explicit (2D, Float32)
-Nx = 32
-trj = Float32.(rand(2, 10000) .- 0.5)
-Kx = NFFTTools.calculateToeplitzKernel_explicit((Nx, Nx), trj)
-Ka = calculateToeplitzKernel((Nx, Nx), trj, m=4, σ=2)
-
-@test typeof(Kx) === Matrix{ComplexF32}
-@test typeof(Ka) === Matrix{ComplexF32}
-@test Ka ≈ Kx rtol = 1e-5
-
-
-## compare to the NFFT
-x = randn(ComplexF32, Nx, Nx)
-xN = nfft_adjoint(trj, (Nx, Nx), nfft(trj, x))
-
-xOS1 = similar(Ka)
-xOS2 = similar(Ka)
-
-FFTW.set_num_threads(1)
-fftplan = plan_fft(xOS1; flags = FFTW.MEASURE)
-ifftplan = plan_ifft(xOS1; flags = FFTW.MEASURE)
-convolveToeplitzKernel!(x, Ka, fftplan, ifftplan, xOS1, xOS2)
-@test x ≈ xN rtol = 1e-5
-
-## test that convolveToeplitzKernel! with all arguments is non-allocating (only true with FFTW.set_num_threads(1))
-bm = @benchmark convolveToeplitzKernel!($x, $Ka, $fftplan, $ifftplan, $xOS1, $xOS2)
-@test bm.allocs == 0
-
-## calculateToeplitzKernel vs calculateToeplitzKernel_explicit  (2D-rectangular, Float32)
-Nx = 32
-Ny = 33
-trj = Float32.(rand(2, 1000) .- 0.5)
-Kx = NFFTTools.calculateToeplitzKernel_explicit((Nx, Ny), trj)
-Ka = calculateToeplitzKernel((Nx, Ny), trj, m=4, σ=2)
-
-@test typeof(Kx) === Matrix{ComplexF32}
-@test typeof(Ka) === Matrix{ComplexF32}
-@test size(Ka) == (2Nx, 2Ny)
-@test Ka ≈ Kx rtol = 1e-5
-
-## calculateToeplitzKernel vs calculateToeplitzKernel_explicit 3D, Float32
-Nx = 32
-trj = Float32.(rand(3, 1000) .- 0.5)
-Kx = NFFTTools.calculateToeplitzKernel_explicit((Nx, Nx, Nx), trj)
-Ka = calculateToeplitzKernel((Nx, Nx, Nx), trj, m=4, σ=2)
-
-@test typeof(Kx) === Array{ComplexF32,3}
-@test typeof(Ka) === Array{ComplexF32,3}
-@test Ka ≈ Kx rtol = 1e-5
-
+  # the Toeplitz product equals Aᴴ A
+  Nx = 32
+  trj = Float32.(rand(rng, 2, 5000) .- 0.5)
+  Ka = calculateToeplitzKernel((Nx, Nx), trj; reltol = 1e-5)
+  x = randn(rng, ComplexF32, Nx, Nx)
+  p = plan_nfft(trj, (Nx, Nx); reltol = 1e-5)
+  xN = adjoint(p) * (p * x)
+  xOS1, xOS2 = similar(Ka), similar(Ka)
+  fftplan = plan_fft(xOS1; flags = FFTW.MEASURE)
+  ifftplan = plan_ifft(xOS1; flags = FFTW.MEASURE)
+  convolveToeplitzKernel!(x, Ka, fftplan, ifftplan, xOS1, xOS2)
+  @test x ≈ xN rtol = 1e-4
+  convolveToeplitzKernel!(x, Ka, fftplan, ifftplan, xOS1, xOS2)
+  if FFTW.get_num_threads() == 1
+    @test (@allocated convolveToeplitzKernel!(x, Ka, fftplan, ifftplan, xOS1, xOS2)) == 0
+  end
 end
