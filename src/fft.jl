@@ -27,16 +27,16 @@ kernels.
 struct FFTLBackend <: AbstractFFTBackend end
 
 """
-    FFTWBackend(; flags = 1)
+    FFTWBackend(; flags = 1 << 6)
 
 FFTW on the CPU. In D ≥ 2 NFFT.jl threads the per-dimension passes itself over single-threaded FFTW
 plans: FFTW's own threading with ESTIMATE produces plans up to 17× slower than MEASURE, while
 single-threaded batched ESTIMATE plans are within 10–20 % of MEASURE. A transform with one dimension
-uses FFTW's own threading. `flags` is FFTW's planning flag, `1` is `FFTW.ESTIMATE`; needs
+uses FFTW's own threading. `flags` is FFTW's planning flag, `1 << 6` is `FFTW.ESTIMATE`; needs
 `using FFTW` (the backend is a weak dependency).
 """
 Base.@kwdef struct FFTWBackend <: AbstractFFTBackend
-  flags::UInt32 = 1
+  flags::UInt32 = 1 << 6    # FFTW.ESTIMATE (the ABI value; a weak dependency, so the numeric value)
 end
 
 """
@@ -61,10 +61,9 @@ pass_plan(::FFTLBackend, ::Val{K}, v, d) where {K} =
 apply_pass!(p::FFTL.PassPlan, v) = (FFTL.apply!(p, v); nothing)
 
 # the real transforms of the RNFFT as native r2c/c2r passes instead of the complex fallback of the
-# same length. FFTL has the passes only from the passes layer (branch, not released yet): against an
-# older FFTL the complex fallback stays. The passes must support the RNFFT's layout — the real grid
-# boxes are interior views of the padded grid, so the c2r output is not dense for D ≥ 2 (the
-# realpass of the current branches assumes a dense output and fails there; D = 1 is dense and runs).
+# same length. The released FFTL (0.1.0) has no r2c/c2r passes yet — against it the complex fallback
+# stays; FFTL main has them since the realpass merge (PR #8), with the strides of input and output
+# read in mul! from the applied arrays (so the strided interior views of the RNFFT's real grid run).
 if isdefined(FFTL, :plan_r2c_pass)
   rfft_plan(::FFTLBackend, x, X) =
     FFTL.plan_r2c_pass(x, 1; threads=get(task_local_storage(), :nfft_fftl_threads, 1))
