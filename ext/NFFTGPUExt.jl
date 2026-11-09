@@ -52,6 +52,7 @@ struct Tiles{D,P}
   nt::NTuple{D,Int}
   tstr::NTuple{D,Int}
   bstr::NTuple{D,Int}
+  C::Int                    # nodes per iteration: their weights fit next to the tile
   tileptr::P
 end
 
@@ -84,8 +85,11 @@ col_strides(n) = (s = 1; map(x -> (r = s; s *= x; r), n))
 function tile_edges(D, W, T)
   D in (2, 3) || return nothing
   B = ntuple(_ -> max(tile_edge(D), W - 1), D)
-  bytes = 2sizeof(T) * prod(B) + TILE_CHUNK * D * (W * sizeof(T) + 4) + 2TILE_CHUNK * sizeof(T)
-  bytes <= local_bytes(T) ? B : nothing
+  # the largest chunk of nodes per iteration whose weights, offsets and values fit the local memory
+  # next to the tile accumulators
+  C = min(TILE_CHUNK, max(1, (local_bytes(T) - 2sizeof(T) * prod(B)) ÷ (D * (W * sizeof(T) + 4) + 2 * sizeof(T))))
+  bytes = 2sizeof(T) * prod(B) + C * D * (W * sizeof(T) + 4) + 2C * sizeof(T)
+  bytes <= local_bytes(T) ? (B, C) : nothing
 end
 
 # Bin edges for the resampling by subproblems: the largest up to `sub_edge` for which the padded
@@ -149,11 +153,12 @@ function Nodes(storage, k::Matrix, Ñ::NTuple{D,Int}, P::NTuple{D,Int}, W, φ, :
   # binned order: work-items with neighbouring indices touch neighbouring parts of the grid
   gpu = use_tiles(KA.get_backend(storage(Int32[])))
   Bs = gpu ? sub_edges(D, W, T) : nothing
-  Bt = gpu && Bs === nothing ? tile_edges(D, W, T) : nothing
+  BC = gpu && Bs === nothing ? tile_edges(D, W, T) : nothing
+  Bt = BC === nothing ? nothing : first(BC)
   B = something(Bs, Bt, ntuple(_ -> D == 1 ? 1024 : 16, D))
   nt = cld.(P, B)
   offs, ss, perm, tileptr = bin_nodes(k, Ñ, W, T, B, nt)
-  tiles = Bt === nothing ? nothing : Tiles(B, nt, col_strides(nt), col_strides(B), storage(Int32.(tileptr)))
+  tiles = Bt === nothing ? nothing : Tiles(B, nt, col_strides(nt), col_strides(B), last(BC), storage(Int32.(tileptr)))
   subs = Bs === nothing ? nothing : subproblems(storage, B, nt, tileptr)
   Nodes(W, K, storage(offs), storage(ss), storage(perm), tiles, subs)
 end
@@ -636,7 +641,7 @@ function resample_adjoint!(backend, nd::Nodes, gp, vals, L1, ::Val{D}) where {D}
            Val(D), Val(nd.W); ndrange=(length(nd.perm), size(gp, D + 1)))
   else
     adjoint_tile_kernel!(backend, TILE_WORKGROUP)(gp, nd.kernel, nd.offs, nd.ss, nd.perm, vals, tl.tileptr,
-      tl.nt, tl.B, tl.tstr, tl.bstr, L1, Val(D), Val(nd.W), Val(prod(tl.B)), Val(TILE_CHUNK), real(eltype(gp));
+      tl.nt, tl.B, tl.tstr, tl.bstr, L1, Val(D), Val(nd.W), Val(prod(tl.B)), Val(tl.C), real(eltype(gp));
       ndrange=prod(tl.nt) * size(gp, D + 1) * TILE_WORKGROUP)
   end
   gp
