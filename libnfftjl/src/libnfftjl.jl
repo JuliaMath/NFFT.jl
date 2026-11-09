@@ -18,8 +18,9 @@ using LinearAlgebra
 @eval LinearAlgebra __init__() = nothing
 
 # FFTW.jl destroys plans queued by finalizers through a call on its abstract plan type, which
-# trimming cannot resolve; this version calls the C functions directly.
-using NFFT: FFTW
+# trimming cannot resolve; this version calls the C functions directly. `using FFTW` loads the
+# NFFTFFTWExt extension first, whose binding the import below needs.
+using FFTW
 @eval FFTW function destroy_deferred()
   lock(deferred_destroy_lock)
   try
@@ -77,7 +78,7 @@ end
   inplace == (pointer(X) == pointer(Y)) || throw(ArgumentError("FFTW plan applied to in-place or out-of-place data it was not made for"))
   nothing
 end
-load_fftw() = (NFFT.FFTW.dlopen(NFFT.FFTW.libfftw3); NFFT.FFTW.dlopen(NFFT.FFTW.libfftw3f); nothing)
+load_fftw() = (FFTW.dlopen(FFTW.libfftw3); FFTW.dlopen(FFTW.libfftw3f); nothing)
 
 # The variants of the library, one compiled branch each: transform × element type × dimension ×
 # window width × batch strategy (as in NFFT.jl: no batch; slices one at a time, on one threaded core

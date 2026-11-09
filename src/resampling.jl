@@ -154,8 +154,19 @@ end
 # Write hint for the gather's output (the stores go through `b.perm` in random order and miss the
 # cache); ducc's interpolation issues the same hint 6 points ahead. Neutral on aarch64 (the
 # out-of-order engine covers it), 1.2–1.45× on x86 (measured on the EPYC 7702, Zen 2, 3D, W = 10).
-@inline prefetch_w(a::StridedArray, i) =
-  ccall("llvm.prefetch", llvmcall, Cvoid, (Ptr{Cvoid}, Int32, Int32, Int32), pointer(a, i), 1, 3, 1)
+# Julia < 1.12 rejects the intrinsic in ccall(…, llvmcall, …) and needs it as typed-pointer IR.
+@static if VERSION >= v"1.12"
+  @inline prefetch_w(a::StridedArray, i) =
+    ccall("llvm.prefetch", llvmcall, Cvoid, (Ptr{Cvoid}, Int32, Int32, Int32), pointer(a, i), 1, 3, 1)
+else
+  @inline prefetch_w(a::StridedArray, i) = Base.llvmcall(("""
+    declare void @llvm.prefetch(i8*, i32, i32, i32)
+    define void @entry(i64 %p) {
+      %ptr = inttoptr i64 %p to i8*
+      call void @llvm.prefetch(i8* %ptr, i32 1, i32 3, i32 1)
+      ret void
+    }""", "entry"), Cvoid, Tuple{Int}, Int(pointer(a, i)))
+end
 
 # Adjoint resampling: each task takes the next tile, adds its nodes into a private zeroed buffer of
 # edge B+W+1 (it stays in L1/L2) and flushes it into the grid (ducc's scheme; checkerboard colouring
