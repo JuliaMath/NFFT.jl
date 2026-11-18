@@ -5,3 +5,4 @@ test/test
 build.log
 examples/getting_started
 examples/batch
+LocalPreferences.toml
