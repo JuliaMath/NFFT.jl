@@ -32,7 +32,7 @@ Aqua = "0.8"
 DoubleFloats = "1"
 Enzyme = "0.13"
 FFTA = "0.3"
-FFTL = "0.1"
+FFTL = "0.3"
 FFTW = "1.5"
 GPUArrays = "11, 12"
 JLArrays = "0.4"
@@ -70,4 +70,3 @@ test = ["AbstractFFTs", "Aqua", "DoubleFloats", "Enzyme", "FFTA", "FFTW", "NFFTT
 [sources]
 AbstractNFFTs = {path = "lib/AbstractNFFTs"}
 NFFTTools = {path = "lib/NFFTTools"}
-FFTL = {url = "https://github.com/JuliaMath/FFTL.jl", rev = "main"}

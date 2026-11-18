@@ -1,6 +1,6 @@
 # The FFT backend is exchangeable: NFFT and NNFFT plans with another backend (FFTW, FFTA.jl, FFTL.jl)
 # give the results of the default backend's plans, and the cores hold whatever passes the backend
-# makes. FFTL is the default; its tests run from test/fftl/run.jl against FFTW.
+# makes. FFTL is the default and is tested against FFTW.
 
 function fft_backend_tests(fft::AbstractFFTBackend)
   @testset "FFT backend $(nameof(typeof(fft)))" begin

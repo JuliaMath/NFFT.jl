@@ -32,5 +32,4 @@ targets hangs at the first garbage collection triggered by a second host thread
 Known limitations:
 - the Julia runtime starts on the first call: make it from one thread before others call (two
   threads making it at once abort the process);
-- FFTW.jl is not trimmable: `src/libnfftjl.jl` replaces four of its methods for the build;
 - no GPU; the RNFFT, NFCT, NFST and NNFFT without the batch kernels (batches slice by slice).

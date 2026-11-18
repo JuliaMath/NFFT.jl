@@ -37,7 +37,7 @@ function rnfft_invphi(φ::F, W, N::NTuple{D,Int}, Ñ, ::Type{T}, nthreads) where
   ntuple(d -> d == 1 ? T.(1 ./ phi1) : T.(1 ./ kernel_ft(φ, W, N[d], Ñ[d], wide(T); nthreads)), D)
 end
 
-# The c2r/r2c transforms along dimension 1 are FFTW plans: the RNFFT needs the FFTW backend.
+# The c2r/r2c transforms along dimension 1 are the backend's real passes (`rfft_plan`, `brfft_plan`).
 function RNFFTCore(k::AbstractMatrix, N::NTuple{D,Int}, Ñ::NTuple{D,Int}, W, φ::F, ::Type{T}, fft, B, nthreads;
                    binned=nothing, kernel=nothing, invphi=nothing) where {D,F,T}
   K = kernel === nothing ? make_kernel(φ, W, T) : kernel

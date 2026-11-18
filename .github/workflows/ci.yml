@@ -7,6 +7,12 @@ on:
     branches:
       - main
     tags: '*'
+  schedule:
+    - cron: '17 3 * * 1'   # weekly: new Julia and dependency releases
+  workflow_dispatch:
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 jobs:
   test:
     name: Julia ${{ matrix.version }} - ${{ matrix.os }} - ${{ matrix.arch }} - ${{ github.event_name }}
@@ -25,6 +31,11 @@ jobs:
           - '4'
         arch:
           - x64
+        include:
+          - version: '1'
+            os: macos-latest
+            threads: '4'
+            arch: aarch64
     steps:
       - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
       - uses: julia-actions/setup-julia@fa02766e078afaaf09b14210362cee14137e6a32 # v3.0.2
@@ -49,12 +60,6 @@ jobs:
           Pkg.add(PackageSpec(path=pwd(), subdir="lib/NFFTTools"))
       - uses: julia-actions/julia-buildpkg@e3eb439fad4f9aba7da2667e7510e4a46ebc46e1 # v1.7.0
       - uses: julia-actions/julia-runtest@d60b785c6f2bdf4ebfb18b2b6f7d93b7dfb0efe3 # v1.11.4
-        env:
-          JULIA_NUM_THREADS: ${{ matrix.threads }}
-      # FFTL.jl is not registered: its backend tests run in their own environment
-      - name: FFT backend FFTL
-        if: matrix.version == '1'
-        run: julia --color=yes test/fftl/run.jl
         env:
           JULIA_NUM_THREADS: ${{ matrix.threads }}
       - uses: julia-actions/julia-processcoverage@03114f09f119417c3242a9fb6e0b722676aedf38 # v1.2.2

@@ -20,9 +20,10 @@ abstract type AbstractFFTBackend end
     FFTLBackend()
 
 [FFTL.jl](https://github.com/JuliaMath/FFTL.jl), the default backend: an FFT in pure Julia with
-batched in-place transforms along one dimension of strided views, on the CPU through `plan_pass`
-and on GPU arrays through the KernelAbstractions extension. The first plan of a length compiles its
-kernels.
+batched in-place transforms along one dimension of strided views, on the CPU through
+`plan_pass_runtime` and on GPU arrays through the KernelAbstractions extension. The kernels are chosen
+at run time, so plans of every length have the same type, and a library compiled with `juliac --trim`
+holds them in typed containers.
 """
 struct FFTLBackend <: AbstractFFTBackend end
 
@@ -53,23 +54,20 @@ pass_plan(fft::AbstractFFTBackend, args...) =
 apply_pass!(plan, v) = (plan * v; nothing)
 planning(f, ::AbstractFFTBackend, nthreads) = f()
 
-# FFTL (the default, a hard dependency): the pass interface. Task-local thread count, so that plans
-# made concurrently on other tasks keep their own.
+# FFTL (the default, a hard dependency): the pass interface with run-time kernels. Their plan type
+# depends on the element type and the dimension only, not on the length, so a library holds the
+# plans of every size in typed containers and compiles with juliac --trim. Task-local thread count,
+# so that plans made concurrently on other tasks keep their own.
 planning(f, ::FFTLBackend, nthreads) = task_local_storage(f, :nfft_fftl_threads, nthreads)
+fftl_threads() = get(task_local_storage(), :nfft_fftl_threads, 1)::Int
 pass_plan(::FFTLBackend, ::Val{K}, v, d) where {K} =
-  FFTL.plan_pass(v, d; sign=K, threads=get(task_local_storage(), :nfft_fftl_threads, 1))
+  FFTL.plan_pass_runtime(v, d; sign=K, threads=fftl_threads())
 apply_pass!(p::FFTL.PassPlan, v) = (FFTL.apply!(p, v); nothing)
 
-# the real transforms of the RNFFT as native r2c/c2r passes instead of the complex fallback of the
-# same length. The released FFTL (0.1.0) has no r2c/c2r passes yet — against it the complex fallback
-# stays; FFTL main has them since the realpass merge (PR #8), with the strides of input and output
-# read in mul! from the applied arrays (so the strided interior views of the RNFFT's real grid run).
-if isdefined(FFTL, :plan_r2c_pass)
-  rfft_plan(::FFTLBackend, x, X) =
-    FFTL.plan_r2c_pass(x, 1; threads=get(task_local_storage(), :nfft_fftl_threads, 1))
-  brfft_plan(::FFTLBackend, X, x) =
-    FFTL.plan_c2r_pass(X, 1; n=size(x, 1), threads=get(task_local_storage(), :nfft_fftl_threads, 1))
-end
+# The real transforms of the RNFFT as native r2c/c2r passes. The strides of input and output are
+# read in mul! from the applied arrays, so the strided interior views of the RNFFT's real grid run.
+rfft_plan(::FFTLBackend, x, X) = FFTL.plan_r2c_pass_runtime(x, 1; threads=fftl_threads())
+brfft_plan(::FFTLBackend, X, x) = FFTL.plan_c2r_pass_runtime(X, 1; n=size(x, 1), threads=fftl_threads())
 
 # The full-transform shortcuts of the RNFFT stage interface: one call instead of the pass machinery.
 # The generic backend has none; the backends with an AbstractFFTs interface do.
@@ -92,9 +90,7 @@ struct PassFFT{D,P}
   boxes::Vector{Vector{NTuple{D,UnitRange{Int}}}}
   nthreads::Int                     # tasks per pass at most
 end
-# Plans whose type depends on the dimension (FFTL): their common supertype, one dynamic call per box.
-# `plans` is an untyped `Vector{Any}` when no pass remains (the real transforms in 1D) or the plan
-# type does not infer across dimensions.
+# The plan type is the join of the plan types of all boxes: concrete for every backend here.
 function PassFFT(plans::Vector, boxes::Vector{Vector{NTuple{D,UnitRange{Int}}}}, nthreads) where {D}
   P = mapreduce(eltype, typejoin, plans; init=Union{})
   PassFFT{D,P}([convert(Vector{P}, p) for p in plans], boxes, nthreads)
