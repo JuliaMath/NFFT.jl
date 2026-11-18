@@ -22,7 +22,7 @@ using FFTW
 
   @testset "argument errors" begin
     @test_throws ArgumentError plan_nfft(zeros(1, 4), (2, 2))               # node dimension
-    @test_throws ArgumentError plan_nfft([-0.6 0.3; 0.2 -0.1], (4, 4))      # node out of range
+    @test_throws ArgumentError plan_nfft([-1.6 0.3; 0.2 -0.1], (4, 4))      # node beyond ±1
     @test_throws ArgumentError plan_nfft([-0.3 0.3; 0.3 NaN], (4, 4))       # NaN node
     @test_throws ArgumentError plan_nfft(k, N; m=4)                          # unknown option
     @test_throws ArgumentError plan_nfft(k, N; reltol=-1)
@@ -31,10 +31,25 @@ using FFTW
     @test_throws ArgumentError plan_nfft(k, N; σ=0.8)                        # grid smaller than N
     @test_throws ArgumentError plan_nfft(k, N; W=1)
     p = plan_nfft(k, N)
-    @test_throws ArgumentError nodes!(p, [0.7 0.1; 0.1 0.1])
+    @test_throws ArgumentError nodes!(p, [1.7 0.1; 0.1 0.1])
     @test_throws DimensionMismatch nodes!(p, rand(3, 10) .- 0.5)
     @test_throws DimensionMismatch mul!(zeros(ComplexF64, J + 1), p, f)
     @test_throws DimensionMismatch mul!(zeros(ComplexF64, N .+ 1), adjoint(p), fHat)
+  end
+
+  @testset "nodes in [-1, 1] are folded" begin
+    kf = [0.504 -0.3 0.1 -0.95 1.0 -1.0; 0.2 -0.5004 0.7 0.0 0.3 -0.2]
+    kw = kf .- round.(kf)
+    Nf = (16, 12); ff = randn(rng, ComplexF64, Nf); yf = randn(rng, ComplexF64, 6)
+    pf = plan_nfft(kf, Nf); d = NDFTPlan(kw, Nf)
+    @test pf * ff ≈ d * ff
+    @test adjoint(pf) * yf ≈ adjoint(d) * yf
+    @test nodes(pf) ≈ kw
+    q = plan_nfft(rand(rng, 2, 6) .- 0.5, Nf); nodes!(q, kf); @test q * ff ≈ d * ff
+    r, r0 = plan_rnfft(kf, Nf), plan_rnfft(kw, Nf)
+    x = randn(rng, ComplexF64, size_in(r))
+    @test r * x ≈ r0 * x
+    @test_throws ArgumentError plan_nfct([0.6 0.1], (16,))   # the NFCT/NFST are not folded
   end
 
   @testset "nodes at ±1/2 and given as ranges" begin

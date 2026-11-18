@@ -21,6 +21,7 @@ function fast_plan(::Type{P}, k::AbstractMatrix, N::NTuple{D,Int}, g::GenericOpt
                    window=:auto, W=nothing, σ=nothing, fft=nothing, tilesize=nothing, gridsize=nothing,
                    measure=false) where {P,D,T,R}
   fft = cpu_options(g.storage, fft, tilesize, gridsize)
+  k = fold_nodes(P, k)
   dims = g.dims; Nd = N[dims]; J = size(k, 2)
   kernels = select_kernels(window, W, σ, g.reltol, error_size(P, Nd), J, T; Ncost=Nd, fft,
                            n=measure ? MEASURE_CANDIDATES : 1, storage=g.storage)
@@ -159,14 +160,31 @@ batch_strategy(P, Dd, L1, L3) = :loop
 # binned outside the grid.
 check_nodes(P, k) = check_range(k, -0.5, 0.5, "nodes must be finite and in [-1/2, 1/2]")
 
-# Throws for the first entry of k outside [lo, hi] (NaN fails both comparisons). The reduction
-# without an early exit vectorises; a branch per node costs as much as the binning.
-function check_range(k, lo, hi, msg)
+# The NFFT and the RNFFT are 1-periodic in each node coordinate, so nodes in [−1, 1] are folded into
+# [−1/2, 1/2] (a copy, only if one lies outside). Measured trajectories slightly beyond the edge
+# (MRI after a gradient delay correction) thus need no clipping. Nodes beyond ±1 are rejected: more
+# likely nodes in other units (radians) than a trajectory. The NFCT and NFST are not folded: the
+# sine is odd, folding would change the sign of the data.
+fold_nodes(P, k) = k
+function fold_nodes(::Type{<:Union{NFFTPlan,RNFFTPlan}}, k::AbstractMatrix)
+  kc = k isa Array ? k : Array(k)
+  in_range(kc, -0.5, 0.5) && return k
+  check_range(kc, -1.0, 1.0, "nodes must be finite and in [-1, 1] (folded into [-1/2, 1/2])")
+  return map(x -> x - round(x), kc)
+end
+
+function in_range(k, lo, hi)
   ok = true
   @inbounds @simd for i in eachindex(k)
     ok &= (lo <= k[i]) & (k[i] <= hi)
   end
-  ok || throw(ArgumentError("$msg, found $(k[findfirst(x -> !(lo <= x <= hi), k)])"))
+  ok
+end
+
+# Throws for the first entry of k outside [lo, hi] (NaN fails both comparisons). The reduction
+# without an early exit vectorises; a branch per node costs as much as the binning.
+function check_range(k, lo, hi, msg)
+  in_range(k, lo, hi) || throw(ArgumentError("$msg, found $(k[findfirst(x -> !(lo <= x <= hi), k)])"))
   nothing
 end
 
@@ -229,6 +247,7 @@ end
 
 function AbstractNFFTs.nodes!(p::FastPlan{T}, k::AbstractMatrix) where {T}
   size(k, 1) == length(p.dims) || throw(DimensionMismatch("nodes must have $(length(p.dims)) rows"))
+  k = fold_nodes(typeof(p), k)
   p.strategy, p.core = make_engine(typeof(p), k, p.N, p.dims, p.kernel, T, p.fft, p.tilesize, p.gridsize,
                                                    p.options.nthreads, p.options.storage)
   p.k = to_storage(p.options.storage, k, T)
