@@ -4,7 +4,7 @@
 using NFFT, NFFTTools, Test, Random, LinearAlgebra
 using NFFT: NDFTPlan
 
-include("contract.jl")                       # relerr, allowed
+isdefined(@__MODULE__, :relerr) || include("contract.jl")   # relerr, allowed (once per session)
 
 # Options for a CPU plan with the kernel of plan p: GPU and CPU have different cost models.
 same_kernel(p) = (; window=p.kernel.window, W=p.kernel.W, σ=p.kernel.σ)
