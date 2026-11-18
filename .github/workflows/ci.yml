@@ -60,6 +60,10 @@ jobs:
           Pkg.add(PackageSpec(path=pwd(), subdir="lib/NFFTTools"))
       - uses: julia-actions/julia-buildpkg@e3eb439fad4f9aba7da2667e7510e4a46ebc46e1 # v1.7.0
       - uses: julia-actions/julia-runtest@e89ac6c957d7c4d7e0cb3162f12d8290a008f9d1 # v1.13.0
+        with:
+          # AbstractNFFTs 1.0 and NFFTTools 0.4 come from lib/ and are not registered yet, so no
+          # registered version satisfies their compat (Dependabot PRs force the latest one).
+          force_latest_compatible_version: false
         env:
           JULIA_NUM_THREADS: ${{ matrix.threads }}
       - uses: julia-actions/julia-processcoverage@03114f09f119417c3242a9fb6e0b722676aedf38 # v1.2.2
