@@ -28,7 +28,8 @@ costs one NFFT and one adjoint NFFT of size `2 .* N`, and `iters` (default 50) s
 gradients minimise the Frobenius error. The weights can be negative. The plan of size `2 .* N` is
 made with the active backend.
 
-`p` must be a plan without batch dimensions.
+For a plan with batch dimensions (`dims`) the weights are those of a plan without batch dimensions
+on the same nodes, made with the active backend at the accuracy of `p`.
 """
 function sdc(p::AbstractNFFTPlan{T,D,1}; method::Symbol = :pipemenon,
              iters::Int = method === :frobenius ? 50 : 20) where {T<:Real,D}
@@ -37,6 +38,24 @@ function sdc(p::AbstractNFFTPlan{T,D,1}; method::Symbol = :pipemenon,
   method === :pipemenon && return sdc!(weights, p; iters)
   method === :frobenius && return frobenius_weights!(weights, p; iters)
   throw(ArgumentError("method must be :pipemenon or :frobenius, got :$method"))
+end
+
+function sdc(p::AbstractNFFTPlan{T}; kwargs...) where {T<:Real}
+  q = plan_nfft(nodes(p), transform_size(p); reltol = accuracy(p), eltype = T)
+  return sdc(q; kwargs...)
+end
+
+# The sizes along `dims` of a plan with batch dimensions: `dims` is a contiguous range, which
+# `size_out` replaces by the number of nodes. Several positions of `dims` can fit the two sizes;
+# they must give the same sizes.
+function transform_size(p::AbstractNFFTPlan)
+  Nin, Nout = size_in(p), size_out(p)
+  Dk, J = size(nodes(p))
+  fits = [Nin[s:s+Dk-1] for s in 1:length(Nin)-Dk+1
+          if Nin[1:s-1] == Nout[1:s-1] && Nin[s+Dk:end] == Nout[s+1:end] && Nout[s] == J]
+  allequal(fits) && !isempty(fits) ||
+    throw(ArgumentError("the transformed dimensions of the plan cannot be told from its sizes $Nin and $Nout; make a plan without dims for sdc"))
+  return first(fits)
 end
 
 # Conjugate gradients for S w = |I_N| 1, S = A_{2N} diag(c) A_{2N}ᴴ (see `sdc`). The objective

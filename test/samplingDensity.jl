@@ -63,4 +63,12 @@ using NFFTTools: sdc, sdc!
   A = dense(k)
   @test frob(A, sdc(p; method = :frobenius)) < frob(A, sdc(p))
   @test_throws ArgumentError sdc(p; method = :voronoi)
+
+  # plans with batch dimensions (#128): the weights of the plan on the transformed dimensions
+  k1 = rand(Xoshiro(3), 11) .- 0.5
+  @test sdc(plan_nfft(k1, (16, 20); dims = 1)) ≈ sdc(plan_nfft(k1, (16,)))
+  k2 = rand(Xoshiro(4), 2, 30) .- 0.5
+  @test sdc(plan_nfft(k2, (5, 8, 8); dims = 2:3)) ≈ sdc(plan_nfft(k2, (8, 8)))
+  # (4, 6, 4) → (4, 4) with 4 nodes: dims 1:2 or 2:3
+  @test_throws ArgumentError sdc(plan_nfft(rand(2, 4) .- 0.5, (4, 6, 4); dims = 1:2))
 end
