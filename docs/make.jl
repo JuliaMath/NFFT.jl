@@ -65,4 +65,6 @@ makedocs(;
   ],
 )
 
-deploydocs(repo="github.com/JuliaMath/NFFT.jl.git", devbranch="main", push_preview=true)
+# Dependabot pull requests get a read-only token: no preview for them.
+deploydocs(repo="github.com/JuliaMath/NFFT.jl.git", devbranch="main",
+           push_preview=get(ENV, "GITHUB_ACTOR", "") != "dependabot[bot]")
