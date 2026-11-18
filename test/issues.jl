@@ -33,4 +33,20 @@
       @test norm(adjoint(p) * y - adjoint(q) * y) < 1e-8 * norm(adjoint(q) * y)
     end
   end
+
+  @testset "real data for complex plans (#81)" begin
+    k = rand(Xoshiro(5), 2, 50) .- 0.5
+    f, y = randn(Xoshiro(6), 16, 16), randn(Xoshiro(7), 50)
+    for T in (Float32, Float64)
+      p = plan_nfft(T.(k), (16, 16))
+      @test p * f ≈ p * Complex{T}.(f)
+      @test eltype(p * f) == Complex{T}
+      @test adjoint(p) * y ≈ adjoint(p) * Complex{T}.(y)
+      r = plan_nnfft(T.(k), T.(4 .* k))
+      @test r * y ≈ r * Complex{T}.(y)
+    end
+    pb = plan_nfft(k, (16, 16, 3); dims = 1:2)
+    @test adjoint(pb) * randn(50, 3) |> size == (16, 16, 3)
+  end
 end
+
