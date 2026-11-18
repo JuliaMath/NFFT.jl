@@ -1,0 +1,4 @@
+[deps]
+CUDA = "052768ef-5323-5732-b1bb-66c8b64840ba"
+FFTW = "7a1cc6ca-52ef-59f5-83cd-3a7055c09341"
+NonuniformFFTs = "cd96f58b-6017-4a02-bb9e-f4d81626177f"

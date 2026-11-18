@@ -1,67 +1,132 @@
-#=
-# uncomment this block for stand-alone testing
-using JLArrays: JLArray
-arrayTypes = [JLArray]
-=#
+# GPU tests. Included by test/gpu/<backend>.jl, which loads the GPU package and defines
+# `arrayTypes` (GPU array types) and `floatTypes` (precisions the device supports).
 
-import FFTW # ESTIMATE
-using LinearAlgebra: norm
-using NFFT: plan_nfft, NDFTPlan
-import NFFT # LINEAR, FULL, TENSOR, POLYNOMIAL
-using NFFTTools: sdc
-using Test: @test, @testset, @test_throws
+using NFFT, NFFTTools, Test, Random, LinearAlgebra
+using NFFT: NDFTPlan
 
-m = 5
-σ = 2.0
+include("contract.jl")                       # relerr, allowed
 
-@testset "GPU NFFT Plans" begin
-  for arrayType in arrayTypes
+# Options for a CPU plan with the kernel of plan p: GPU and CPU have different cost models.
+same_kernel(p) = (; window=p.kernel.window, W=p.kernel.W, σ=p.kernel.σ)
 
-    @testset "GPU_NFFT in multiple dimensions" begin
-      for (u, N) in enumerate([(256,), (32, 32), (12, 12, 12)])
-        eps = [1e-7, 1e-3, 1e-6, 1e-4]
-        for (l, window) in enumerate([:kaiser_bessel, :gauss, :kaiser_bessel_rev, :spline])
-          D = length(N)
-          @info "Testing $arrayType in $D dimensions using $window window"
+@testset "GPU $arrayType" for arrayType in arrayTypes
+  @testset "$T, N = $N" for T in floatTypes, N in [(256,), (32, 32), (12, 12, 12)]
+    Random.seed!(1)
+    D = length(N)
+    J = prod(N)
+    k = rand(T, D, J) .- T(1 // 2)
+    reltol = T == Float32 ? 1e-5 : 1e-9
 
-          J = prod(N)
-          k = rand(Float64, D, J) .- 0.5
-          p = plan_nfft(Array, k, N; m, σ, window, precompute=NFFT.FULL,
-            fftflags=FFTW.ESTIMATE)
-          p_d = plan_nfft(arrayType, k, N; m, σ, window, precompute=NFFT.FULL)
-          pNDFT = NDFTPlan(k, N)
+    p = plan_nfft(k, N; reltol, storage=arrayType)
+    pcpu = plan_nfft(k, N; reltol, same_kernel(p)...)
+    pndft = NDFTPlan(k, N)
 
-          fHat = rand(Float64, J) + rand(Float64, J) * im
-          f = adjoint(pNDFT) * fHat
-          fHat_d = arrayType(fHat)
-          fApprox_d = adjoint(p_d) * fHat_d
-          fApprox = Array(fApprox_d)
-          e = norm(f[:] - fApprox[:]) / norm(f[:])
-          @debug "error adjoint nfft " e
-          @test e < eps[l]
+    f = randn(Complex{T}, N)
+    fHat = randn(Complex{T}, J)
 
-          gHat = pNDFT * f
-          gHatApprox = Array(p_d * arrayType(f))
-          e = norm(gHat[:] - gHatApprox[:]) / norm(gHat[:])
-          @debug "error nfft " e
-          @test e < eps[l]
-        end
-      end
+    # against the exact transform at the accuracy the plan promises, and against the CPU plan
+    # with the same parameters at the rounding level
+    y = Array(@inferred(p * arrayType(f)))
+    @test y isa Vector{Complex{T}}
+    @test relerr(y, pndft * f) < 10 * accuracy(p)
+    @test relerr(y, pcpu * f) < 100 * eps(T)
+
+    x = Array(@inferred(adjoint(p) * arrayType(fHat)))
+    @test x isa Array{Complex{T},D}
+    @test relerr(x, adjoint(pndft) * fHat) < 10 * accuracy(p)
+    @test relerr(x, adjoint(pcpu) * fHat) < 100 * eps(T)
+
+    # the adjoint resampling by tiles (2D, 3D, if its buffers fit into local memory) has no
+    # atomics: repeated calls agree exactly
+    if p.core.nodes.tiles !== nothing
+      @test Array(adjoint(p) * arrayType(fHat)) == x
+    end
+    # by subproblems (Float32), the tiles are added to the grid with atomics: repeated calls agree
+    # up to rounding
+    if p.core.nodes.subs !== nothing
+      @test relerr(Array(adjoint(p) * arrayType(fHat)), x) < 10 * eps(T)
     end
 
-    @testset "GPU_NFFT Sampling Density" begin
+    # options of the CPU code are rejected, not ignored
+    @test_throws ArgumentError plan_nfft(k, N; reltol, storage=arrayType, tilesize=8)
+    @test_throws ArgumentError plan_nfft(k, N; reltol, storage=arrayType, fft=NFFT.FFTWBackend())
 
-      N = (9, 8) # 9×8 grid of equally spaced sampling points
-      # create a 10x10 grid of unit spaced sampling points
-      T = Float32
-      fun = N -> @. T((0:(N-1)) / N - 0.5) # 1D grid
-      nodes = hcat([[x; y] for x in fun(N[1]), y in fun(N[2])]...)
+    # measure: one of the candidates, timed on the device
+    q = plan_nfft(k, N; reltol, storage=arrayType, measure=true)
+    @test relerr(Array(q * arrayType(f)), pndft * f) < 10 * accuracy(q)
 
-      # approximate the density weights
-      p = plan_nfft(arrayType, nodes, N; m=5, σ=2.0)
-      weights = sdc(p, iters=5)
-      weights = Vector(weights)
-      @test all(≈(1/prod(N)), weights)
+    # storage defaults to the array type of the nodes
+    q = plan_nfft(arrayType(k), N; reltol)
+    @test relerr(Array(q * arrayType(f)), y) < 100 * eps(T)
+  end
+
+  @testset "batch $T, N = $N, dims = $dims" for T in floatTypes,
+      (N, dims) in [((4, 256), 2:2), ((256, 4), 1:1), ((3, 32, 32), 2:3), ((24, 24, 2), 1:2), ((2, 12, 12, 12), 2:4)]
+    Random.seed!(2)
+    Dd = length(dims)
+    J = 500
+    k = rand(T, Dd, J) .- T(1 // 2)
+    reltol = T == Float32 ? 1e-5 : 1e-9
+    p = plan_nfft(k, N; dims, reltol, storage=arrayType)
+    pcpu = plan_nfft(k, N; dims, reltol, same_kernel(p)...)
+    f = randn(Complex{T}, N)
+    fHat = randn(Complex{T}, size_out(pcpu))
+    @test relerr(Array(p * arrayType(f)), pcpu * f) < 100 * eps(T)
+    @test relerr(Array(adjoint(p) * arrayType(fHat)), adjoint(pcpu) * fHat) < 100 * eps(T)
+  end
+
+  # real transforms against the CPU plans: RNFFT (real values at the nodes), NFCT, NFST (real data,
+  # nodes in [0, 1/2]); with batch dimensions
+  @testset "$name $T, N = $N, dims = $dims" for name in ("rnfft", "nfct", "nfst"), T in floatTypes,
+      (N, dims) in [((256,), 1:1), ((32, 32), 1:2), ((12, 12, 12), 1:3), ((3, 32, 32), 2:3), ((24, 20, 2), 1:2)]
+    Random.seed!(3)
+    Dd = length(dims)
+    J = 600
+    reltol = T == Float32 ? 1e-5 : 1e-9
+    if name == "rnfft"
+      k = rand(T, Dd, J) .- T(1 // 2)
+      p = plan_rnfft(k, N; dims, reltol, storage=arrayType)
+      pcpu = plan_rnfft(k, N; dims, reltol, same_kernel(p)...)
+      x = randn(Complex{T}, size_in(pcpu))
+      y = randn(T, size_out(pcpu))
+      back = adjoint
+    else
+      k = rand(T, Dd, J) ./ 2
+      plan = name == "nfct" ? plan_nfct : plan_nfst
+      p = plan(k, N; dims, reltol, storage=arrayType)
+      pcpu = plan(k, N; dims, reltol, same_kernel(p)...)
+      x = randn(T, N)
+      y = randn(T, size_out(pcpu))
+      back = transpose
     end
+    @test relerr(Array(p * arrayType(x)), pcpu * x) < 100 * eps(T)
+    @test relerr(Array(back(p) * arrayType(y)), back(pcpu) * y) < 100 * eps(T)
+  end
+
+  @testset "nnfft $T, D = $D" for T in floatTypes, D in 1:3
+    Random.seed!(4)
+    y = (rand(T, D, 200) .- T(0.3)) .* 6 .+ 1
+    k = (rand(T, D, 300) .- T(0.6)) .* 12
+    reltol = T == Float32 ? 1e-4 : 1e-9
+    p = plan_nnfft(k, y; reltol, storage=arrayType)
+    pcpu = plan_nnfft(k, y; reltol)
+    f = randn(Complex{T}, 200); v = randn(Complex{T}, 300)
+    @test relerr(Array(p * arrayType(f)), pcpu * f) < 100 * eps(T) * pcpu.outer.amp
+    @test relerr(Array(adjoint(p) * arrayType(v)), adjoint(pcpu) * v) < 100 * eps(T) * pcpu.outer.amp
+    # batch dimensions
+    pb = plan_nnfft(k, y, (2, 200, 3); dims=2, reltol, storage=arrayType)
+    F = randn(Complex{T}, 2, 200, 3)
+    @test relerr(Array(pb * arrayType(F))[2, :, 3], pcpu * F[2, :, 3]) < 100 * eps(T) * pcpu.outer.amp
+  end
+
+  @testset "sdc" begin
+    # equispaced nodes: all weights equal 1/|N|
+    N = (9, 8)
+    T = first(floatTypes)
+    grid(n) = T.((0:n-1) / n .- 1 // 2)
+    nodes = reduce(hcat, [[x; y] for x in grid(N[1]), y in grid(N[2])])
+    p = plan_nfft(nodes, N; reltol = T == Float32 ? 1e-5 : 1e-8, storage=arrayType)
+    weights = Array(sdc(p; iters=10))
+    @test weights ≈ fill(T(1 / prod(N)), length(weights)) rtol = 1e-3
   end
 end
