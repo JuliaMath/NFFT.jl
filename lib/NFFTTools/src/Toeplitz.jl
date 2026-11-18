@@ -3,9 +3,9 @@
 ###################################################################
 
 """
-    calculateToeplitzKernel(shape, tr::AbstractMatrix{T}; fftplan = plan_fft(zeros(Complex{T}, 2 .* shape); flags=FFTW.ESTIMATE), kwargs...)
+    calculateToeplitzKernel(shape, tr::AbstractMatrix{T}; weights = nothing, fftplan = plan_fft(zeros(Complex{T}, 2 .* shape)), kwargs...)
 
-Calculate the kernel for an implementation of the Gram matrix ``A^{\\mathsf{H}} A`` that utilizes its Toeplitz structure. The output is an array of twice the size of `shape`, as the Toeplitz trick requires an oversampling factor of 2 (cf. [Wajer, F. T. A. W., and K. P. Pruessmann. "Major speedup of reconstruction for sensitivity encoding with arbitrary trajectories." Proc. Intl. Soc. Mag. Res. Med. 2001.](https://cds.ismrm.org/ismrm-2001/PDF3/0767.pdf)). The type of the kernel is `Complex{T}`, i.e. the complex of the k-space trajectory's type; for speed and memory efficiency, call this function with `Float32.(tr)`, and the kernel will also be `Float32`.
+Calculate the kernel for an implementation of the Gram matrix ``A^{\\mathsf{H}} A``, or of ``A^{\\mathsf{H}} W A`` with ``W = \\operatorname{diag}(w)`` for given `weights` ``w`` (e.g. density compensation), that utilizes its Toeplitz structure. The output is an array of twice the size of `shape`, as the Toeplitz trick requires an oversampling factor of 2 (cf. [Wajer, F. T. A. W., and K. P. Pruessmann. "Major speedup of reconstruction for sensitivity encoding with arbitrary trajectories." Proc. Intl. Soc. Mag. Res. Med. 2001.](https://cds.ismrm.org/ismrm-2001/PDF3/0767.pdf)). The type of the kernel is `Complex{T}`, i.e. the complex of the k-space trajectory's type; for speed and memory efficiency, call this function with `Float32.(tr)`, and the kernel will also be `Float32`.
 
 The kernel is computed with an adjoint NFFT of the active AbstractNFFTs backend (e.g. NFFT.jl after `using NFFT`).
 
@@ -14,7 +14,8 @@ The kernel is computed with an adjoint NFFT of the active AbstractNFFTs backend 
 - `tr::Matrix{T}`: non-Cartesian k-space trajectory in units revolutions/voxel, i.e. `tr[i] ∈ [-0.5, 0.5] ∀ i`. The matrix has the size `2 x Nsamples` for 2D imaging with a trajectory length `Nsamples`, and `3 x Nsamples` for 3D imaging.
 
 # Keyword Arguments:
-- `fftplan`: plan for the final FFT of the kernel from image to k-space. Therefore, it has to have twice the size of the original image. `default = plan_fft(zeros(Complex{T}, 2 .* shape); flags=FFTW.ESTIMATE)`. If this constructor is used many times, it is worth to precompute the plan with `plan_fft(zeros(Complex{T}, 2 .* shape); flags=FFTW.MEASURE)` and reuse it.
+- `weights`: one weight per node (a vector of length `Nsamples`); `nothing` (default) for ``A^{\\mathsf{H}} A``.
+- `fftplan`: plan for the final FFT of the kernel from image to k-space. Therefore, it has to have twice the size of the original image. `default = plan_fft(zeros(Complex{T}, 2 .* shape))`. If this constructor is used many times, precompute the plan and reuse it.
 - `kwargs`: passed on to `plan_nfft`, e.g. `reltol` for the accuracy of the kernel.
 
 # Examples
@@ -32,14 +33,14 @@ julia> y = randn(ComplexF32, Nx, Nx);
 julia> convolveToeplitzKernel!(y, λ);
 ```
 """
-function calculateToeplitzKernel(shape, tr::AbstractMatrix{T}; fftplan = plan_fft(zeros(Complex{T}, 2 .* shape); flags=FFTW.ESTIMATE), kwargs...) where {T}
+function calculateToeplitzKernel(shape, tr::AbstractMatrix{T}; weights = nothing, fftplan = plan_fft(zeros(Complex{T}, 2 .* shape)), kwargs...) where {T}
     p = plan_nfft(tr, 2 .* shape; kwargs...)
-    eigMat = adjoint(p) * ones(Complex{T}, size(tr, 2))
+    eigMat = adjoint(p) * kernel_weights(tr, weights)
     return fftplan * fftshift(eigMat)
 end
 
 """
-    calculateToeplitzKernel!(f::AbstractArray{Complex{T}}, p::AbstractNFFTPlan, tr::AbstractMatrix{T}, fftplan)
+    calculateToeplitzKernel!(f::AbstractArray{Complex{T}}, p::AbstractNFFTPlan, tr::AbstractMatrix{T}, fftplan; weights = nothing)
 
 Calculate the kernel for an implementation of the Gram matrix that utilizes its Toeplitz structure and writes it in-place in `f`, which has to be twice the size of the desired image matrix, as the Toeplitz trick requires an oversampling factor of 2 (cf. [Wajer, F. T. A. W., and K. P. Pruessmann. "Major speedup of reconstruction for sensitivity encoding with arbitrary trajectories." Proc. Intl. Soc. Mag. Res. Med. 2001.](https://cds.ismrm.org/ismrm-2001/PDF3/0767.pdf)). The type of the kernel `f` has to be `Complex{T}`, i.e. the complex of the k-space trajectory's type; for speed and memory efficiecy, call this function with `Float32.(tr)`, and set the type of `f` accordingly.
 
@@ -47,11 +48,12 @@ Calculate the kernel for an implementation of the Gram matrix that utilizes its 
 - `f::AbstractArray{Complex{T}}`: array in which the kernel will be written.
 - `p::AbstractNFFTPlan`: NFFT plan for an array of twice the image size; its nodes are set to `tr`.
 - `tr::Matrix{T}`: non-Cartesian k-space trajectory in units revolutions/voxel, i.e. `tr[i] ∈ [-0.5, 0.5] ∀ i`. The matrix has the size `2 x Nsamples` for 2D imaging with a trajectory length `Nsamples`, and `3 x Nsamples` for 3D imaging.
-- `fftplan`: plan for the final FFT of the kernel from image to k-space. Therefore, it has to have twice the size of the original image. Calculate, e.g., with `fftplan = plan_fft(zeros(Complex{T}, 2 .* shape); flags=FFTW.MEASURE)`, where `shape` is the size of the reconstructed image.
+- `fftplan`: plan for the final FFT of the kernel from image to k-space. Therefore, it has to have twice the size of the original image. Calculate, e.g., with `fftplan = plan_fft(zeros(Complex{T}, 2 .* shape))`, where `shape` is the size of the reconstructed image.
+- `weights`: as for [`calculateToeplitzKernel`](@ref).
 
 # Examples
 ```julia
-julia> using NFFT, NFFTTools, NFFTTools.FFTW
+julia> using NFFT, NFFTTools, FFTL
 
 julia> Nx = 32;
 
@@ -59,27 +61,35 @@ julia> trj = Float32.(rand(2, 1000) .- 0.5);
 
 julia> p = plan_nfft(trj, (2Nx, 2Nx));
 
-julia> fftplan = plan_fft(zeros(ComplexF32, (2Nx,2Nx)); flags=FFTW.MEASURE);
+julia> fftplan = plan_fft(zeros(ComplexF32, (2Nx,2Nx)));
 
 julia> λ = Array{ComplexF32}(undef, 2Nx, 2Nx);
 
 julia> calculateToeplitzKernel!(λ, p, trj, fftplan);
 ```
 """
-function calculateToeplitzKernel!(f::AbstractArray{Complex{T}}, p::AbstractNFFTPlan{T}, tr::AbstractMatrix{T}, fftplan) where T
+function calculateToeplitzKernel!(f::AbstractArray{Complex{T}}, p::AbstractNFFTPlan{T}, tr::AbstractMatrix{T}, fftplan; weights = nothing) where T
     nodes!(p, tr)
-    mul!(f, adjoint(p), ones(Complex{T}, size(tr, 2)))
+    mul!(f, adjoint(p), kernel_weights(tr, weights))
     f2 = fftshift(f)
     mul!(f, fftplan, f2)
     return f
 end
 
+# The weights as complex numbers in the storage of the nodes; all ones without weights.
+function kernel_weights(tr::AbstractMatrix{T}, weights) where {T}
+    w = similar(tr, Complex{T}, size(tr, 2))
+    weights === nothing && return fill!(w, one(Complex{T}))
+    length(weights) == size(tr, 2) ||
+        throw(DimensionMismatch("$(length(weights)) weights for $(size(tr, 2)) nodes"))
+    return copyto!(w, weights)
+end
 
 ###################################################################
 # constructor for explicit/exact calculation of the Toeplitz kernel
 # (slow)
 ###################################################################
-function calculateToeplitzKernel_explicit(shape, tr::Matrix{T}, fftplan = plan_fft(zeros(Complex{T}, 2 .* shape); flags=FFTW.ESTIMATE)) where T
+function calculateToeplitzKernel_explicit(shape, tr::Matrix{T}, fftplan = plan_fft(zeros(Complex{T}, 2 .* shape))) where T
 
     shape_os = 2 .* shape
     λ = Array{Complex{T}}(undef, shape_os)
@@ -108,7 +118,7 @@ end
 ###################################################################
 
 """
-    convolveToeplitzKernel!(y::AbstractArray{T,N}, λ::AbstractArray{T,N}[, fftplan = plan_fft(λ; flags=FFTW.ESTIMATE), ifftplan = plan_ifft(λ; flags=FFTW.ESTIMATE), xOS1 = similar(λ), xOS2 = similar(λ)])
+    convolveToeplitzKernel!(y::AbstractArray{T,N}, λ::AbstractArray{T,N}[, fftplan = plan_fft(λ), ifftplan = plan_ifft(λ), xOS1 = similar(λ), xOS2 = similar(λ)])
 
 Convolves the image `y` with the Toeplitz kernel `λ` and overwrites `y` with the result. `y` is also returned for convenience. As this function is commonly applied many times, it is highly recommended to pre-allocate / pre-compute all optional arguments. By doing so, this entire function is non-allocating.
 
@@ -117,14 +127,14 @@ Convolves the image `y` with the Toeplitz kernel `λ` and overwrites `y` with th
 - `λ::Array{T,N}`: Toeplitz kernel, which has the same element type as `y` and twice its size due to the required oversampling (cf. [`calculateToeplitzKernel`](@ref)).
 
 # Optional, but highly recommended Arguments
-- `fftplan`: plan for the oversampled FFT, i.e. it has to have twice the size of the original image. Calculate, e.g., with `fftplan = plan_fft(λ; flags=FFTW.MEASURE)`.
-- `ifftplan`: plan for the oversampled inverse FFT. Calculate, e.g., with `ifftplan = plan_ifft(λ; flags=FFTW.MEASURE)`.
+- `fftplan`: plan for the oversampled FFT, i.e. it has to have twice the size of the original image. Calculate, e.g., with `fftplan = plan_fft(λ)`.
+- `ifftplan`: plan for the oversampled inverse FFT. Calculate, e.g., with `ifftplan = plan_ifft(λ)`.
 - `xOS1`: pre-allocated array of the size of `λ`. Pre-allocate with `xOS1 = similar(λ)`.
 - `xOS2`: pre-allocated array of the size of `λ`. Pre-allocate with `xOS2 = similar(λ)`.
 
 # Examples
 ```julia
-julia> using NFFT, NFFTTools, NFFTTools.FFTW
+julia> using NFFT, NFFTTools, FFTL
 
 julia> Nx = 32;
 
@@ -136,9 +146,9 @@ julia> xOS1 = similar(λ);
 
 julia> xOS2 = similar(λ);
 
-julia> fftplan = plan_fft(xOS1; flags=FFTW.MEASURE);
+julia> fftplan = plan_fft(xOS1);
 
-julia> ifftplan = plan_ifft(xOS1; flags=FFTW.MEASURE);
+julia> ifftplan = plan_ifft(xOS1);
 
 julia> y = randn(ComplexF32, Nx, Nx);
 
@@ -146,8 +156,8 @@ julia> convolveToeplitzKernel!(y, λ, fftplan, ifftplan, xOS1, xOS2);
 ```
 """
 function convolveToeplitzKernel!(y::AbstractArray{T,N}, λ::AbstractArray{T,N},
-    fftplan = plan_fft(λ; flags=FFTW.ESTIMATE),
-    ifftplan = plan_ifft(λ; flags=FFTW.ESTIMATE),
+    fftplan = plan_fft(λ),
+    ifftplan = plan_ifft(λ),
     xOS1 = similar(λ),
     xOS2 = similar(λ)
     ) where {T,N}

@@ -35,13 +35,28 @@ using FFTW
   x = randn(rng, ComplexF32, Nx, Nx)
   p = plan_nfft(trj, (Nx, Nx); reltol = 1e-5)
   xN = adjoint(p) * (p * x)
+  x0 = copy(x)
+  @test convolveToeplitzKernel!(copy(x), Ka) ≈ xN rtol = 1e-4   # default plans (FFTL)
   xOS1, xOS2 = similar(Ka), similar(Ka)
-  fftplan = plan_fft(xOS1; flags = FFTW.MEASURE)
-  ifftplan = plan_ifft(xOS1; flags = FFTW.MEASURE)
+  fftplan = NFFTTools.plan_fft(xOS1)
+  ifftplan = NFFTTools.plan_ifft(xOS1)
   convolveToeplitzKernel!(x, Ka, fftplan, ifftplan, xOS1, xOS2)
   @test x ≈ xN rtol = 1e-4
+  x .= x0
   convolveToeplitzKernel!(x, Ka, fftplan, ifftplan, xOS1, xOS2)
-  if FFTW.get_num_threads() == 1
-    @test (@allocated convolveToeplitzKernel!(x, Ka, fftplan, ifftplan, xOS1, xOS2)) == 0
-  end
+  @test (@allocated convolveToeplitzKernel!(x, Ka, fftplan, ifftplan, xOS1, xOS2)) == 0
+  # plans of another FFT package (FFTW)
+  x .= x0
+  convolveToeplitzKernel!(x, Ka, plan_fft(xOS1; flags = FFTW.MEASURE), plan_ifft(xOS1; flags = FFTW.MEASURE), xOS1, xOS2)
+  @test x ≈ xN rtol = 1e-4
+
+  # with weights the Toeplitz product equals Aᴴ diag(w) A
+  w = rand(rng, Float32, size(trj, 2))
+  Kw = calculateToeplitzKernel((Nx, Nx), trj; weights = w, reltol = 1e-5)
+  @test convolveToeplitzKernel!(copy(x0), Kw) ≈ adjoint(p) * (w .* (p * x0)) rtol = 1e-4
+  pw = plan_nfft(trj, (2Nx, 2Nx); reltol = 1e-5)
+  Kb = similar(Kw)
+  calculateToeplitzKernel!(Kb, pw, trj, NFFTTools.plan_fft(Kb); weights = w)
+  @test Kb ≈ Kw rtol = 1e-4
+  @test_throws DimensionMismatch calculateToeplitzKernel((Nx, Nx), trj; weights = w[1:10])
 end
