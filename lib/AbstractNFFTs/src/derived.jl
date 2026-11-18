@@ -205,7 +205,8 @@ end
 
 Apply a plan, its adjoint (NFFT, NNFFT, RNFFT) or its transpose (NFCT, NFST) and return a new
 array. `f` has size `size_in(p)` and `fHat` size `size_out(p)`; batch dimensions (`dims`) are part
-of both. `mul!` writes into a given array instead.
+of both. Real data for the complex transforms (NFFT, NNFFT) is converted to complex numbers of the
+plan's precision. `mul!` writes into a given array instead.
 """
 function Base.:*(p::AbstractComplexFTPlan{T}, f::AbstractArray{Complex{U},D}) where {T,U,D}
   fHat = similar(f, Complex{T}, size_out(p))
@@ -251,6 +252,17 @@ function Base.:*(p::Adjoint{Complex{T},<:AbstractComplexFTPlan{T}}, fHat::Abstra
   mul!(f, p, fHat)
   return f
 end
+
+# Real data for the complex transforms: converted to complex numbers of the plan's precision first.
+Base.:*(p::AbstractComplexFTPlan{T}, f::AbstractArray{<:Real}) where {T} = p * complex_data(T, f)
+Base.:*(p::Adjoint{Complex{T},<:AbstractComplexFTPlan{T}}, fHat::AbstractArray{<:Real}) where {T} =
+  p * complex_data(T, fHat)
+# the two methods against the method ambiguity with Julia Base, as above
+Base.:*(p::Adjoint{Complex{T},<:AbstractComplexFTPlan{T}}, fHat::AbstractVector{<:Real}) where {T} =
+  p * complex_data(T, fHat)
+Base.:*(p::Adjoint{Complex{T},<:AbstractComplexFTPlan{T}}, fHat::AbstractMatrix{<:Real}) where {T} =
+  p * complex_data(T, fHat)
+complex_data(::Type{T}, x) where {T} = copyto!(similar(x, Complex{T}), x)
 
 function Base.:*(p::AbstractRealFTPlan{T}, f::AbstractArray{U,D}) where {T,U,D}
   fHat = similar(f, T, size_out(p))

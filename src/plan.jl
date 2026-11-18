@@ -123,6 +123,9 @@ Generic options (every AbstractNFFTs implementation): `reltol` (default 1e-8), `
   time (transform and adjoint) and keeps the fastest; the cost model cannot see how fast the FFT
   is for a particular grid size
 
+Nodes in [−1, 1] are folded into [−1/2, 1/2] (the NFFT is 1-periodic in each node coordinate), so a
+trajectory slightly beyond the edge needs no clipping; `nodes(p)` returns the folded nodes.
+
 `T` is the real element type, `D` the number of dimensions of the array and `R` that of the output
 (1 without batch dimensions). The compiler infers the type of the plan when `dims` is left out or
 a single dimension; with a range it depends on its length.
