@@ -285,7 +285,7 @@ int main(int argc, char **argv) {
     fail |= p != -1 || !strstr(msg, "W ≤ 8");
   }
   int64_t T1[] = {262144}, T2[] = {512, 512}, T3[] = {64, 64, 64};
-  timing(1, T1, 262144, 1e-4, nthreads);   /* warm-up: the threads of FFTW start on first use */
+  timing(1, T1, 262144, 1e-4, nthreads);   /* warm-up: the worker threads start on first use */
   for (int i = 0; i < 2; i++) {
     double tol = i == 0 ? 1e-4 : 1e-8;
     timing(1, T1, 262144, tol, nthreads);

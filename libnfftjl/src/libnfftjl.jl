@@ -8,7 +8,7 @@
 # keeps the cores in registries of concrete type.
 
 using NFFT
-using NFFT: NFFTCore, SymKernel, KaiserBessel, FFTWBackend, kb_window, es_window, grid_size,
+using NFFT: NFFTCore, SymKernel, KaiserBessel, FFTLBackend, kb_window, es_window, grid_size,
             choose_kernels, make_kernel, trafo_core!, adjoint_core!
 
 # NFFT.jl calls no BLAS or LAPACK routine (planning has its own least squares and quadrature): the
@@ -16,69 +16,6 @@ using NFFT: NFFTCore, SymKernel, KaiserBessel, FFTWBackend, kb_window, es_window
 using LinearAlgebra
 @eval LinearAlgebra.OpenBLAS_jll __init__() = nothing
 @eval LinearAlgebra __init__() = nothing
-
-# FFTW.jl destroys plans queued by finalizers through a call on its abstract plan type, which
-# trimming cannot resolve; this version calls the C functions directly. `using FFTW` loads the
-# NFFTFFTWExt extension first, whose binding the import below needs.
-using FFTW
-@eval FFTW function destroy_deferred()
-  lock(deferred_destroy_lock)
-  try
-    if !isempty(deferred_destroy_plans) && trylock(fftwlock)
-      try
-        for p in deferred_destroy_plans
-          ptr = getfield(p, :plan)::PlanPtr
-          if p isa FFTWPlan{<:fftwDouble}
-            ccall((:fftw_destroy_plan, libfftw3), Cvoid, (PlanPtr,), ptr)
-          else
-            ccall((:fftwf_destroy_plan, libfftw3f), Cvoid, (PlanPtr,), ptr)
-          end
-        end
-        empty!(deferred_destroy_plans)
-      finally
-        unlock(fftwlock)
-      end
-    end
-  finally
-    unlock(deferred_destroy_lock)
-  end
-end
-
-# FFTW.jl loads libfftw3 on first use through a method that looks the library up by name and calls
-# an untyped callback; this version is resolved at compile time. `load_fftw` makes it part of the
-# library.
-@eval FFTW function dlopen(lib::FakeLazyLibrary)
-  h = @atomic :monotonic lib.h
-  h != C_NULL && return h
-  @lock fftwlock begin
-    h = @atomic :monotonic lib.h
-    h != C_NULL && return h
-    h = dlopen(lib.reallibrary === :libfftw3_no_init ? libfftw3_no_init : libfftw3f_no_init)
-    fftw_init_threads()
-    @atomic :release lib.h = h
-  end
-  h
-end
-# FFTW's threads are Julia tasks started by this callback; `@sync` waits on an untyped channel.
-@eval FFTW function spawnloop(f::Ptr{Cvoid}, fdata::Ptr{Cvoid}, elsize::Csize_t, num::Cint, callback_data::Ptr{Cvoid})
-  ts = Vector{Task}(undef, num)
-  for i = 0:num-1
-    ts[i+1] = Threads.@spawn ccall(f, Ptr{Cvoid}, (Ptr{Cvoid},), fdata + elsize*i)
-  end
-  foreach(wait, ts)
-end
-# The check of an out-of-place FFTW plan builds its error message with `string` of a run-time
-# choice, which trimming cannot resolve; this version has fixed messages.
-@eval FFTW function assert_applicable(p::FFTWPlan{T,K,inplace}, X::StridedArray{T}, Y::StridedArray) where {T,K,inplace}
-  assert_applicable(p, X)
-  size(Y) == p.osz || throw(ArgumentError("FFTW plan applied to wrong-size output"))
-  strides(Y) == p.ostride || throw(ArgumentError("FFTW plan applied to wrong-strides output"))
-  (alignment_of(Y) == p.oalign || p.flags & UNALIGNED != 0) ||
-    throw(ArgumentError("FFTW plan applied to output with wrong memory alignment"))
-  inplace == (pointer(X) == pointer(Y)) || throw(ArgumentError("FFTW plan applied to in-place or out-of-place data it was not made for"))
-  nothing
-end
-load_fftw() = (FFTW.dlopen(FFTW.libfftw3); FFTW.dlopen(FFTW.libfftw3f); nothing)
 
 # The variants of the library, one compiled branch each: transform × element type × dimension ×
 # window width × batch strategy (as in NFFT.jl: no batch; slices one at a time, on one threaded core
@@ -111,7 +48,7 @@ kernel_type(T, W) = SymKernel{W,cld(W, 2),cld(W + 4, 2),(W + 4) ÷ 2,T}
 
 # The core of one transform (no batch), on the grid of NFFT.jl for oversampling σ.
 function make_core(::Val{X}, ::Type{T}, k, N::NTuple{D,Int}, σ, W, φ::F, kernel, nthreads) where {X,T,D,F}
-  fft = FFTWBackend()
+  fft = FFTLBackend()
   if X === :nfft || X === :rnfft
     Ñ = grid_size(σ, N, W)
     X === :nfft ? NFFTCore(k, N, Ñ, W, φ, T, fft, nothing, nthreads; kernel) :
@@ -124,7 +61,7 @@ end
 
 # The batch kernels of the NFFT with chunks of 4 (batches of at least 4).
 make_batch(::Type{T}, k, N::NTuple{D,Int}, σ, W, φ::F, kernel, L, nthreads) where {T,D,F} =
-  NFFT.BatchCore(k, N, grid_size(σ, N, W), W, φ, T, FFTWBackend(), L, nothing, nthreads; kernel, chunk=Val(4))
+  NFFT.BatchCore(k, N, grid_size(σ, N, W), W, φ, T, FFTLBackend(), L, nothing, nthreads; kernel, chunk=Val(4))
 
 # The core types, inferred from the argument types (and checked to be concrete) instead of written
 # out.
@@ -195,7 +132,7 @@ for (name, values, arg, err, T) in ((:with_transform, 1:length(TRANSFORMS), x ->
 end
 
 # Plans can be created and destroyed from any thread; a plan must not run on two threads at once.
-# Planning runs one at a time: FFTW's planner thread count is global state.
+# Planning runs one at a time (PLAN_LOCK around `with_dim`).
 const REGISTRY_LOCK = ReentrantLock()
 const PLAN_LOCK = ReentrantLock()
 
@@ -233,7 +170,6 @@ end
 
 function create(::Val{X}, ::Type{T}, ::Val{D}, Np::Ptr{Int64}, J::Int, kp::Ptr{Float64}, reltol::Float64,
                 nthreads::Int, L1::Int, L3::Int) where {X,T,D}
-  load_fftw()
   (L1 >= 1 && L3 >= 1) || throw(ArgumentError("batch sizes must be positive"))
   N = ntuple(d -> Int(unsafe_load(Np, d)), Val(D))
   k = copy(unsafe_wrap(Array, kp, (D, J)))
@@ -468,7 +404,6 @@ end
 
 function create_nnfft(::Type{T}, ::Val{D}, J::Int, kp::Ptr{Float64}, N::Int, yp::Ptr{Float64}, reltol::Float64,
                       nthreads::Int, L1::Int, L3::Int) where {T,D}
-  load_fftw()
   (L1 >= 1 && L3 >= 1) || throw(ArgumentError("batch sizes must be positive"))
   (J >= 0 && N >= 0) || throw(ArgumentError("numbers of nodes must not be negative"))
   kc = copy(unsafe_wrap(Array, kp, (D, J)))
@@ -600,10 +535,8 @@ Base.@ccallable nfftjl_plan_destroy(h::Int64)::Cint = plan_destroy(h)
 Base.@ccallable nfftjlf_plan_destroy(h::Int64)::Cint = plan_destroy(h)
 
 # The library starts one Julia thread per CPU thread; plans use `nthreads` of them, by default
-# NFFTJL_NUM_THREADS if set, otherwise one per performance core. The 1D FFT is split by FFTW into
-# one piece per thread, and a piece on an efficiency core (Apple Silicon) or a busy core holds up
-# the whole transform: up to 2× slower with all 10 threads of an M1 Max than with its 8
-# performance cores.
+# NFFTJL_NUM_THREADS if set, otherwise one per performance core: a transform split over all threads
+# waits for the slowest one, and on Apple Silicon that is an efficiency core.
 function default_threads()
   n = tryparse(Int, get(ENV, "NFFTJL_NUM_THREADS", ""))
   n === nothing || return clamp(n, 1, Threads.nthreads())
