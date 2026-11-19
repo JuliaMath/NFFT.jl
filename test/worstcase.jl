@@ -23,4 +23,19 @@
       end
     end
   end
+
+  # all modes and a fine set of offsets for a case whose kernel the alias sum est_wc underestimated
+  # (8 × 8 at 1e-6: 1.11·tol with est_wc as the bound)
+  N, tol, J = (8, 8), 1e-6, 48
+  Ñ = oversampled_size(plan_nfft(rand(rng, 2, J) .- 0.5, N; reltol=tol))
+  for t in 0:0.05:0.95
+    k = reduce(hcat, [[(mod(7j * (d + 2), Ñ[d]) + t) / Ñ[d] - 0.5 for d in 1:2] for j in 1:J])
+    p, q = plan_nfft(k, N; reltol=tol), NDFTPlan(k, N)
+    worst = maximum(CartesianIndices(N)) do I
+      f = zeros(ComplexF64, N); f[I] = 1
+      relerr(p * f, q * f)
+    end
+    @test worst <= tol
+  end
 end
+
