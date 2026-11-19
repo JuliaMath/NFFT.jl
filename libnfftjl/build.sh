@@ -14,6 +14,12 @@ if [ -z "$JULIA_CPU_TARGET" ]; then
     *) export JULIA_CPU_TARGET=generic ;;
   esac
 fi
+# FFTL picks its vector width from the build host. The x86 target is x86-64-v3 (AVX2): on a host
+# with AVX-512, LLVM cannot lower FFTL's 512-bit kernels for it, so they are limited to 256 bits.
+case "$(uname -m)" in
+  x86_64) printf '[FFTL]\nsimd_bytes = 32\n' > LocalPreferences.toml ;;
+  *) rm -f LocalPreferences.toml ;;
+esac
 rm -rf build
 julia --project=jc -m JuliaC --output-lib build/libnfftjl --project . --bundle build \
   --trim=safe --compile-ccallable --experimental \
