@@ -3,10 +3,15 @@
 #
 # data/kernel_table.csv: for each window family, W = 4…16 and σ = 1.20:0.05:2.50 the shape
 # parameters that minimise the worst-mode aliasing estimate max_ξ √(Σ_{r≠0} φ̂(ξ+r)²)/|φ̂(ξ)| (est_max),
-# the RMS of that ratio over the kept modes (est_rms, the error for random nodes) and the bound for
-# any nodes, est_wc = max_ξ Σ_{r≠0} |φ̂(ξ+r)|/|φ̂(ξ)| (nodes at one fractional grid offset, as in
-# Cartesian sampling, add the aliases of a mode coherently). Computed by the kernel optimiser of the
-# refactoring workspace (bench/micro/kernel_opt.jl, kernel_wc.jl).
+# the RMS of that ratio over the kept modes (est_rms, the error for random nodes), the alias sum
+# est_wc = max_ξ Σ_{r≠0} |φ̂(ξ+r)|/|φ̂(ξ)| over |r| ≤ 6, and the bound for any nodes
+# est_sup = max_{ξ,t} |Σ_l φ(t−l) e^{2πiξ(t−l)}/φ̂(ξ) − 1|, the error of the single mode ξ at a node
+# with fractional grid offset t (nodes at one offset, as in Cartesian sampling, add the aliases of a
+# mode coherently). est_sup is measured through the package's own 1D transform (piecewise polynomial
+# window, correction factors), so it holds for the window as evaluated; est_wc overestimates by the
+# triangle inequality (est_sup = 0.56–1 of it) and misses the alias tail where φ̂ decays slowly (up
+# to 1.5×; at W = 15, 16 the polynomial's error makes est_sup ≈ 7e-14 against est_wc ≈ 1.5e-14).
+# Computed in the refactoring workspace (bench/micro/kernel_opt.jl, kernel_wc.jl, kernel_sup.jl).
 # The kernel family with a free exponent and the per-(W, σ) optimisation follow ducc (Arras et al.,
 # A&A 646, A58, 2021); the table itself is independent of ducc's.
 
@@ -16,7 +21,7 @@ struct KernelEntry
   σ::Float64
   β::Float64
   e0::Float64
-  est::Float64        # aliasing bound for any nodes (est_wc of the table)
+  est::Float64        # error bound per dimension for any nodes (est_sup of the table)
   amp::Float64        # amplification of the resampling correction, φ̂(0)/φ̂(1/(2σ))
 end
 
@@ -34,7 +39,7 @@ const KERNEL_TABLE = let lines = readlines(joinpath(@__DIR__, "..", "data", "ker
   map(split.(lines, ",")) do v
     w = table_window(v[1]); W = parse(Int, v[2]); σ = parse(Float64, v[3])
     β = parse(Float64, v[4]); e0 = parse(Float64, v[5])
-    KernelEntry(w, W, σ, β, e0, parse(Float64, v[8]), amplification(w, W, σ, β, e0))
+    KernelEntry(w, W, σ, β, e0, parse(Float64, v[9]), amplification(w, W, σ, β, e0))
   end
 end
 
