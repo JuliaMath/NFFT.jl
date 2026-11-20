@@ -35,7 +35,7 @@ NFFT.parameters(p)
 # Over a range of tolerances, the measured error stays below the requested one and below
 # `accuracy(p)`, the bound the plan predicts:
 
-tols = [10.0^-i for i in 2:13]
+tols = [10.0^-i for i in 2:12]
 plans = [plan_nfft(k, N; reltol=t) for t in tols]
 measured = relerr.(plans)
 predicted = accuracy.(plans)
@@ -54,8 +54,10 @@ fig
 
 [(reltol=t, W=NFFT.parameters(q).W, σ=NFFT.parameters(q).σ) for (t, q) in zip(tols, plans)]
 
-# Below about ``10^{-13}`` rounding errors dominate in double precision (more for large ``N``: node
-# positions are accurate to ``\approx \varepsilon \max N``); in single precision the floor is about
+# In double precision the most accurate parameters reach about ``7 \cdot 10^{-14}`` per dimension (the
+# window is evaluated as a piecewise polynomial), so ``10^{-13}`` is out of reach from two dimensions
+# on; rounding adds more for large ``N`` (node positions are accurate to ``\approx \varepsilon \max N``).
+# In single precision the floor is about
 # ``3 \cdot 10^{-6}``. A `reltol` below what any parameters reach throws an `ArgumentError` instead of
 # returning a less accurate plan, unless `W` and `σ` are both given. Without `reltol` a plan uses
 # [`default_reltol`](@ref) of its element type: ``10^{-8}``, in single precision ``1.2 \cdot 10^{-5}``.
