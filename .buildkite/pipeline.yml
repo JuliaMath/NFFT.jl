@@ -1,13 +1,17 @@
 steps:
-  - label: "Nvidia GPUs -- NFFT.jl"
-    plugins:
-      - JuliaCI/julia#v1:
-          version: "1.10"
-    agents:
-      queue: "cuda"
-    command: |
-      julia --color=yes test/gpu/run.jl cuda
-    timeout_in_minutes: 30
+  # Disabled: since 2026-10-31 (e9c1a967) this step times out on every build, stuck in LLVM
+  # (GVN) while compiling `resample_kernel!` for the NNFFT adjoint (ext/NFFTGPUExt.jl:605).
+  # It occupied a runner of the shared, saturated cuda queue for 30 minutes per build.
+  # Re-enable once the CUDA tests pass again.
+  # - label: "Nvidia GPUs -- NFFT.jl"
+  #   plugins:
+  #     - JuliaCI/julia#v1:
+  #         version: "1.10"
+  #   agents:
+  #     queue: "cuda"
+  #   command: |
+  #     julia --color=yes test/gpu/run.jl cuda
+  #   timeout_in_minutes: 30
 
   - label: "AMD GPUs -- NFFT.jl"
     plugins:
